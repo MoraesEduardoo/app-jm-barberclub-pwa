@@ -1,6 +1,6 @@
 {
   "name": "JM Barberclub — Painel do Barbeiro",
-  "short_name": "Painel Barbeiro",
+  "short_name": "JM Barberclub",
   "description": "Painel administrativo exclusivo da equipe da barbearia",
   "start_url": "/admin",
   "scope": "/admin",
