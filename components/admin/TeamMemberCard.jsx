@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import { ShieldCheck, Trash2, UserX, UserCheck } from "lucide-react";
 import { PERMISSION_KEYS } from "@/lib/auth";
 import {
@@ -18,21 +19,56 @@ const PERMISSION_LABELS = {
 
 export default function TeamMemberCard({ member, onChanged }) {
   const isChief = member.role === "admin";
+  const [isPending, startTransition] = useTransition();
+  const [memberState, setMemberState] = useState(member);
 
-  async function handleToggle(key, value) {
-    await updateTeamMemberPermission(member.id, key, value);
-    onChanged();
+  function handleToggle(key, value) {
+    const previousPermissions = { ...memberState.permissions };
+    
+    setMemberState((prev) => ({
+      ...prev,
+      permissions: { ...prev.permissions, [key]: value },
+    }));
+
+    startTransition(async () => {
+      try {
+        await updateTeamMemberPermission(member.id, key, value);
+        if (onChanged) onChanged();
+      } catch (error) {
+        console.error(error);
+        setMemberState((prev) => ({
+          ...prev,
+          permissions: previousPermissions,
+        }));
+      }
+    });
   }
 
-  async function handleToggleActive() {
-    await toggleTeamMemberActive(member.id, !member.active);
-    onChanged();
+  function handleToggleActive() {
+    const nextActive = !memberState.active;
+    const previousActive = memberState.active;
+
+    setMemberState((prev) => ({ ...prev, active: nextActive }));
+
+    startTransition(async () => {
+      try {
+        await toggleTeamMemberActive(member.id, nextActive);
+        if (onChanged) onChanged();
+      } catch (error) {
+        console.error(error);
+        setMemberState((prev) => ({ ...prev, active: previousActive }));
+      }
+    });
   }
 
   async function handleRemove() {
     if (!confirm(`Remover ${member.name} da equipe?`)) return;
-    await removeTeamMember(member.id);
-    onChanged();
+    try {
+      await removeTeamMember(member.id);
+      if (onChanged) onChanged();
+    } catch (error) {
+      console.error(error);
+    }
   }
 
   return (
@@ -55,14 +91,15 @@ export default function TeamMemberCard({ member, onChanged }) {
         ) : (
           <button
             onClick={handleToggleActive}
-            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-              member.active
+            disabled={isPending}
+            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+              memberState.active
                 ? "bg-emerald-500/15 text-emerald-400"
                 : "bg-zinc-800 text-zinc-500"
             }`}
           >
-            {member.active ? <UserCheck size={11} /> : <UserX size={11} />}
-            {member.active ? "Ativo" : "Inativo"}
+            {memberState.active ? <UserCheck size={11} /> : <UserX size={11} />}
+            {memberState.active ? "Ativo" : "Inativo"}
           </button>
         )}
       </div>
@@ -78,15 +115,18 @@ export default function TeamMemberCard({ member, onChanged }) {
                 <span className="text-zinc-300 text-xs">{label}</span>
                 <button
                   role="switch"
-                  aria-checked={member.permissions[key]}
-                  onClick={() => handleToggle(key, !member.permissions[key])}
+                  aria-checked={!!memberState.permissions?.[key]}
+                  onClick={() =>
+                    handleToggle(key, !memberState.permissions?.[key])
+                  }
+                  disabled={isPending}
                   className={`relative shrink-0 w-9 h-5 rounded-full transition-colors ${
-                    member.permissions[key] ? "bg-accent" : "bg-zinc-700"
+                    memberState.permissions?.[key] ? "bg-accent" : "bg-zinc-700"
                   }`}
                 >
                   <span
                     className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-                      member.permissions[key]
+                      memberState.permissions?.[key]
                         ? "translate-x-4"
                         : "translate-x-0"
                     }`}
@@ -98,7 +138,7 @@ export default function TeamMemberCard({ member, onChanged }) {
 
           <button
             onClick={handleRemove}
-            className="flex items-center gap-1.5 text-accent-light text-xs font-medium mt-3.5"
+            className="flex items-center gap-1.5 text-accent-light text-xs font-medium mt-3.5 hover:opacity-80 transition-opacity"
           >
             <Trash2 size={13} /> Remover da equipe
           </button>
