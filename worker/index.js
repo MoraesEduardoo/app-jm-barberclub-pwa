@@ -25,6 +25,12 @@ self.addEventListener('push', (event) => {
     icon: data.icon || '/icons/logo-192.png',
     badge: data.badge || '/icons/logo-192.png',
     data: { url: data.url || '/admin' },
+    // "tag" agrupa avisos do mesmo agendamento: se o disparo acontecer
+    // duas vezes (painel + webhook), o aparelho substitui em vez de
+    // empilhar duas notificações iguais.
+    tag: data.tag || undefined,
+    renotify: Boolean(data.tag),
+    vibrate: [120, 60, 120],
   };
 
   event.waitUntil(self.registration.showNotification(title, options));

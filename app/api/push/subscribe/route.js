@@ -16,6 +16,8 @@ import { getSupabaseServerClient } from '@/lib/supabase/server';
  *   Remove a inscrição (usado ao desativar as notificações no botão).
  */
 
+export const runtime = 'nodejs';
+
 export async function POST(request) {
   let payload;
   try {

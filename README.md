@@ -88,3 +88,54 @@ Por padrão, um barbeiro novo só vê e edita a própria agenda/expediente.
 - Estilo aplicado exatamente como pedido: fundo `#000000`, cards
   `#09090b`/`#18181b`, texto branco e destaque em vermelho escarlate
   `#dc2626`, com bottom nav fixa e áreas de toque generosas (mín. 56px).
+
+---
+
+## Notificações Push (Web Push / VAPID)
+
+Fluxo completo, do registro ao aviso no telemóvel:
+
+1. **Barbeiro ativa** — Perfil (avatar no topo) → "Ativar notificações push".
+   O navegador pede permissão e gera a `PushSubscription`.
+2. **Salvamento** — `POST /api/push/subscribe` grava `endpoint`, `p256dh` e
+   `auth` na tabela `push_subscriptions`, vinculada ao `barber_id`. O upsert
+   é por `endpoint`, então reinscrever o mesmo aparelho não duplica linha.
+   (`DELETE` na mesma rota remove, ao desativar.)
+3. **Disparo** — `lib/push.js` é a camada única de envio (`web-push` + VAPID):
+   - `createWalkInAppointment()` (`lib/actions/appointments.js`) chama
+     `notifyNewAppointment(id)` logo após o insert;
+   - `POST /api/push/appointment-created` faz o mesmo para agendamentos
+     criados fora do painel (chat/site público ou Database Webhook do
+     Supabase) — protegido pelo header `x-push-secret`;
+   - `POST /api/push/send` continua disponível para disparo manual/teste.
+4. **Exibição** — `worker/index.js` escuta o evento `push` no Service Worker
+   e chama `showNotification`. O clique abre `/admin/agenda`.
+
+Destinatários de um novo agendamento: o barbeiro dono do horário **e** o
+chefe (`barbers.role = 'admin'`).
+
+### Passos para funcionar
+
+1. Rodar `supabase/migrations/005_push_subscriptions.sql` no SQL Editor.
+   Sem essa tabela nada é salvo e nunca há para quem enviar.
+2. Definir as variáveis no `.env` local **e na Vercel**:
+   `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`,
+   `VAPID_SUBJECT=mailto:moraesedu1313@gmail.com`,
+   `SUPABASE_SERVICE_ROLE_KEY` e `PUSH_WEBHOOK_SECRET`.
+3. Testar **em produção (HTTPS)**: o next-pwa desativa o Service Worker em
+   `npm run dev`, então push não funciona em `localhost`.
+4. No iPhone, o site precisa estar **instalado na tela de início** (Adicionar
+   à Tela de Início) — o iOS não entrega Web Push no Safari comum.
+5. Opcional: `006_push_trigger_novo_agendamento.sql` liga o gatilho do banco
+   para agendamentos vindos de fora do painel.
+
+### Teste rápido
+
+```bash
+curl -X POST https://SEU-DOMINIO/api/push/send \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Novo agendamento!","body":"Teste de disparo"}'
+```
+
+Resposta `{"sent":1,...}` = chegou. `{"sent":0,"message":"Nenhuma inscrição
+encontrada."}` = ninguém ativou o botão ainda (passo 1).
