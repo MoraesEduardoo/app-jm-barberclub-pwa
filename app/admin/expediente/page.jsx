@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useTransition } from "react";
-import { CalendarOff, Plus, Trash2 } from "lucide-react";
+import { CalendarOff, Plus, Trash2, Save, Loader2 } from "lucide-react";
 import { useBarber } from "@/lib/barber-context";
 import { PERMISSION_KEYS } from "@/lib/auth";
 import { listTeam } from "@/lib/actions/team";
@@ -34,6 +34,10 @@ export default function ExpedientePage() {
   const [blockDate, setBlockDate] = useState("");
   const [blockNote, setBlockNote] = useState("");
 
+  // Novos estados para o controlo de salvamento manual
+  const [hasChanges, setHasChanges] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
   useEffect(() => {
     if (canManageOthers) {
       listTeam()
@@ -42,7 +46,6 @@ export default function ExpedientePage() {
     }
   }, [canManageOthers]);
 
-  // Carrega os dados em segundo plano sem NUNCA limpar a tela (sem setLoading true)
   const loadData = useCallback(async (barberId) => {
     try {
       const [sched, exc] = await Promise.all([
@@ -51,6 +54,7 @@ export default function ExpedientePage() {
       ]);
       setSchedule(sched || []);
       setExceptions(exc || []);
+      setHasChanges(false); // Reseta o estado de alterações ao carregar
     } catch (err) {
       console.error(err);
     }
@@ -63,14 +67,21 @@ export default function ExpedientePage() {
   }, [targetBarberId, loadData]);
 
   function handleSelectBarber(memberId) {
+    if (hasChanges) {
+      const confirmDiscard = window.confirm(
+        "Existem alterações não salvas. Deseja descartá-las?",
+      );
+      if (!confirmDiscard) return;
+    }
+
     startTransition(() => {
       setTargetBarberId(memberId);
       loadData(memberId);
     });
   }
 
-  async function handleDayChange(dayValue, values) {
-    // Atualização otimista imediata na UI
+  function handleDayChange(dayValue, values) {
+    // Apenas atualiza a UI otimista localmente, sem contactar o servidor
     setSchedule((prev) => {
       const index = prev.findIndex((s) => s.day_of_week === dayValue);
       if (index >= 0) {
@@ -80,9 +91,32 @@ export default function ExpedientePage() {
       }
       return [...prev, { day_of_week: dayValue, ...values }];
     });
+    setHasChanges(true); // Exibe o botão de salvar
+  }
 
-    await upsertScheduleDay(targetBarberId, dayValue, values);
-    loadData(targetBarberId);
+  async function handleSaveChanges() {
+    setIsSaving(true);
+    try {
+      // Salva todos os dias da agenda em lote
+      const promises = schedule.map((s) =>
+        upsertScheduleDay(targetBarberId, s.day_of_week, {
+          is_active: s.is_active,
+          work_start: s.work_start,
+          work_end: s.work_end,
+          lunch_start: s.lunch_start,
+          lunch_end: s.lunch_end,
+        }),
+      );
+
+      await Promise.all(promises);
+      setHasChanges(false);
+      await loadData(targetBarberId);
+    } catch (error) {
+      console.error("Erro ao salvar horários:", error);
+      alert("Ocorreu um erro ao salvar as mudanças. Tente novamente.");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   async function handleAddBlock(e) {
@@ -109,7 +143,7 @@ export default function ExpedientePage() {
   );
 
   return (
-    <div className="px-4 pt-4 pb-10">
+    <div className={`px-4 pt-4 pb-10 ${hasChanges ? "mb-20" : ""}`}>
       {canManageOthers && team.length > 0 && (
         <div className="mb-4 -mx-1 flex gap-2 overflow-x-auto pb-1">
           {team.map((member) => (
@@ -216,6 +250,24 @@ export default function ExpedientePage() {
           <PrimaryButton type="submit">Bloquear data</PrimaryButton>
         </form>
       </BottomSheet>
+
+      {/* Barra flutuante de salvamento manual */}
+      {hasChanges && (
+        <div className="fixed bottom-20 left-0 right-0 p-4 z-40 animate-in slide-in-from-bottom-5">
+          <button
+            onClick={handleSaveChanges}
+            disabled={isSaving}
+            className="w-full flex items-center justify-center gap-2 h-14 rounded-full bg-accent text-white font-semibold shadow-lg shadow-accent/20 active:bg-accent-dark transition-all disabled:opacity-70"
+          >
+            {isSaving ? (
+              <Loader2 size={20} className="animate-spin" />
+            ) : (
+              <Save size={20} />
+            )}
+            {isSaving ? "Salvando alterações..." : "Salvar mudanças"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
