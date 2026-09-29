@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { QrCode, CreditCard, Banknote, TrendingUp, AlertCircle, Percent } from 'lucide-react';
 import { useBarber } from '@/lib/barber-context';
+import { endSession } from '@/lib/session';
 import { PERMISSION_KEYS } from '@/lib/auth';
 import { getFinanceSummary } from '@/lib/actions/finance';
 import { listTeam } from '@/lib/actions/team';
@@ -33,17 +34,26 @@ function formatBRL(value) {
 }
 
 export default function FinanceiroPage() {
-  const { barber, can } = useBarber();
+  const { barber, can, isChefe, selectedBarberId, selectBarber } = useBarber();
   const canManageFinance = can(PERMISSION_KEYS.MANAGE_FINANCE);
 
-  const [range, setRange] = useState('hoje');
-  const [tab, setTab] = useState('pagos');
+  const [range, setRange] = useState(hoje);
+  const [tab, setTab] = useState(pagos);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [team, setTeam] = useState([]);
-  // 'todos' só é uma opção válida pra quem tem MANAGE_FINANCE; barbeiro sem
-  // essa permissão sempre fica travado no próprio id (ver useEffect abaixo).
-  const [scopeId, setScopeId] = useState(canManageFinance ? 'todos' : barber.id);
+  const requestIdRef = useRef(0);
+
+  // Chefe: o filtro é o profissional selecionado no contexto global (mesmo do perfil/agenda).
+  // Barbeiro com MANAGE_FINANCE: filtro local, só desta tela.
+  // Barbeiro sem a permissão: sempre travado no próprio id.
+  const [localScope, setLocalScope] = useState(canManageFinance ? todos : barber.id);
+  const scopeId = isChefe ? (selectedBarberId ?? todos) : localScope;
+
+  function changeScope(id) {
+    if (isChefe) selectBarber(id === todos ? null : id);
+    else setLocalScope(id);
+  }
 
   useEffect(() => {
     if (canManageFinance) {
@@ -52,12 +62,24 @@ export default function FinanceiroPage() {
   }, [canManageFinance]);
 
   const load = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     const { from, to } = getRangeDates(range);
-    const scope = canManageFinance ? (scopeId === 'todos' ? null : scopeId) : barber.id;
-    const data = await getFinanceSummary({ from, to, scopeBarberId: scope });
-    setSummary(data);
-    setLoading(false);
+    const scope = canManageFinance ? (scopeId === todos ? null : scopeId) : barber.id;
+
+    try {
+      const data = await getFinanceSummary({ from, to, scopeBarberId: scope });
+      if (requestId !== requestIdRef.current) return; // resposta antiga
+      setSummary(data);
+      setLoading(false);
+    } catch (error) {
+      if (requestId !== requestIdRef.current) return;
+      if (String(error?.message).includes(AUTH_EXPIRED)) {
+        endSession();
+        return;
+      }
+      setLoading(false);
+    }
   }, [range, scopeId, canManageFinance, barber.id]);
 
   useEffect(() => {
@@ -69,7 +91,7 @@ export default function FinanceiroPage() {
       {canManageFinance && team.length > 0 && (
         <div className="mb-3 -mx-1 flex gap-2 overflow-x-auto pb-1">
           <button
-            onClick={() => setScopeId('todos')}
+            onClick={() => changeScope('todos')}
             className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium border transition-colors ${
               scopeId === 'todos'
                 ? 'bg-accent border-accent text-white'
@@ -81,7 +103,7 @@ export default function FinanceiroPage() {
           {team.map((member) => (
             <button
               key={member.id}
-              onClick={() => setScopeId(member.id)}
+              onClick={() => changeScope(member.id)}
               className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium border transition-colors ${
                 scopeId === member.id
                   ? 'bg-accent border-accent text-white'

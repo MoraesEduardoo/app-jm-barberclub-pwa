@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { UserPlus } from "lucide-react";
 import { useBarber } from "@/lib/barber-context";
 import { endSession } from "@/lib/session";
@@ -20,7 +20,7 @@ function todayISO() {
 }
 
 export default function AgendaPage() {
-  const { barber, can } = useBarber();
+  const { can, scopeBarberId, viewedBarber } = useBarber();
   const canViewAll = can(PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS);
 
   const [date, setDate] = useState(todayISO());
@@ -29,6 +29,7 @@ export default function AgendaPage() {
   const [paymentTarget, setPaymentTarget] = useState(null);
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [team, setTeam] = useState([]);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     if (canViewAll) {
@@ -39,18 +40,23 @@ export default function AgendaPage() {
   }, [canViewAll]);
 
   const load = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
-    const scope = canViewAll ? null : barber.id;
-    const response = await listAppointmentsByDate(date, scope);
 
-        if (response?.error === "AUTH_EXPIRED") {
+    // scopeBarberId vem do contexto: null = todos (Chefe), id = um profissional.
+    const response = await listAppointmentsByDate(date, scopeBarberId);
+
+    // Ignora respostas antigas se o Chefe trocou de profissional entretanto.
+    if (requestId !== requestIdRef.current) return;
+
+    if (response?.error === "AUTH_EXPIRED") {
       endSession();
       return;
     }
 
     setAppointments(response?.data || []);
     setLoading(false);
-  }, [date, canViewAll, barber.id]);
+  }, [date, scopeBarberId]);
 
   useEffect(() => {
     load();
@@ -134,7 +140,7 @@ export default function AgendaPage() {
       <WalkInSheet
         open={walkInOpen}
         onClose={handleCloseWalkIn}
-        barber={barber}
+        barber={viewedBarber}
         team={team}
         canPickBarber={canViewAll}
         existingAppointments={appointments}

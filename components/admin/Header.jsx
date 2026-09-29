@@ -1,6 +1,6 @@
 'use client';
 
-import { LogOut, ShieldCheck } from 'lucide-react';
+import { LogOut, ShieldCheck, Eye, X } from 'lucide-react';
 import { useBarber } from '@/lib/barber-context';
 import NotificationBell from './NotificationBell';
 
@@ -16,8 +16,22 @@ const TITLES = {
   '/admin/equipe': 'Equipe & Permissões',
 };
 
+// Telas cujos dados mudam conforme o profissional selecionado pelo Chefe.
+// (Serviços, Equipe e Financeiro Completo são da barbearia inteira.)
+function isScopedPath(pathname) {
+  if (!pathname) return false;
+  if (pathname.startsWith('/admin/financeiro/completo')) return false;
+  return (
+    pathname.startsWith('/admin/agenda') ||
+    pathname.startsWith('/admin/expediente') ||
+    pathname.startsWith('/admin/financeiro')
+  );
+}
+
 export default function Header({ pathname, onOpenProfile }) {
-  const { barber, isChefe, signOut } = useBarber();
+  const { barber, isChefe, signOut, isViewingOther, viewedBarber, resetView } = useBarber();
+  const showViewBanner = isChefe && isViewingOther && isScopedPath(pathname);
+  const viewedIsSelf = viewedBarber?.id === barber?.id;
 
   const title =
     Object.entries(TITLES).find(([path]) => pathname?.startsWith(path))?.[1] ?? 'Painel';
@@ -60,6 +74,25 @@ export default function Header({ pathname, onOpenProfile }) {
           </button>
         </div>
       </div>
+
+      {showViewBanner && (
+        <div className="flex items-center justify-between gap-3 px-4 py-1.5 bg-accent/10 border-t border-accent/30">
+          <span className="flex items-center gap-1.5 min-w-0 text-xs text-accent-light">
+            <Eye size={13} className="shrink-0" />
+            <span className="truncate">
+              Painel de <strong className="font-semibold">{viewedBarber?.name || 'outro profissional'}</strong>
+              {viewedIsSelf ? ' (você)' : ''}
+            </span>
+          </span>
+          <button
+            onClick={resetView}
+            className="shrink-0 flex items-center gap-1 rounded-full border border-accent/40 px-2.5 py-0.5 text-[11px] font-medium text-accent-light active:bg-accent/20"
+          >
+            <X size={11} />
+            Visão geral
+          </button>
+        </div>
+      )}
     </header>
   );
 }

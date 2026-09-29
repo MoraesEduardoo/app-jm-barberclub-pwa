@@ -1,0 +1,684 @@
+From 6c0222bdab58f669bfee82450853c7aa061068a8 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 29 Sep 2026 22:22:46 +0000
+Subject: [PATCH] feat(admin): selectedBarberId global para o Chefe ver o
+ painel de outro profissional
+
+- barber-context: novo BarberProvider com selectedBarberId, viewedBarber,
+  scopeBarberId, selectBarber/resetView e guarda contra perder alteracoes
+- layout: AdminShell dentro do provider liga ProfileSheet ao contexto
+- Header: faixa "Painel de X" com botao Visao geral (so em telas com escopo)
+- agenda/financeiro/expediente seguem o profissional selecionado
+- finance.js: servidor decide o escopo; despesas apenas para o Chefe
+- expediente: corrige chaves do salvamento em lote (active/start_time/end_time)
+- notificacoes e push continuam ligados a quem esta logado
+---
+ app/admin/agenda/page.jsx         |  20 ++++--
+ app/admin/expediente/page.jsx     |  41 +++++++-----
+ app/admin/financeiro/page.jsx     |  48 ++++++++++----
+ app/admin/layout.jsx              |  71 ++++++++++----------
+ components/admin/Header.jsx       |  37 ++++++++++-
+ components/admin/ProfileSheet.jsx |   5 +-
+ lib/actions/finance.js            |  50 +++++++++++---
+ lib/barber-context.js             | 106 ++++++++++++++++++++++++++++--
+ 8 files changed, 291 insertions(+), 87 deletions(-)
+
+diff --git a/app/admin/agenda/page.jsx b/app/admin/agenda/page.jsx
+index 63f9afe..2778e02 100644
+--- a/app/admin/agenda/page.jsx
++++ b/app/admin/agenda/page.jsx
+@@ -1,6 +1,6 @@
+ "use client";
+ 
+-import { useEffect, useState, useCallback } from "react";
++import { useEffect, useState, useCallback, useRef } from "react";
+ import { UserPlus } from "lucide-react";
+ import { useBarber } from "@/lib/barber-context";
+ import { endSession } from "@/lib/session";
+@@ -20,7 +20,7 @@ function todayISO() {
+ }
+ 
+ export default function AgendaPage() {
+-  const { barber, can } = useBarber();
++  const { can, scopeBarberId, viewedBarber } = useBarber();
+   const canViewAll = can(PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS);
+ 
+   const [date, setDate] = useState(todayISO());
+@@ -29,6 +29,7 @@ export default function AgendaPage() {
+   const [paymentTarget, setPaymentTarget] = useState(null);
+   const [walkInOpen, setWalkInOpen] = useState(false);
+   const [team, setTeam] = useState([]);
++  const requestIdRef = useRef(0);
+ 
+   useEffect(() => {
+     if (canViewAll) {
+@@ -39,18 +40,23 @@ export default function AgendaPage() {
+   }, [canViewAll]);
+ 
+   const load = useCallback(async () => {
++    const requestId = ++requestIdRef.current;
+     setLoading(true);
+-    const scope = canViewAll ? null : barber.id;
+-    const response = await listAppointmentsByDate(date, scope);
+ 
+-        if (response?.error === "AUTH_EXPIRED") {
++    // scopeBarberId vem do contexto: null = todos (Chefe), id = um profissional.
++    const response = await listAppointmentsByDate(date, scopeBarberId);
++
++    // Ignora respostas antigas se o Chefe trocou de profissional entretanto.
++    if (requestId !== requestIdRef.current) return;
++
++    if (response?.error === "AUTH_EXPIRED") {
+       endSession();
+       return;
+     }
+ 
+     setAppointments(response?.data || []);
+     setLoading(false);
+-  }, [date, canViewAll, barber.id]);
++  }, [date, scopeBarberId]);
+ 
+   useEffect(() => {
+     load();
+@@ -134,7 +140,7 @@ export default function AgendaPage() {
+       <WalkInSheet
+         open={walkInOpen}
+         onClose={handleCloseWalkIn}
+-        barber={barber}
++        barber={viewedBarber}
+         team={team}
+         canPickBarber={canViewAll}
+         existingAppointments={appointments}
+diff --git a/app/admin/expediente/page.jsx b/app/admin/expediente/page.jsx
+index ff80f3b..f87a8a8 100644
+--- a/app/admin/expediente/page.jsx
++++ b/app/admin/expediente/page.jsx
+@@ -22,11 +22,14 @@ import {
+ } from "@/components/admin/FormField";
+ 
+ export default function ExpedientePage() {
+-  const { barber, can } = useBarber();
++  const { barber, can, isChefe, selectedBarberId, selectBarber, setSelectionGuard } = useBarber();
+   const canManageOthers = can(PERMISSION_KEYS.MANAGE_SCHEDULE_OTHERS);
+ 
+   const [team, setTeam] = useState([]);
+-  const [targetBarberId, setTargetBarberId] = useState(barber?.id);
++  // Chefe: segue o profissional selecionado no contexto global.
++  // Barbeiro com MANAGE_SCHEDULE_OTHERS: escolha local, só desta tela.
++  const [localTargetId, setLocalTargetId] = useState(barber?.id);
++  const targetBarberId = isChefe ? (selectedBarberId ?? barber?.id) : localTargetId;
+   const [schedule, setSchedule] = useState([]);
+   const [exceptions, setExceptions] = useState([]);
+   const [isPending, startTransition] = useTransition();
+@@ -66,18 +69,25 @@ export default function ExpedientePage() {
+     }
+   }, [targetBarberId, loadData]);
+ 
++  // Bloqueia a troca de profissional (inclusive pelo perfil) se houver alterações por salvar.
++  useEffect(() => {
++    setSelectionGuard(() =>
++      hasChanges
++        ? window.confirm("Existem alterações não salvas. Deseja descartá-las?")
++        : true,
++    );
++    return () => setSelectionGuard(null);
++  }, [hasChanges, setSelectionGuard]);
++
+   function handleSelectBarber(memberId) {
+-    if (hasChanges) {
+-      const confirmDiscard = window.confirm(
+-        "Existem alterações não salvas. Deseja descartá-las?",
+-      );
+-      if (!confirmDiscard) return;
++    if (isChefe) {
++      selectBarber(memberId); // o guard acima já pergunta se há alterações por salvar
++      return;
+     }
+-
+-    startTransition(() => {
+-      setTargetBarberId(memberId);
+-      loadData(memberId);
+-    });
++    if (hasChanges && !window.confirm("Existem alterações não salvas. Deseja descartá-las?")) {
++      return;
++    }
++    startTransition(() => setLocalTargetId(memberId));
+   }
+ 
+   function handleDayChange(dayValue, values) {
+@@ -100,9 +110,10 @@ export default function ExpedientePage() {
+       // Salva todos os dias da agenda em lote
+       const promises = schedule.map((s) =>
+         upsertScheduleDay(targetBarberId, s.day_of_week, {
+-          is_active: s.is_active,
+-          work_start: s.work_start,
+-          work_end: s.work_end,
++          active: s.active,
++          start_time: s.start_time,
++          end_time: s.end_time,
++          has_lunch_break: s.has_lunch_break,
+           lunch_start: s.lunch_start,
+           lunch_end: s.lunch_end,
+         }),
+diff --git a/app/admin/financeiro/page.jsx b/app/admin/financeiro/page.jsx
+index 3199538..e4ed876 100644
+--- a/app/admin/financeiro/page.jsx
++++ b/app/admin/financeiro/page.jsx
+@@ -1,8 +1,9 @@
+ 'use client';
+ 
+-import { useEffect, useState, useCallback } from 'react';
++import { useEffect, useState, useCallback, useRef } from 'react';
+ import { QrCode, CreditCard, Banknote, TrendingUp, AlertCircle, Percent } from 'lucide-react';
+ import { useBarber } from '@/lib/barber-context';
++import { endSession } from '@/lib/session';
+ import { PERMISSION_KEYS } from '@/lib/auth';
+ import { getFinanceSummary } from '@/lib/actions/finance';
+ import { listTeam } from '@/lib/actions/team';
+@@ -33,17 +34,26 @@ function formatBRL(value) {
+ }
+ 
+ export default function FinanceiroPage() {
+-  const { barber, can } = useBarber();
++  const { barber, can, isChefe, selectedBarberId, selectBarber } = useBarber();
+   const canManageFinance = can(PERMISSION_KEYS.MANAGE_FINANCE);
+ 
+-  const [range, setRange] = useState('hoje');
+-  const [tab, setTab] = useState('pagos');
++  const [range, setRange] = useState(hoje);
++  const [tab, setTab] = useState(pagos);
+   const [summary, setSummary] = useState(null);
+   const [loading, setLoading] = useState(true);
+   const [team, setTeam] = useState([]);
+-  // 'todos' só é uma opção válida pra quem tem MANAGE_FINANCE; barbeiro sem
+-  // essa permissão sempre fica travado no próprio id (ver useEffect abaixo).
+-  const [scopeId, setScopeId] = useState(canManageFinance ? 'todos' : barber.id);
++  const requestIdRef = useRef(0);
++
++  // Chefe: o filtro é o profissional selecionado no contexto global (mesmo do perfil/agenda).
++  // Barbeiro com MANAGE_FINANCE: filtro local, só desta tela.
++  // Barbeiro sem a permissão: sempre travado no próprio id.
++  const [localScope, setLocalScope] = useState(canManageFinance ? todos : barber.id);
++  const scopeId = isChefe ? (selectedBarberId ?? todos) : localScope;
++
++  function changeScope(id) {
++    if (isChefe) selectBarber(id === todos ? null : id);
++    else setLocalScope(id);
++  }
+ 
+   useEffect(() => {
+     if (canManageFinance) {
+@@ -52,12 +62,24 @@ export default function FinanceiroPage() {
+   }, [canManageFinance]);
+ 
+   const load = useCallback(async () => {
++    const requestId = ++requestIdRef.current;
+     setLoading(true);
+     const { from, to } = getRangeDates(range);
+-    const scope = canManageFinance ? (scopeId === 'todos' ? null : scopeId) : barber.id;
+-    const data = await getFinanceSummary({ from, to, scopeBarberId: scope });
+-    setSummary(data);
+-    setLoading(false);
++    const scope = canManageFinance ? (scopeId === todos ? null : scopeId) : barber.id;
++
++    try {
++      const data = await getFinanceSummary({ from, to, scopeBarberId: scope });
++      if (requestId !== requestIdRef.current) return; // resposta antiga
++      setSummary(data);
++      setLoading(false);
++    } catch (error) {
++      if (requestId !== requestIdRef.current) return;
++      if (String(error?.message).includes(AUTH_EXPIRED)) {
++        endSession();
++        return;
++      }
++      setLoading(false);
++    }
+   }, [range, scopeId, canManageFinance, barber.id]);
+ 
+   useEffect(() => {
+@@ -69,7 +91,7 @@ export default function FinanceiroPage() {
+       {canManageFinance && team.length > 0 && (
+         <div className="mb-3 -mx-1 flex gap-2 overflow-x-auto pb-1">
+           <button
+-            onClick={() => setScopeId('todos')}
++            onClick={() => changeScope('todos')}
+             className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium border transition-colors ${
+               scopeId === 'todos'
+                 ? 'bg-accent border-accent text-white'
+@@ -81,7 +103,7 @@ export default function FinanceiroPage() {
+           {team.map((member) => (
+             <button
+               key={member.id}
+-              onClick={() => setScopeId(member.id)}
++              onClick={() => changeScope(member.id)}
+               className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium border transition-colors ${
+                 scopeId === member.id
+                   ? 'bg-accent border-accent text-white'
+diff --git a/app/admin/layout.jsx b/app/admin/layout.jsx
+index 302ac76..e7ba924 100644
+--- a/app/admin/layout.jsx
++++ b/app/admin/layout.jsx
+@@ -4,22 +4,49 @@ import { useEffect, useState } from "react";
+ import { usePathname } from "next/navigation";
+ import { Loader2 } from "lucide-react";
+ import { endSession } from "@/lib/session";
+-import { isChefe, hasPermission, PERMISSION_KEYS } from "@/lib/auth";
++import { hasPermission, PERMISSION_KEYS } from "@/lib/auth";
+ import { getCurrentBarber } from "@/lib/actions/session";
+-import { BarberContext } from "@/lib/barber-context";
++import { BarberProvider, useBarber } from "@/lib/barber-context";
+ import { NotificationProvider } from "@/lib/notifications";
+ import Header from "@/components/admin/Header";
+ import BottomNav from "@/components/admin/BottomNav";
+ import ProfileSheet from "@/components/admin/ProfileSheet";
+ import ToastStack from "@/components/admin/ToastStack";
+ 
+-export default function AdminLayout({ children }) {
++// Vive DENTRO do BarberProvider para poder usar useBarber().
++function AdminShell({ children, onProfileUpdated }) {
+   const pathname = usePathname();
+-  const [status, setStatus] = useState("loading"); // loading | ok
+-  const [barber, setBarber] = useState(null);
+   const [profileOpen, setProfileOpen] = useState(false);
++  const { barber, isChefe, selectedBarberId, selectBarber } = useBarber();
++
++  // Notificações seguem SEMPRE quem está logado, não quem está a ser visualizado.
++  const scopeAllNotifications = hasPermission(barber, PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS);
++
++  return (
++    <NotificationProvider barberId={barber.id} scopeAll={scopeAllNotifications}>
++      <div className="min-h-screen bg-black flex flex-col">
++        <Header pathname={pathname} onOpenProfile={() => setProfileOpen(true)} />
++        <ToastStack />
++        <main className="flex-1 pb-24">{children}</main>
++        <BottomNav />
++      </div>
++
++      <ProfileSheet
++        open={profileOpen}
++        onClose={() => setProfileOpen(false)}
++        barber={barber}
++        isChefe={isChefe}
++        onProfileUpdated={onProfileUpdated}
++        selectedBarberId={selectedBarberId}
++        onSelectBarber={selectBarber}
++      />
++    </NotificationProvider>
++  );
++}
+ 
+-  const goToLogin = endSession;
++export default function AdminLayout({ children }) {
++  const [status, setStatus] = useState("loading"); // loading | ok
++  const [barber, setBarber] = useState(null);
+ 
+   useEffect(() => {
+     let active = true;
+@@ -28,7 +55,7 @@ export default function AdminLayout({ children }) {
+       const res = await getCurrentBarber();
+       if (!active) return;
+       if (res?.error || !res?.barber) {
+-        await goToLogin();
++        await endSession();
+         return;
+       }
+       setBarber(res.barber);
+@@ -50,33 +77,9 @@ export default function AdminLayout({ children }) {
+     );
+   }
+ 
+-  const ctxValue = {
+-    barber,
+-    isChefe: isChefe(barber),
+-    can: (key) => hasPermission(barber, key),
+-    signOut: goToLogin,
+-  };
+-
+-  const scopeAllNotifications = hasPermission(barber, PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS);
+-
+   return (
+-    <BarberContext.Provider value={ctxValue}>
+-      <NotificationProvider barberId={barber.id} scopeAll={scopeAllNotifications}>
+-        <div className="min-h-screen bg-black flex flex-col">
+-          <Header pathname={pathname} onOpenProfile={() => setProfileOpen(true)} />
+-          <ToastStack />
+-          <main className="flex-1 pb-24">{children}</main>
+-          <BottomNav />
+-        </div>
+-
+-        <ProfileSheet
+-          open={profileOpen}
+-          onClose={() => setProfileOpen(false)}
+-          barber={barber}
+-          isChefe={isChefe(barber)}
+-          onProfileUpdated={(updated) => setBarber(updated)}
+-        />
+-      </NotificationProvider>
+-    </BarberContext.Provider>
++    <BarberProvider barber={barber} signOut={endSession}>
++      <AdminShell onProfileUpdated={(updated) => setBarber(updated)}>{children}</AdminShell>
++    </BarberProvider>
+   );
+ }
+diff --git a/components/admin/Header.jsx b/components/admin/Header.jsx
+index c8013cd..fd4c661 100644
+--- a/components/admin/Header.jsx
++++ b/components/admin/Header.jsx
+@@ -1,6 +1,6 @@
+ 'use client';
+ 
+-import { LogOut, ShieldCheck } from 'lucide-react';
++import { LogOut, ShieldCheck, Eye, X } from 'lucide-react';
+ import { useBarber } from '@/lib/barber-context';
+ import NotificationBell from './NotificationBell';
+ 
+@@ -16,8 +16,22 @@ const TITLES = {
+   '/admin/equipe': 'Equipe & Permissões',
+ };
+ 
++// Telas cujos dados mudam conforme o profissional selecionado pelo Chefe.
++// (Serviços, Equipe e Financeiro Completo são da barbearia inteira.)
++function isScopedPath(pathname) {
++  if (!pathname) return false;
++  if (pathname.startsWith('/admin/financeiro/completo')) return false;
++  return (
++    pathname.startsWith('/admin/agenda') ||
++    pathname.startsWith('/admin/expediente') ||
++    pathname.startsWith('/admin/financeiro')
++  );
++}
++
+ export default function Header({ pathname, onOpenProfile }) {
+-  const { barber, isChefe, signOut } = useBarber();
++  const { barber, isChefe, signOut, isViewingOther, viewedBarber, resetView } = useBarber();
++  const showViewBanner = isChefe && isViewingOther && isScopedPath(pathname);
++  const viewedIsSelf = viewedBarber?.id === barber?.id;
+ 
+   const title =
+     Object.entries(TITLES).find(([path]) => pathname?.startsWith(path))?.[1] ?? 'Painel';
+@@ -60,6 +74,25 @@ export default function Header({ pathname, onOpenProfile }) {
+           </button>
+         </div>
+       </div>
++
++      {showViewBanner && (
++        <div className="flex items-center justify-between gap-3 px-4 py-1.5 bg-accent/10 border-t border-accent/30">
++          <span className="flex items-center gap-1.5 min-w-0 text-xs text-accent-light">
++            <Eye size={13} className="shrink-0" />
++            <span className="truncate">
++              Painel de <strong className="font-semibold">{viewedBarber?.name || 'outro profissional'}</strong>
++              {viewedIsSelf ? ' (você)' : ''}
++            </span>
++          </span>
++          <button
++            onClick={resetView}
++            className="shrink-0 flex items-center gap-1 rounded-full border border-accent/40 px-2.5 py-0.5 text-[11px] font-medium text-accent-light active:bg-accent/20"
++          >
++            <X size={11} />
++            Visão geral
++          </button>
++        </div>
++      )}
+     </header>
+   );
+ }
+diff --git a/components/admin/ProfileSheet.jsx b/components/admin/ProfileSheet.jsx
+index d5b0a03..8de9184 100644
+--- a/components/admin/ProfileSheet.jsx
++++ b/components/admin/ProfileSheet.jsx
+@@ -48,10 +48,13 @@ export default function ProfileSheet({
+ 
+   // Identifica qual ID está sendo visualizado atualmente (o próprio ou o membro selecionado)
+   const currentTargetId = selectedBarberId || barber.id;
++  const viewingOther = Boolean(selectedBarberId) && selectedBarberId !== barber.id;
++  const targetName = team.find((m) => m.id === currentTargetId)?.name;
+ 
+   useEffect(() => {
+     if (open) {
+       const today = todayISO();
++      setSummary(null);
+       getFinanceSummary({
+         from: today,
+         to: today,
+@@ -141,7 +144,7 @@ export default function ProfileSheet({
+         )}
+ 
+         <h3 className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-2">
+-          Controle financeiro — hoje
++          Controle financeiro — hoje{viewingOther && targetName ? ` · ${targetName}` : ""}
+         </h3>
+ 
+         {!summary ? (
+diff --git a/lib/actions/finance.js b/lib/actions/finance.js
+index 1700c67..a8e1312 100644
+--- a/lib/actions/finance.js
++++ b/lib/actions/finance.js
+@@ -1,7 +1,12 @@
+ 'use server'
+ 
+-import { createClient } from '@/lib/supabase/server';
+ import { revalidatePath } from 'next/cache';
++import { requireBarber, requireChefe } from '@/lib/auth-server';
++import { hasPermission, PERMISSION_KEYS } from '@/lib/auth';
++
++function authError(ctx) {
++  return new Error(ctx.error === 'FORBIDDEN' ? 'Sem permissão para esta ação.' : 'AUTH_EXPIRED');
++}
+ 
+ // EXPENSE_CATEGORIES foi movida pra lib/constants/finance.js: um arquivo
+ // 'use server' só pode exportar funções assíncronas — exportar um array
+@@ -21,7 +26,18 @@ function dayRange(from, to) {
+  * (services.price) como valor de referência.
+  */
+ export async function getFinanceSummary({ from, to, scopeBarberId = null }) {
+-  const supabase = await createClient();
++  const ctx = await requireBarber();
++  if (ctx.error) throw authError(ctx);
++
++  // O servidor decide o escopo: sem MANAGE_FINANCE só se vê o próprio caixa,
++  // mesmo que o cliente envie o id de outro profissional.
++  const canManage = hasPermission(ctx.barber, PERMISSION_KEYS.MANAGE_FINANCE);
++  const effectiveScope = canManage ? scopeBarberId : ctx.barber.id;
++
++  return buildFinanceSummary(ctx.supabase, { from, to, scopeBarberId: effectiveScope });
++}
++
++async function buildFinanceSummary(supabase, { from, to, scopeBarberId = null }) {
+   const { start, end } = dayRange(from, to);
+ 
+   let query = supabase
+@@ -81,7 +97,12 @@ export async function getFinanceSummary({ from, to, scopeBarberId = null }) {
+  * pela tela /admin/financeiro/completo.
+  */
+ export async function listExpenses({ from, to }) {
+-  const supabase = await createClient();
++  const ctx = await requireChefe();
++  if (ctx.error) throw authError(ctx);
++  return queryExpenses(ctx.supabase, { from, to });
++}
++
++async function queryExpenses(supabase, { from, to }) {
+   const { start, end } = dayRange(from, to);
+ 
+   const { data, error } = await supabase
+@@ -101,11 +122,13 @@ export async function listExpenses({ from, to }) {
+  * barber_id fica registrado como quem lançou o gasto — sempre o chefe,
+  * já que essa ação só fica disponível na tela exclusiva dele.
+  */
+-export async function createExpense({ barber_id, amount, description, category, occurred_at }) {
+-  const supabase = await createClient();
++export async function createExpense({ amount, description, category, occurred_at }) {
++  const ctx = await requireChefe();
++  if (ctx.error) throw authError(ctx);
++  const supabase = ctx.supabase;
+ 
+   const { error } = await supabase.from('cash_flow').insert({
+-    barber_id,
++    barber_id: ctx.barber.id, // quem lançou = o Chefe logado (não vem do cliente)
+     type: 'expense',
+     amount,
+     description: description?.trim() || null,
+@@ -118,7 +141,9 @@ export async function createExpense({ barber_id, amount, description, category,
+ }
+ 
+ export async function updateExpense(id, { amount, description, category, occurred_at }) {
+-  const supabase = await createClient();
++  const ctx = await requireChefe();
++  if (ctx.error) throw authError(ctx);
++  const supabase = ctx.supabase;
+   const payload = {};
+   if (amount !== undefined) payload.amount = amount;
+   if (description !== undefined) payload.description = description?.trim() || null;
+@@ -131,7 +156,9 @@ export async function updateExpense(id, { amount, description, category, occurre
+ }
+ 
+ export async function deleteExpense(id) {
+-  const supabase = await createClient();
++  const ctx = await requireChefe();
++  if (ctx.error) throw authError(ctx);
++  const supabase = ctx.supabase;
+   const { error } = await supabase.from('cash_flow').delete().eq('id', id).eq('type', 'expense');
+   if (error) throw new Error(`Não foi possível remover a despesa: ${error.message}`);
+   revalidatePath('/admin/financeiro/completo');
+@@ -144,9 +171,12 @@ export async function deleteExpense(id) {
+  * separado do caixa/faturamento padrão (getFinanceSummary).
+  */
+ export async function getFullFinanceOverview({ from, to }) {
++  const ctx = await requireChefe();
++  if (ctx.error) throw authError(ctx);
++
+   const [receita, despesas] = await Promise.all([
+-    getFinanceSummary({ from, to, scopeBarberId: null }),
+-    listExpenses({ from, to }),
++    buildFinanceSummary(ctx.supabase, { from, to, scopeBarberId: null }),
++    queryExpenses(ctx.supabase, { from, to }),
+   ]);
+ 
+   const totalDespesas = despesas.reduce((sum, d) => sum + Number(d.amount || 0), 0);
+diff --git a/lib/barber-context.js b/lib/barber-context.js
+index 430cc1f..651559d 100644
+--- a/lib/barber-context.js
++++ b/lib/barber-context.js
+@@ -1,17 +1,113 @@
+-'use client';
++"use client";
+ 
+-import { createContext, useContext } from 'react';
++import {
++  createContext,
++  useCallback,
++  useContext,
++  useEffect,
++  useMemo,
++  useRef,
++  useState,
++} from "react";
++import { hasPermission, isChefe as checkIsChefe, PERMISSION_KEYS } from "@/lib/auth";
++import { listTeam } from "@/lib/actions/team";
+ 
+ export const BarberContext = createContext(null);
+ 
+ /**
+- * Retorna { barber, isChefe, can(key), signOut } do barbeiro logado no painel.
+- * Deve ser usado dentro de app/admin/layout.jsx.
++ * Retorna:
++ *  - barber            quem está LOGADO (identidade e permissões — nunca muda)
++ *  - isChefe, can(key), signOut
++ *  - selectedBarberId  id do profissional que o Chefe escolheu ver, ou null
++ *                      (null = visão padrão: o Chefe vê tudo / o barbeiro vê o seu)
++ *  - viewedBarber      objeto de quem está a ser visualizado (cai no próprio barber)
++ *  - isViewingOther    true quando há um profissional selecionado
++ *  - scopeBarberId     id para filtrar agenda/finanças; null = sem filtro (todos)
++ *  - selectBarber(id)  só tem efeito para o Chefe; devolve false se foi cancelado
++ *  - resetView()       volta à visão padrão
++ *  - team, refreshTeam() equipa carregada uma vez (só para o Chefe)
++ *  - setSelectionGuard(fn|null)  uma página pode vetar a troca (ex.: alterações por salvar)
+  */
+ export function useBarber() {
+   const ctx = useContext(BarberContext);
+   if (!ctx) {
+-    throw new Error('useBarber precisa ser usado dentro de <BarberProvider>');
++    throw new Error("useBarber precisa ser usado dentro de <BarberProvider>");
+   }
+   return ctx;
+ }
++
++export function BarberProvider({ barber, signOut, children }) {
++  const chefe = checkIsChefe(barber);
++  const canViewAll = hasPermission(barber, PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS);
++
++  const [selectedBarberId, setSelectedBarberId] = useState(null);
++  const [team, setTeam] = useState([]);
++  const guardRef = useRef(null);
++
++  const refreshTeam = useCallback(async () => {
++    if (!chefe) return [];
++    try {
++      const members = await listTeam();
++      setTeam(members);
++      return members;
++    } catch {
++      return [];
++    }
++  }, [chefe]);
++
++  useEffect(() => {
++    refreshTeam();
++  }, [refreshTeam]);
++
++  // Se o profissional selecionado deixou de existir ou foi desativado, volta à visão padrão.
++  useEffect(() => {
++    if (!selectedBarberId || team.length === 0) return;
++    const member = team.find((m) => m.id === selectedBarberId);
++    if (!member || member.active === false) setSelectedBarberId(null);
++  }, [team, selectedBarberId]);
++
++  const setSelectionGuard = useCallback((fn) => {
++    guardRef.current = fn || null;
++  }, []);
++
++  const selectBarber = useCallback(
++    (id) => {
++      if (!chefe) return false; // a UI esconde o seletor, mas o contexto também protege
++      const next = id || null;
++      if (next === selectedBarberId) return true;
++      if (guardRef.current && guardRef.current() === false) return false;
++      setSelectedBarberId(next);
++      return true;
++    },
++    [chefe, selectedBarberId]
++  );
++
++  const resetView = useCallback(() => selectBarber(null), [selectBarber]);
++
++  const value = useMemo(() => {
++    const viewedBarber = selectedBarberId
++      ? team.find((m) => m.id === selectedBarberId) ||
++        (selectedBarberId === barber.id ? barber : { id: selectedBarberId, name: "", avatar_url: null })
++      : barber;
++
++    return {
++      barber,
++      isChefe: chefe,
++      can: (key) => hasPermission(barber, key),
++      signOut,
++
++      selectedBarberId,
++      viewedBarber,
++      isViewingOther: selectedBarberId !== null,
++      scopeBarberId: selectedBarberId ?? (canViewAll ? null : barber.id),
++      selectBarber,
++      resetView,
++      setSelectionGuard,
++
++      team,
++      refreshTeam,
++    };
++  }, [barber, chefe, canViewAll, signOut, selectedBarberId, team, selectBarber, resetView, setSelectionGuard, refreshTeam]);
++
++  return <BarberContext.Provider value={value}>{children}</BarberContext.Provider>;
++}
+-- 
+2.43.0
+

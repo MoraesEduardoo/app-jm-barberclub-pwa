@@ -22,11 +22,14 @@ import {
 } from "@/components/admin/FormField";
 
 export default function ExpedientePage() {
-  const { barber, can } = useBarber();
+  const { barber, can, isChefe, selectedBarberId, selectBarber, setSelectionGuard } = useBarber();
   const canManageOthers = can(PERMISSION_KEYS.MANAGE_SCHEDULE_OTHERS);
 
   const [team, setTeam] = useState([]);
-  const [targetBarberId, setTargetBarberId] = useState(barber?.id);
+  // Chefe: segue o profissional selecionado no contexto global.
+  // Barbeiro com MANAGE_SCHEDULE_OTHERS: escolha local, só desta tela.
+  const [localTargetId, setLocalTargetId] = useState(barber?.id);
+  const targetBarberId = isChefe ? (selectedBarberId ?? barber?.id) : localTargetId;
   const [schedule, setSchedule] = useState([]);
   const [exceptions, setExceptions] = useState([]);
   const [isPending, startTransition] = useTransition();
@@ -66,18 +69,25 @@ export default function ExpedientePage() {
     }
   }, [targetBarberId, loadData]);
 
-  function handleSelectBarber(memberId) {
-    if (hasChanges) {
-      const confirmDiscard = window.confirm(
-        "Existem alterações não salvas. Deseja descartá-las?",
-      );
-      if (!confirmDiscard) return;
-    }
+  // Bloqueia a troca de profissional (inclusive pelo perfil) se houver alterações por salvar.
+  useEffect(() => {
+    setSelectionGuard(() =>
+      hasChanges
+        ? window.confirm("Existem alterações não salvas. Deseja descartá-las?")
+        : true,
+    );
+    return () => setSelectionGuard(null);
+  }, [hasChanges, setSelectionGuard]);
 
-    startTransition(() => {
-      setTargetBarberId(memberId);
-      loadData(memberId);
-    });
+  function handleSelectBarber(memberId) {
+    if (isChefe) {
+      selectBarber(memberId); // o guard acima já pergunta se há alterações por salvar
+      return;
+    }
+    if (hasChanges && !window.confirm("Existem alterações não salvas. Deseja descartá-las?")) {
+      return;
+    }
+    startTransition(() => setLocalTargetId(memberId));
   }
 
   function handleDayChange(dayValue, values) {
@@ -100,9 +110,10 @@ export default function ExpedientePage() {
       // Salva todos os dias da agenda em lote
       const promises = schedule.map((s) =>
         upsertScheduleDay(targetBarberId, s.day_of_week, {
-          is_active: s.is_active,
-          work_start: s.work_start,
-          work_end: s.work_end,
+          active: s.active,
+          start_time: s.start_time,
+          end_time: s.end_time,
+          has_lunch_break: s.has_lunch_break,
           lunch_start: s.lunch_start,
           lunch_end: s.lunch_end,
         }),

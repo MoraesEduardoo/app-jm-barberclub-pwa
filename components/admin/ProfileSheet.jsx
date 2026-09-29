@@ -48,10 +48,13 @@ export default function ProfileSheet({
 
   // Identifica qual ID está sendo visualizado atualmente (o próprio ou o membro selecionado)
   const currentTargetId = selectedBarberId || barber.id;
+  const viewingOther = Boolean(selectedBarberId) && selectedBarberId !== barber.id;
+  const targetName = team.find((m) => m.id === currentTargetId)?.name;
 
   useEffect(() => {
     if (open) {
       const today = todayISO();
+      setSummary(null);
       getFinanceSummary({
         from: today,
         to: today,
@@ -141,7 +144,7 @@ export default function ProfileSheet({
         )}
 
         <h3 className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-2">
-          Controle financeiro — hoje
+          Controle financeiro — hoje{viewingOther && targetName ? ` · ${targetName}` : ""}
         </h3>
 
         {!summary ? (
