@@ -1,34 +1,52 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { QrCode, CreditCard, Banknote } from 'lucide-react';
-import BottomSheet from './BottomSheet';
-import { FormField, TextInput, PrimaryButton } from './FormField';
-import { registerPayment } from '@/lib/actions/appointments';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { QrCode, CreditCard, Banknote } from "lucide-react";
+import BottomSheet from "./BottomSheet";
+import { FormField, TextInput, PrimaryButton } from "./FormField";
+import { registerPayment } from "@/lib/actions/appointments";
 
 const METHODS = [
-  { value: 'pix', label: 'Pix', icon: QrCode },
-  { value: 'cartao', label: 'Cartão', icon: CreditCard },
-  { value: 'dinheiro', label: 'Dinheiro', icon: Banknote },
+  { value: "pix", label: "Pix", icon: QrCode },
+  { value: "cartao", label: "Cartão", icon: CreditCard },
+  { value: "dinheiro", label: "Dinheiro", icon: Banknote },
 ];
 
 export default function PaymentSheet({ open, onClose, appointment }) {
-  const [method, setMethod] = useState(appointment?.payment_method || 'pix');
-  const [amount, setAmount] = useState(appointment?.services?.price ?? '');
+  const router = useRouter();
+  const [method, setMethod] = useState(appointment?.payment_method || "pix");
+  const [amount, setAmount] = useState(appointment?.services?.price ?? "");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   if (!appointment) return null;
 
   async function handleConfirm() {
     setSaving(true);
+    setError("");
+
     try {
-      await registerPayment(appointment.id, {
+      const response = await registerPayment(appointment.id, {
         barber_id: appointment.barbers?.id,
         payment_method: method,
         amount: Number(amount),
         description: `${appointment.services?.name} — ${appointment.client_name}`,
       });
+
+      if (response?.error === "AUTH_EXPIRED") {
+        router.push("/login");
+        return;
+      }
+
+      if (response?.error) {
+        setError(response.error);
+        return;
+      }
+
       onClose();
+    } catch (err) {
+      setError("Ocorreu um erro ao registar o pagamento.");
     } finally {
       setSaving(false);
     }
@@ -63,18 +81,23 @@ export default function PaymentSheet({ open, onClose, appointment }) {
             onClick={() => setMethod(value)}
             className={`flex flex-col items-center gap-1.5 rounded-lg border py-3 text-xs font-medium transition-colors ${
               method === value
-                ? 'border-accent bg-accent/10 text-white'
-                : 'border-zinc-700 text-zinc-400'
+                ? "border-accent bg-accent/10 text-white"
+                : "border-zinc-700 text-zinc-400"
             }`}
           >
-            <Icon size={18} className={method === value ? 'text-accent-light' : ''} />
+            <Icon
+              size={18}
+              className={method === value ? "text-accent-light" : ""}
+            />
             {label}
           </button>
         ))}
       </div>
 
+      {error && <p className="text-accent-light text-xs mb-3">{error}</p>}
+
       <PrimaryButton onClick={handleConfirm} disabled={saving || !amount}>
-        {saving ? 'Registrando…' : 'Confirmar pagamento'}
+        {saving ? "Registrando…" : "Confirmar pagamento"}
       </PrimaryButton>
     </BottomSheet>
   );

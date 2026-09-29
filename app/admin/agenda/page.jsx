@@ -1,21 +1,26 @@
-'use client';
+"use client";
 
-import { useEffect, useState, useCallback } from 'react';
-import { UserPlus } from 'lucide-react';
-import { useBarber } from '@/lib/barber-context';
-import { PERMISSION_KEYS } from '@/lib/auth';
-import { listAppointmentsByDate, updateAppointmentStatus } from '@/lib/actions/appointments';
-import { listTeam } from '@/lib/actions/team';
-import DateStepper from '@/components/admin/DateStepper';
-import AppointmentCard from '@/components/admin/AppointmentCard';
-import PaymentSheet from '@/components/admin/PaymentSheet';
-import WalkInSheet from '@/components/admin/WalkInSheet';
+import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { UserPlus } from "lucide-react";
+import { useBarber } from "@/lib/barber-context";
+import { PERMISSION_KEYS } from "@/lib/auth";
+import {
+  listAppointmentsByDate,
+  updateAppointmentStatus,
+} from "@/lib/actions/appointments";
+import { listTeam } from "@/lib/actions/team";
+import DateStepper from "@/components/admin/DateStepper";
+import AppointmentCard from "@/components/admin/AppointmentCard";
+import PaymentSheet from "@/components/admin/PaymentSheet";
+import WalkInSheet from "@/components/admin/WalkInSheet";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
 export default function AgendaPage() {
+  const router = useRouter();
   const { barber, can } = useBarber();
   const canViewAll = can(PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS);
 
@@ -28,25 +33,43 @@ export default function AgendaPage() {
 
   useEffect(() => {
     if (canViewAll) {
-      listTeam().then(setTeam).catch(() => {});
+      listTeam()
+        .then(setTeam)
+        .catch(() => {});
     }
   }, [canViewAll]);
 
   const load = useCallback(async () => {
     setLoading(true);
     const scope = canViewAll ? null : barber.id;
-    const data = await listAppointmentsByDate(date, scope);
-    setAppointments(data);
+    const response = await listAppointmentsByDate(date, scope);
+
+    if (response?.error === "AUTH_EXPIRED") {
+      router.push("/login");
+      return;
+    }
+
+    setAppointments(response?.data || []);
     setLoading(false);
-  }, [date, canViewAll, barber.id]);
+  }, [date, canViewAll, barber.id, router]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   async function handleChangeStatus(id, status) {
-    setAppointments((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)));
-    await updateAppointmentStatus(id, status);
+    const response = await updateAppointmentStatus(id, status);
+
+    if (response?.error === "AUTH_EXPIRED") {
+      router.push("/login");
+      return;
+    }
+
+    if (response?.success) {
+      setAppointments((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, status } : a)),
+      );
+    }
   }
 
   function handleClosePayment() {
@@ -69,7 +92,10 @@ export default function AgendaPage() {
         {loading ? (
           <div className="space-y-2">
             {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-[124px] rounded-xl bg-surface animate-pulse" />
+              <div
+                key={i}
+                className="h-[124px] rounded-xl bg-surface animate-pulse"
+              />
             ))}
           </div>
         ) : appointments.length === 0 ? (

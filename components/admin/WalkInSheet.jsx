@@ -1,13 +1,14 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useState } from 'react';
-import BottomSheet from './BottomSheet';
-import { FormField, TextInput, PrimaryButton } from './FormField';
-import { listServices } from '@/lib/actions/services';
-import { listSchedule } from '@/lib/actions/schedule';
-import { createWalkInAppointment } from '@/lib/actions/appointments';
-import { dayOfWeekFromDate } from '@/lib/constants/schedule';
-import { generateAvailableSlots, roundUpToNextSlot } from '@/lib/slots';
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation"; // 1. Importação do Router
+import BottomSheet from "./BottomSheet";
+import { FormField, TextInput, PrimaryButton } from "./FormField";
+import { listServices } from "@/lib/actions/services";
+import { listSchedule } from "@/lib/actions/schedule";
+import { createWalkInAppointment } from "@/lib/actions/appointments";
+import { dayOfWeekFromDate } from "@/lib/constants/schedule";
+import { generateAvailableSlots, roundUpToNextSlot } from "@/lib/slots";
 
 /**
  * Formulário rápido pra registrar na hora o cliente que chegou sem
@@ -15,26 +16,35 @@ import { generateAvailableSlots, roundUpToNextSlot } from '@/lib/slots';
  * escolher um horário manual se quiser encaixar o walk-in um pouco mais
  * pra frente (ex.: "só daqui 20 minutos que eu termino o atual").
  */
-export default function WalkInSheet({ open, onClose, barber, team, canPickBarber, existingAppointments }) {
+export default function WalkInSheet({
+  open,
+  onClose,
+  barber,
+  team,
+  canPickBarber,
+  existingAppointments,
+}) {
+  const router = useRouter(); // 2. Inicialização do Router
+
   const [services, setServices] = useState([]);
-  const [serviceId, setServiceId] = useState('');
+  const [serviceId, setServiceId] = useState("");
   const [barberId, setBarberId] = useState(barber.id);
-  const [clientName, setClientName] = useState('');
-  const [clientPhone, setClientPhone] = useState('');
+  const [clientName, setClientName] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
   const [useNow, setUseNow] = useState(true);
-  const [manualTime, setManualTime] = useState('');
+  const [manualTime, setManualTime] = useState("");
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (open) {
       listServices().then((data) => setServices(data.filter((s) => s.active)));
       setBarberId(barber.id);
-      setClientName('');
-      setClientPhone('');
+      setClientName("");
+      setClientPhone("");
       setUseNow(true);
-      setManualTime('');
-      setError('');
+      setManualTime("");
+      setError("");
     }
   }, [open, barber.id]);
 
@@ -56,7 +66,7 @@ export default function WalkInSheet({ open, onClose, barber, team, canPickBarber
   const availableSlots = useMemo(() => {
     if (useNow || !daySchedule || !selectedService) return [];
     const busyRanges = (existingAppointments || [])
-      .filter((a) => a.barbers?.id === barberId && a.status !== 'cancelado')
+      .filter((a) => a.barbers?.id === barberId && a.status !== "cancelado")
       .map((a) => {
         const start = new Date(a.appointment_date);
         const startTime = start.toTimeString().slice(0, 5);
@@ -69,14 +79,14 @@ export default function WalkInSheet({ open, onClose, barber, team, canPickBarber
       daySchedule,
       busyRanges,
       selectedService.default_duration_minutes,
-      { nowTime: roundUpToNextSlot() }
+      { nowTime: roundUpToNextSlot() },
     );
   }, [useNow, daySchedule, selectedService, existingAppointments, barberId]);
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!serviceId) {
-      setError('Escolha o serviço realizado.');
+      setError("Escolha o serviço realizado.");
       return;
     }
     if (!useNow && !manualTime) {
@@ -85,9 +95,10 @@ export default function WalkInSheet({ open, onClose, barber, team, canPickBarber
     }
 
     setSaving(true);
-    setError('');
+    setError("");
     try {
-      await createWalkInAppointment({
+      // 3. Captura da resposta da Server Action
+      const response = await createWalkInAppointment({
         barber_id: barberId,
         service_id: serviceId,
         client_name: clientName,
@@ -95,9 +106,24 @@ export default function WalkInSheet({ open, onClose, barber, team, canPickBarber
         date: new Date().toISOString().slice(0, 10),
         time: useNow ? null : manualTime,
       });
+
+      // 4. A REDE DE SEGURANÇA (Redirecionamento limpo)
+      if (response?.error === "AUTH_EXPIRED") {
+        router.push("/login");
+        return;
+      }
+
+      // 5. Exibição de erros de negócio devolvidos pela Server Action
+      if (response?.error) {
+        setError(response.error);
+        return;
+      }
+
+      // Sucesso!
       onClose();
     } catch (err) {
-      setError(err.message);
+      // Fallback para problemas de rede inesperados
+      setError(err.message || "Ocorreu um erro de conexão.");
     } finally {
       setSaving(false);
     }
@@ -156,13 +182,17 @@ export default function WalkInSheet({ open, onClose, barber, team, canPickBarber
         </FormField>
 
         <div className="mb-4">
-          <span className="block text-xs font-medium text-zinc-400 mb-1.5">Horário</span>
+          <span className="block text-xs font-medium text-zinc-400 mb-1.5">
+            Horário
+          </span>
           <div className="grid grid-cols-2 gap-2 mb-2.5">
             <button
               type="button"
               onClick={() => setUseNow(true)}
               className={`h-10 rounded-lg text-sm font-medium border transition-colors ${
-                useNow ? 'bg-accent border-accent text-white' : 'border-zinc-700 text-zinc-400'
+                useNow
+                  ? "bg-accent border-accent text-white"
+                  : "border-zinc-700 text-zinc-400"
               }`}
             >
               Agora
@@ -171,7 +201,9 @@ export default function WalkInSheet({ open, onClose, barber, team, canPickBarber
               type="button"
               onClick={() => setUseNow(false)}
               className={`h-10 rounded-lg text-sm font-medium border transition-colors ${
-                !useNow ? 'bg-accent border-accent text-white' : 'border-zinc-700 text-zinc-400'
+                !useNow
+                  ? "bg-accent border-accent text-white"
+                  : "border-zinc-700 text-zinc-400"
               }`}
             >
               Escolher horário
@@ -181,9 +213,13 @@ export default function WalkInSheet({ open, onClose, barber, team, canPickBarber
           {!useNow && (
             <>
               {!selectedService ? (
-                <p className="text-zinc-600 text-xs">Escolha o serviço pra ver os horários livres.</p>
+                <p className="text-zinc-600 text-xs">
+                  Escolha o serviço pra ver os horários livres.
+                </p>
               ) : availableSlots.length === 0 ? (
-                <p className="text-zinc-600 text-xs">Nenhum horário livre hoje pra esse serviço.</p>
+                <p className="text-zinc-600 text-xs">
+                  Nenhum horário livre hoje pra esse serviço.
+                </p>
               ) : (
                 <div className="flex flex-wrap gap-1.5">
                   {availableSlots.map((slot) => (
@@ -193,8 +229,8 @@ export default function WalkInSheet({ open, onClose, barber, team, canPickBarber
                       onClick={() => setManualTime(slot)}
                       className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                         manualTime === slot
-                          ? 'bg-accent border-accent text-white'
-                          : 'border-zinc-700 text-zinc-400'
+                          ? "bg-accent border-accent text-white"
+                          : "border-zinc-700 text-zinc-400"
                       }`}
                     >
                       {slot}
@@ -209,7 +245,7 @@ export default function WalkInSheet({ open, onClose, barber, team, canPickBarber
         {error && <p className="text-accent-light text-xs mb-3">{error}</p>}
 
         <PrimaryButton type="submit" disabled={saving}>
-          {saving ? 'Registrando…' : 'Registrar atendimento'}
+          {saving ? "Registrando…" : "Registrar atendimento"}
         </PrimaryButton>
       </form>
     </BottomSheet>
