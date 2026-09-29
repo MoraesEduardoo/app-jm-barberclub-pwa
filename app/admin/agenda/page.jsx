@@ -15,6 +15,9 @@ import AppointmentCard from "@/components/admin/AppointmentCard";
 import PaymentSheet from "@/components/admin/PaymentSheet";
 import WalkInSheet from "@/components/admin/WalkInSheet";
 
+// 1. IMPORT NOVO: Para podermos aceder à sessão no navegador
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -45,13 +48,16 @@ export default function AgendaPage() {
     const response = await listAppointmentsByDate(date, scope);
 
     if (response?.error === "AUTH_EXPIRED") {
-      router.push("/");
+      // 2. A SOLUÇÃO DO LOOP INFINITO
+      const supabase = getSupabaseBrowserClient();
+      await supabase.auth.signOut(); // Limpa a sessão expirada
+      window.location.href = "/"; // Força a saída bruta para a raiz
       return;
     }
 
     setAppointments(response?.data || []);
     setLoading(false);
-  }, [date, canViewAll, barber.id, router]);
+  }, [date, canViewAll, barber.id]);
 
   useEffect(() => {
     load();
@@ -61,7 +67,9 @@ export default function AgendaPage() {
     const response = await updateAppointmentStatus(id, status);
 
     if (response?.error === "AUTH_EXPIRED") {
-      router.push("/");
+      const supabase = getSupabaseBrowserClient();
+      await supabase.auth.signOut();
+      window.location.href = "/";
       return;
     }
 
