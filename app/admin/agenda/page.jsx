@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { UserPlus } from "lucide-react";
 import { useBarber } from "@/lib/barber-context";
 import { endSession } from "@/lib/session";
+import { todayInShop } from "@/lib/dates";
 import { PERMISSION_KEYS } from "@/lib/auth";
 import {
   listAppointmentsByDate,
@@ -16,7 +17,7 @@ import PaymentSheet from "@/components/admin/PaymentSheet";
 import WalkInSheet from "@/components/admin/WalkInSheet";
 
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return todayInShop();
 }
 
 export default function AgendaPage() {

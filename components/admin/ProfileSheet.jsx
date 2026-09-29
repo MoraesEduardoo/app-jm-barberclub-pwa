@@ -12,6 +12,7 @@ import {
   Check,
 } from "lucide-react";
 import BottomSheet from "./BottomSheet";
+import { todayInShop } from "@/lib/dates";
 import EditProfileSheet from "./EditProfileSheet";
 import PushNotificationButton from "./PushNotificationButton";
 import { getFinanceSummary } from "@/lib/actions/finance";
@@ -24,7 +25,7 @@ function formatBRL(value) {
 }
 
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return todayInShop();
 }
 
 /**

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useBarber } from "@/lib/barber-context";
 import { endSession } from "@/lib/session";
+import { financeRange } from "@/lib/dates";
 import { PERMISSION_KEYS } from "@/lib/auth";
 import { getFinanceSummary } from "@/lib/actions/finance";
 import { listTeam } from "@/lib/actions/team";
@@ -24,17 +25,6 @@ const RANGES = [
 
 const METHOD_ICON = { pix: QrCode, cartao: CreditCard, dinheiro: Banknote };
 const METHOD_LABEL = { pix: "Pix", cartao: "Cartão", dinheiro: "Dinheiro" };
-
-function getRangeDates(rangeKey) {
-  const today = new Date();
-  const to = today.toISOString().slice(0, 10);
-  const from = new Date(today);
-
-  if (rangeKey === "semana") from.setDate(from.getDate() - 6);
-  if (rangeKey === "mes") from.setDate(from.getDate() - 29);
-
-  return { from: from.toISOString().slice(0, 10), to };
-}
 
 function formatBRL(value) {
   return `R$ ${Number(value || 0)
@@ -77,7 +67,7 @@ export default function FinanceiroPage() {
   const load = useCallback(async () => {
     const requestId = ++requestIdRef.current;
     setLoading(true);
-    const { from, to } = getRangeDates(range);
+    const { from, to } = financeRange(range);
     const scope = canManageFinance
       ? scopeId === "todos"
         ? null
@@ -185,7 +175,7 @@ export default function FinanceiroPage() {
               </div>
               <div className="flex-1">
                 <p className="text-zinc-400 text-xs">
-                  Comissão ({summary.comissao.percent}% do faturado)
+                  Comissão ({typeof summary.comissao.percent === "number" ? `${summary.comissao.percent}% do faturado` : "individual por barbeiro"})
                 </p>
                 <p className="text-white font-bold text-base">
                   {formatBRL(summary.comissao.valor)}

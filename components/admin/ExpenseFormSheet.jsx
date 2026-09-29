@@ -2,12 +2,13 @@
 
 import { useState } from 'react';
 import BottomSheet from './BottomSheet';
+import { todayInShop } from '@/lib/dates';
 import { FormField, TextInput, PrimaryButton, GhostButton } from './FormField';
 import { createExpense, updateExpense, deleteExpense } from '@/lib/actions/finance';
 import { EXPENSE_CATEGORIES } from '@/lib/constants/finance';
 
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return todayInShop();
 }
 
 export default function ExpenseFormSheet({ open, onClose, expense, chefeId }) {

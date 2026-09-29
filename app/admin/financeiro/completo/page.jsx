@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Plus, Lock, TrendingUp, TrendingDown, Scale } from 'lucide-react';
 import { useBarber } from '@/lib/barber-context';
+import { financeRange } from '@/lib/dates';
 import { getFullFinanceOverview } from '@/lib/actions/finance';
 import ExpenseRow from '@/components/admin/ExpenseRow';
 import ExpenseFormSheet from '@/components/admin/ExpenseFormSheet';
@@ -12,17 +13,6 @@ const RANGES = [
   { key: 'semana', label: 'Semana' },
   { key: 'mes', label: 'Mês' },
 ];
-
-function getRangeDates(rangeKey) {
-  const today = new Date();
-  const to = today.toISOString().slice(0, 10);
-  const from = new Date(today);
-
-  if (rangeKey === 'semana') from.setDate(from.getDate() - 6);
-  if (rangeKey === 'mes') from.setDate(from.getDate() - 29);
-
-  return { from: from.toISOString().slice(0, 10), to };
-}
 
 function formatBRL(value) {
   return `R$ ${Number(value || 0).toFixed(2).replace('.', ',')}`;
@@ -54,7 +44,7 @@ export default function FinanceiroCompletoPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { from, to } = getRangeDates(range);
+    const { from, to } = financeRange(range);
     const data = await getFullFinanceOverview({ from, to });
     setOverview(data);
     setLoading(false);

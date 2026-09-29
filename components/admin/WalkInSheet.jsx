@@ -3,6 +3,7 @@
 import { endSession } from "@/lib/session";
 import { useEffect, useMemo, useState } from "react";
 import BottomSheet from "./BottomSheet";
+import { todayInShop } from "@/lib/dates";
 import { FormField, TextInput, PrimaryButton } from "./FormField";
 import { listServices } from "@/lib/actions/services";
 import { listSchedule } from "@/lib/actions/schedule";
@@ -92,7 +93,7 @@ export default function WalkInSheet({
         service_id: serviceId,
         client_name: clientName,
         client_phone: clientPhone,
-        date: new Date().toISOString().slice(0, 10),
+        date: todayInShop(),
         time: useNow ? null : manualTime,
       });
 

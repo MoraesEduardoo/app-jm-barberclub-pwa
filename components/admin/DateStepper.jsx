@@ -1,19 +1,10 @@
 'use client';
 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-
-function toISODate(date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function addDays(isoDate, delta) {
-  const d = new Date(`${isoDate}T00:00:00`);
-  d.setDate(d.getDate() + delta);
-  return toISODate(d);
-}
+import { todayInShop, addDaysStr } from '@/lib/dates';
 
 export default function DateStepper({ value, onChange }) {
-  const today = toISODate(new Date());
+  const today = todayInShop();
   const label = new Date(`${value}T00:00:00`).toLocaleDateString('pt-BR', {
     weekday: 'long',
     day: '2-digit',
@@ -23,7 +14,7 @@ export default function DateStepper({ value, onChange }) {
   return (
     <div className="flex items-center justify-between gap-2 bg-surface border border-zinc-800 rounded-xl px-2 py-2">
       <button
-        onClick={() => onChange(addDays(value, -1))}
+        onClick={() => onChange(addDaysStr(value, -1))}
         className="h-9 w-9 flex items-center justify-center rounded-lg active:bg-zinc-800 text-zinc-400"
         aria-label="Dia anterior"
       >
@@ -36,7 +27,7 @@ export default function DateStepper({ value, onChange }) {
       </div>
 
       <button
-        onClick={() => onChange(addDays(value, 1))}
+        onClick={() => onChange(addDaysStr(value, 1))}
         className="h-9 w-9 flex items-center justify-center rounded-lg active:bg-zinc-800 text-zinc-400"
         aria-label="Próximo dia"
       >
