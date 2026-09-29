@@ -15,11 +15,30 @@ import AppointmentCard from "@/components/admin/AppointmentCard";
 import PaymentSheet from "@/components/admin/PaymentSheet";
 import WalkInSheet from "@/components/admin/WalkInSheet";
 
-// 1. IMPORT NOVO: Para podermos aceder à sessão no navegador
-import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
+}
+
+// 1. A NOSSA NOVA ARMA CONTRA O LOOP INFINITO
+// Esta função limpa tudo o que está guardado no navegador do utilizador
+function forceLogout() {
+  try {
+    // Limpa o telefone/dados do barbeiro da memória
+    localStorage.clear();
+    sessionStorage.clear();
+    
+    // Varre e destrói todos os cookies antigos do Supabase e do Next.js
+    document.cookie.split(";").forEach((c) => {
+      document.cookie = c
+        .replace(/^ +/, "")
+        .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+    });
+  } catch (err) {
+    console.error("Erro ao limpar dados de sessão:", err);
+  } finally {
+    // Redireciona à força quebrando qualquer ciclo do Next.js
+    window.location.replace("/");
+  }
 }
 
 export default function AgendaPage() {
@@ -47,11 +66,9 @@ export default function AgendaPage() {
     const scope = canViewAll ? null : barber.id;
     const response = await listAppointmentsByDate(date, scope);
 
+    // 2. Aciona a limpeza total se o token expirou
     if (response?.error === "AUTH_EXPIRED") {
-      // 2. A SOLUÇÃO DO LOOP INFINITO
-      const supabase = getSupabaseBrowserClient();
-      await supabase.auth.signOut(); // Limpa a sessão expirada
-      window.location.href = "/"; // Força a saída bruta para a raiz
+      forceLogout();
       return;
     }
 
@@ -66,10 +83,9 @@ export default function AgendaPage() {
   async function handleChangeStatus(id, status) {
     const response = await updateAppointmentStatus(id, status);
 
+    // 3. Aciona a limpeza total se o token expirou ao tentar alterar status
     if (response?.error === "AUTH_EXPIRED") {
-      const supabase = getSupabaseBrowserClient();
-      await supabase.auth.signOut();
-      window.location.href = "/";
+      forceLogout();
       return;
     }
 
