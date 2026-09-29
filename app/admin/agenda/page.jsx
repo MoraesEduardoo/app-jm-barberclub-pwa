@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { UserPlus } from "lucide-react";
 import { useBarber } from "@/lib/barber-context";
+import { endSession } from "@/lib/session";
 import { PERMISSION_KEYS } from "@/lib/auth";
 import {
   listAppointmentsByDate,
@@ -19,30 +19,7 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-// 1. A NOSSA NOVA ARMA CONTRA O LOOP INFINITO
-// Esta função limpa tudo o que está guardado no navegador do utilizador
-function forceLogout() {
-  try {
-    // Limpa o telefone/dados do barbeiro da memória
-    localStorage.clear();
-    sessionStorage.clear();
-    
-    // Varre e destrói todos os cookies antigos do Supabase e do Next.js
-    document.cookie.split(";").forEach((c) => {
-      document.cookie = c
-        .replace(/^ +/, "")
-        .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-    });
-  } catch (err) {
-    console.error("Erro ao limpar dados de sessão:", err);
-  } finally {
-    // Redireciona à força quebrando qualquer ciclo do Next.js
-    window.location.replace("/");
-  }
-}
-
 export default function AgendaPage() {
-  const router = useRouter();
   const { barber, can } = useBarber();
   const canViewAll = can(PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS);
 
@@ -66,9 +43,8 @@ export default function AgendaPage() {
     const scope = canViewAll ? null : barber.id;
     const response = await listAppointmentsByDate(date, scope);
 
-    // 2. Aciona a limpeza total se o token expirou
-    if (response?.error === "AUTH_EXPIRED") {
-      forceLogout();
+        if (response?.error === "AUTH_EXPIRED") {
+      endSession();
       return;
     }
 
@@ -83,9 +59,8 @@ export default function AgendaPage() {
   async function handleChangeStatus(id, status) {
     const response = await updateAppointmentStatus(id, status);
 
-    // 3. Aciona a limpeza total se o token expirou ao tentar alterar status
-    if (response?.error === "AUTH_EXPIRED") {
-      forceLogout();
+        if (response?.error === "AUTH_EXPIRED") {
+      endSession();
       return;
     }
 

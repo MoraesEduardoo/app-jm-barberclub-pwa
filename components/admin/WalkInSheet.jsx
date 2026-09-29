@@ -1,7 +1,7 @@
 "use client";
 
+import { endSession } from "@/lib/session";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import BottomSheet from "./BottomSheet";
 import { FormField, TextInput, PrimaryButton } from "./FormField";
 import { listServices } from "@/lib/actions/services";
@@ -18,7 +18,6 @@ export default function WalkInSheet({
   canPickBarber,
   existingAppointments,
 }) {
-  const router = useRouter();
 
   const [services, setServices] = useState([]);
   const [serviceId, setServiceId] = useState("");
@@ -98,7 +97,7 @@ export default function WalkInSheet({
       });
 
       if (response?.error === "AUTH_EXPIRED") {
-        router.push("/");
+        endSession();
         return;
       }
 

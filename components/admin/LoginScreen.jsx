@@ -1,40 +1,48 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { Loader2, Phone, ShieldAlert } from 'lucide-react';
-import { getSupabaseBrowserClient } from '@/lib/supabase/client';
-import { getBarberByPhone } from '@/lib/auth';
-import { setStoredPhone } from '@/lib/session';
+import { useState } from "react";
+import { Loader2, Phone, Lock, ShieldAlert } from "lucide-react";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { phoneDigits, phoneToAuthEmail } from "@/lib/auth-identity";
 
 export default function LoginScreen({ onSuccess }) {
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   async function handleSubmit(e) {
     e.preventDefault();
-    setError('');
+    setError("");
 
-    const cleanPhone = phone.replace(/\D/g, '');
-    if (cleanPhone.length < 10) {
-      setError('Digite um telefone válido, com DDD.');
+    if (phoneDigits(phone).length < 10) {
+      setError("Digite um telefone válido, com DDD.");
+      return;
+    }
+    if (password.length < 6) {
+      setError("A senha tem no mínimo 6 caracteres.");
       return;
     }
 
     setLoading(true);
     try {
       const supabase = getSupabaseBrowserClient();
-      const found = await getBarberByPhone(supabase, cleanPhone);
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: phoneToAuthEmail(phone),
+        password,
+      });
 
-      if (!found) {
-        setError('Esse número não está cadastrado como barbeiro ativo.');
+      if (signInError) {
+        // mensagem genérica de propósito: não revela se o número existe
+        setError("Telefone ou senha incorretos.");
         return;
       }
 
-      setStoredPhone(cleanPhone);
-      onSuccess(found);
+      // Cookie de sessão já gravado. Navegação completa para o middleware/servidor
+      // enxergarem a sessão logo no primeiro pedido.
+      onSuccess?.();
     } catch {
-      setError('Não foi possível conectar. Verifique sua internet e tente de novo.');
+      setError("Não foi possível conectar. Verifique sua internet e tente de novo.");
     } finally {
       setLoading(false);
     }
@@ -48,24 +56,32 @@ export default function LoginScreen({ onSuccess }) {
 
       <div className="text-center">
         <h1 className="text-white font-semibold text-lg">Painel do Barbeiro</h1>
-        <p className="text-zinc-500 text-sm mt-1">
-          Entre com o número de telefone cadastrado como barbeiro na equipe.
-        </p>
+        <p className="text-zinc-500 text-sm mt-1">Entre com o seu telefone e a sua senha.</p>
       </div>
 
       <form onSubmit={handleSubmit} className="w-full max-w-xs">
         <div className="relative mb-3">
-          <Phone
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
-          />
+          <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
           <input
             type="tel"
             inputMode="tel"
+            autoComplete="username"
             autoFocus
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="(83) 9 9999-9999"
+            className="w-full h-12 rounded-lg bg-elevated border border-zinc-700 pl-9 pr-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+          />
+        </div>
+
+        <div className="relative mb-3">
+          <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Senha"
             className="w-full h-12 rounded-lg bg-elevated border border-zinc-700 pl-9 pr-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
           />
         </div>
@@ -82,7 +98,7 @@ export default function LoginScreen({ onSuccess }) {
               <Loader2 size={16} className="animate-spin" /> Entrando…
             </>
           ) : (
-            'Entrar no painel'
+            "Entrar no painel"
           )}
         </button>
       </form>

@@ -2,10 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
 export async function middleware(request) {
-  // Cria uma resposta inicial que o middleware vai modificar
-  let supabaseResponse = NextResponse.next({
-    request,
-  });
+  let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -16,14 +13,8 @@ export async function middleware(request) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          // Atualiza os cookies no request para que os componentes do servidor vejam as mudanças
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          
-          supabaseResponse = NextResponse.next({
-            request,
-          });
-          
-          // Atualiza os cookies no response para que o navegador do utilizador os guarde
+          supabaseResponse = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           );
@@ -32,18 +23,40 @@ export async function middleware(request) {
     }
   );
 
-  // IMPORTANTE: Chamar o getUser() aqui faz com que o Supabase valide o token.
-  // Se o token estiver perto de expirar, o Supabase gera um novo automaticamente
-  // e o código acima (setAll) guarda esse token renovado no navegador.
-  await supabase.auth.getUser();
+  // Valida o token e renova-o se estiver perto de expirar.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { pathname } = request.nextUrl;
+  const isServerAction = request.headers.has('next-action');
+
+  function redirectTo(path) {
+    const url = request.nextUrl.clone();
+    url.pathname = path;
+    url.search = '';
+    const res = NextResponse.redirect(url);
+    // preserva cookies renovados pelo Supabase
+    supabaseResponse.cookies.getAll().forEach((c) => res.cookies.set(c));
+    return res;
+  }
+
+  // Sem sessão a tentar abrir o painel -> /login.
+  // Server Actions ficam de fora: elas próprias devolvem { error: 'AUTH_EXPIRED' }.
+  if (!user && pathname.startsWith('/admin') && !isServerAction) {
+    return redirectTo('/login');
+  }
+
+  // Já logado a abrir /login -> painel.
+  if (user && pathname === '/login') {
+    return redirectTo('/admin/agenda');
+  }
 
   return supabaseResponse;
 }
 
-// O matcher diz ao Next.js em quais rotas este middleware deve ser executado.
-// Esta configuração faz com que rode em todo o lado, EXCETO em ficheiros estáticos (imagens, CSS, etc.)
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|sw.js|manifest.json|workbox-.*|worker-.*|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

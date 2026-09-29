@@ -1,7 +1,7 @@
 "use client";
 
+import { endSession } from "@/lib/session";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { QrCode, CreditCard, Banknote } from "lucide-react";
 import BottomSheet from "./BottomSheet";
 import { FormField, TextInput, PrimaryButton } from "./FormField";
@@ -14,7 +14,6 @@ const METHODS = [
 ];
 
 export default function PaymentSheet({ open, onClose, appointment }) {
-  const router = useRouter();
   const [method, setMethod] = useState(appointment?.payment_method || "pix");
   const [amount, setAmount] = useState(appointment?.services?.price ?? "");
   const [saving, setSaving] = useState(false);
@@ -35,7 +34,7 @@ export default function PaymentSheet({ open, onClose, appointment }) {
       });
 
       if (response?.error === "AUTH_EXPIRED") {
-        router.push("/");
+        endSession();
         return;
       }
 

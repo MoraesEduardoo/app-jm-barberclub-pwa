@@ -1,48 +1,38 @@
-'use client';
+"use client";
 
-import { useEffect, useState, useCallback } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
-import { getSupabaseBrowserClient } from '@/lib/supabase/client';
-import { getBarberByPhone, isChefe, hasPermission, PERMISSION_KEYS } from '@/lib/auth';
-import { getStoredPhone, clearStoredPhone } from '@/lib/session';
-import { BarberContext } from '@/lib/barber-context';
-import { NotificationProvider } from '@/lib/notifications';
-import Header from '@/components/admin/Header';
-import BottomNav from '@/components/admin/BottomNav';
-import LoginScreen from '@/components/admin/LoginScreen';
-import ProfileSheet from '@/components/admin/ProfileSheet';
-import ToastStack from '@/components/admin/ToastStack';
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { Loader2 } from "lucide-react";
+import { endSession } from "@/lib/session";
+import { isChefe, hasPermission, PERMISSION_KEYS } from "@/lib/auth";
+import { getCurrentBarber } from "@/lib/actions/session";
+import { BarberContext } from "@/lib/barber-context";
+import { NotificationProvider } from "@/lib/notifications";
+import Header from "@/components/admin/Header";
+import BottomNav from "@/components/admin/BottomNav";
+import ProfileSheet from "@/components/admin/ProfileSheet";
+import ToastStack from "@/components/admin/ToastStack";
 
 export default function AdminLayout({ children }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const [status, setStatus] = useState('loading'); // loading | ok | login
+  const [status, setStatus] = useState("loading"); // loading | ok
   const [barber, setBarber] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
+
+  const goToLogin = endSession;
 
   useEffect(() => {
     let active = true;
 
     async function authenticate() {
-      const phone = getStoredPhone();
-      if (!phone) {
-        if (active) setStatus('login');
-        return;
-      }
-
-      const supabase = getSupabaseBrowserClient();
-      const found = await getBarberByPhone(supabase, phone);
-
+      const res = await getCurrentBarber();
       if (!active) return;
-      if (!found) {
-        clearStoredPhone();
-        setStatus('login');
+      if (res?.error || !res?.barber) {
+        await goToLogin();
         return;
       }
-
-      setBarber(found);
-      setStatus('ok');
+      setBarber(res.barber);
+      setStatus("ok");
     }
 
     authenticate();
@@ -51,12 +41,7 @@ export default function AdminLayout({ children }) {
     };
   }, []);
 
-  const signOut = useCallback(() => {
-    clearStoredPhone();
-    router.push('/');
-  }, [router]);
-
-  if (status === 'loading') {
+  if (status === "loading") {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-3">
         <Loader2 className="animate-spin text-accent" size={28} />
@@ -65,28 +50,13 @@ export default function AdminLayout({ children }) {
     );
   }
 
-  if (status === 'login') {
-    return (
-      <LoginScreen
-        onSuccess={(found) => {
-          setBarber(found);
-          setStatus('ok');
-        }}
-      />
-    );
-  }
-
   const ctxValue = {
     barber,
     isChefe: isChefe(barber),
     can: (key) => hasPermission(barber, key),
-    signOut,
+    signOut: goToLogin,
   };
 
-  // Barbeiro com VIEW_ALL_APPOINTMENTS (chefe, ou barbeiro secundário com a
-  // permissão liberada) escuta notificações de TODA a agenda; os demais só
-  // escutam os próprios atendimentos (o filtro é aplicado no próprio canal
-  // do Supabase Realtime, dentro de NotificationProvider).
   const scopeAllNotifications = hasPermission(barber, PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS);
 
   return (

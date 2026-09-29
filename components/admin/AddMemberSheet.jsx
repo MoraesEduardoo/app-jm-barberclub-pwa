@@ -8,6 +8,7 @@ import { addTeamMember } from '@/lib/actions/team';
 export default function AddMemberSheet({ open, onClose }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -18,11 +19,16 @@ export default function AddMemberSheet({ open, onClose }) {
       setError('Informe um nome e um telefone válido (com DDD).');
       return;
     }
+    if (password.length < 6) {
+      setError('A senha precisa ter no mínimo 6 caracteres.');
+      return;
+    }
     setSaving(true);
     try {
-      await addTeamMember({ name, phone });
+      await addTeamMember({ name, phone, password });
       setName('');
       setPhone('');
+      setPassword('');
       onClose();
     } catch (err) {
       setError(err.message || 'Erro ao adicionar barbeiro.');
@@ -50,9 +56,18 @@ export default function AddMemberSheet({ open, onClose }) {
             inputMode="tel"
           />
         </FormField>
+        <FormField label="Senha de acesso">
+          <TextInput
+            type="text"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Mínimo 6 caracteres"
+            autoComplete="off"
+          />
+        </FormField>
         <p className="text-zinc-500 text-xs mb-4">
-          Esse número será usado pelo barbeiro para entrar no painel, com permissões
-          básicas — você pode ajustá-las depois.
+          O barbeiro entra no painel com este telefone e esta senha. Combine a senha com ele
+          pessoalmente; permissões básicas por padrão — você pode ajustá-las depois.
         </p>
         {error && <p className="text-accent-light text-xs mb-3">{error}</p>}
         <PrimaryButton type="submit" disabled={saving}>
