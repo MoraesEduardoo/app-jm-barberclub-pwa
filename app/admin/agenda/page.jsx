@@ -45,7 +45,7 @@ export default function AgendaPage() {
     const response = await listAppointmentsByDate(date, scope);
 
     if (response?.error === "AUTH_EXPIRED") {
-      router.push("/login");
+      router.push("/");
       return;
     }
 
@@ -61,7 +61,7 @@ export default function AgendaPage() {
     const response = await updateAppointmentStatus(id, status);
 
     if (response?.error === "AUTH_EXPIRED") {
-      router.push("/login");
+      router.push("/");
       return;
     }
 

@@ -35,7 +35,7 @@ export default function PaymentSheet({ open, onClose, appointment }) {
       });
 
       if (response?.error === "AUTH_EXPIRED") {
-        router.push("/login");
+        router.push("/");
         return;
       }
 

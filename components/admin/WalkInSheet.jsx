@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation"; // 1. Importação do Router
+import { useRouter } from "next/navigation";
 import BottomSheet from "./BottomSheet";
 import { FormField, TextInput, PrimaryButton } from "./FormField";
 import { listServices } from "@/lib/actions/services";
@@ -10,12 +10,6 @@ import { createWalkInAppointment } from "@/lib/actions/appointments";
 import { dayOfWeekFromDate } from "@/lib/constants/schedule";
 import { generateAvailableSlots, roundUpToNextSlot } from "@/lib/slots";
 
-/**
- * Formulário rápido pra registrar na hora o cliente que chegou sem
- * agendamento prévio. Por padrão encaixa "agora"; o barbeiro só precisa
- * escolher um horário manual se quiser encaixar o walk-in um pouco mais
- * pra frente (ex.: "só daqui 20 minutos que eu termino o atual").
- */
 export default function WalkInSheet({
   open,
   onClose,
@@ -24,7 +18,7 @@ export default function WalkInSheet({
   canPickBarber,
   existingAppointments,
 }) {
-  const router = useRouter(); // 2. Inicialização do Router
+  const router = useRouter();
 
   const [services, setServices] = useState([]);
   const [serviceId, setServiceId] = useState("");
@@ -50,9 +44,6 @@ export default function WalkInSheet({
 
   const selectedService = services.find((s) => s.id === serviceId);
 
-  // Grade de horários livres do dia atual pro barbeiro selecionado — só é
-  // calculada quando o usuário opta por escolher um horário manual, pra não
-  // gastar uma consulta de expediente à toa em todo walk-in "de agora".
   const [daySchedule, setDaySchedule] = useState(null);
   useEffect(() => {
     if (!useNow && barberId) {
@@ -97,7 +88,6 @@ export default function WalkInSheet({
     setSaving(true);
     setError("");
     try {
-      // 3. Captura da resposta da Server Action
       const response = await createWalkInAppointment({
         barber_id: barberId,
         service_id: serviceId,
@@ -107,22 +97,18 @@ export default function WalkInSheet({
         time: useNow ? null : manualTime,
       });
 
-      // 4. A REDE DE SEGURANÇA (Redirecionamento limpo)
       if (response?.error === "AUTH_EXPIRED") {
-        router.push("/login");
+        router.push("/");
         return;
       }
 
-      // 5. Exibição de erros de negócio devolvidos pela Server Action
       if (response?.error) {
         setError(response.error);
         return;
       }
 
-      // Sucesso!
       onClose();
     } catch (err) {
-      // Fallback para problemas de rede inesperados
       setError(err.message || "Ocorreu um erro de conexão.");
     } finally {
       setSaving(false);
