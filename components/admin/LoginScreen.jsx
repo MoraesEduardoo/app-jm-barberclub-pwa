@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Loader2, Phone, Lock, ShieldAlert } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { phoneDigits, phoneToAuthEmail } from "@/lib/auth-identity";
@@ -42,7 +43,9 @@ export default function LoginScreen({ onSuccess }) {
       // enxergarem a sessão logo no primeiro pedido.
       onSuccess?.();
     } catch {
-      setError("Não foi possível conectar. Verifique sua internet e tente de novo.");
+      setError(
+        "Não foi possível conectar. Verifique sua internet e tente de novo.",
+      );
     } finally {
       setLoading(false);
     }
@@ -56,12 +59,17 @@ export default function LoginScreen({ onSuccess }) {
 
       <div className="text-center">
         <h1 className="text-white font-semibold text-lg">Painel do Barbeiro</h1>
-        <p className="text-zinc-500 text-sm mt-1">Entre com o seu telefone e a sua senha.</p>
+        <p className="text-zinc-500 text-sm mt-1">
+          Entre com o seu telefone e a sua senha.
+        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="w-full max-w-xs">
         <div className="relative mb-3">
-          <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+          <Phone
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
+          />
           <input
             type="tel"
             inputMode="tel"
@@ -75,7 +83,10 @@ export default function LoginScreen({ onSuccess }) {
         </div>
 
         <div className="relative mb-3">
-          <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+          <Lock
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
+          />
           <input
             type="password"
             autoComplete="current-password"
@@ -86,7 +97,9 @@ export default function LoginScreen({ onSuccess }) {
           />
         </div>
 
-        {error && <p className="text-accent-light text-xs mb-3 text-center">{error}</p>}
+        {error && (
+          <p className="text-accent-light text-xs mb-3 text-center">{error}</p>
+        )}
 
         <button
           type="submit"
@@ -101,6 +114,15 @@ export default function LoginScreen({ onSuccess }) {
             "Entrar no painel"
           )}
         </button>
+
+        <div className="mt-6 text-center">
+          <Link
+            href="/setup"
+            className="text-sm text-zinc-500 hover:text-white transition-colors"
+          >
+            Esqueci a minha senha
+          </Link>
+        </div>
       </form>
     </div>
   );
