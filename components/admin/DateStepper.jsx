@@ -1,38 +1,117 @@
-'use client';
+"use client";
 
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { todayInShop, addDaysStr } from '@/lib/dates';
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { todayInShop, addDaysStr } from "@/lib/dates";
 
 export default function DateStepper({ value, onChange }) {
   const today = todayInShop();
-  const label = new Date(`${value}T00:00:00`).toLocaleDateString('pt-BR', {
-    weekday: 'long',
-    day: '2-digit',
-    month: 'short',
+
+  // Converte a data selecionada atual (string YYYY-MM-DD) para um objeto Date seguro
+  const currentDateObj = new Date(`${value}T00:00:00`);
+
+  // Função auxiliar para encontrar a segunda-feira da semana da data atual
+  const getMonday = (d) => {
+    const date = new Date(d);
+    const day = date.getDay();
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1); // Ajusta para segunda-feira
+    return new Date(date.setDate(diff));
+  };
+
+  const currentMonday = getMonday(currentDateObj);
+
+  // Gera os 7 dias da semana (Segunda a Domingo)
+  const weekDays = Array.from({ length: 7 }).map((_, index) => {
+    const dayDate = new Date(currentMonday);
+    dayDate.setDate(currentMonday.getDate() + index);
+
+    // Formata a data para string YYYY-MM-DD sem problemas de fuso horário
+    const year = dayDate.getFullYear();
+    const month = String(dayDate.getMonth() + 1).padStart(2, "0");
+    const day = String(dayDate.getDate()).padStart(2, "0");
+    const dateStr = `${year}-${month}-${day}`;
+
+    const labelShort = dayDate
+      .toLocaleDateString("pt-BR", { weekday: "short" })
+      .replace(".", "")
+      .toUpperCase();
+    const dayNum = dayDate.getDate();
+
+    return { dateStr, labelShort, dayNum };
   });
 
-  return (
-    <div className="flex items-center justify-between gap-2 bg-surface border border-zinc-800 rounded-xl px-2 py-2">
-      <button
-        onClick={() => onChange(addDaysStr(value, -1))}
-        className="h-9 w-9 flex items-center justify-center rounded-lg active:bg-zinc-800 text-zinc-400"
-        aria-label="Dia anterior"
-      >
-        <ChevronLeft size={18} />
-      </button>
+  // Label do intervalo da semana exibido no topo (Ex: 28 set. a 04 out.)
+  const startDateStr = weekDays[0].dateStr;
+  const endDateStr = weekDays[6].dateStr;
+  const startFormatted = new Date(
+    `${startDateStr}T00:00:00`,
+  ).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+  const endFormatted = new Date(`${endDateStr}T00:00:00`).toLocaleDateString(
+    "pt-BR",
+    { day: "2-digit", month: "short" },
+  );
 
-      <div className="flex flex-col items-center">
-        <span className="text-white text-sm font-medium capitalize">{label}</span>
-        {value === today && <span className="text-accent-light text-[10px] font-medium">Hoje</span>}
+  return (
+    <div className="w-full bg-surface border border-zinc-800 rounded-xl p-3 flex flex-col gap-3">
+      {/* Cabeçalho com o intervalo da semana e botões de avançar/retroceder semana */}
+      <div className="flex items-center justify-between px-1">
+        <span className="text-white text-xs font-medium flex items-center gap-1.5">
+          📅 {startFormatted} a {endFormatted}
+        </span>
+        <div className="flex gap-1">
+          <button
+            onClick={() => onChange(addDaysStr(value, -7))}
+            className="h-7 w-7 flex items-center justify-center rounded-lg bg-zinc-800/60 hover:bg-zinc-800 text-zinc-300 transition-colors"
+            aria-label="Semana anterior"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <button
+            onClick={() => onChange(addDaysStr(value, 7))}
+            className="h-7 w-7 flex items-center justify-center rounded-lg bg-zinc-800/60 hover:bg-zinc-800 text-zinc-300 transition-colors"
+            aria-label="Próxima semana"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
       </div>
 
-      <button
-        onClick={() => onChange(addDaysStr(value, 1))}
-        className="h-9 w-9 flex items-center justify-center rounded-lg active:bg-zinc-800 text-zinc-400"
-        aria-label="Próximo dia"
-      >
-        <ChevronRight size={18} />
-      </button>
+      {/* Grid horizontal dos 7 dias da semana (Carrossel compacto) */}
+      <div className="grid grid-cols-7 gap-1.5">
+        {weekDays.map((item) => {
+          const isSelected = item.dateStr === value;
+          const isToday = item.dateStr === today;
+
+          return (
+            <button
+              key={item.dateStr}
+              onClick={() => onChange(item.dateStr)}
+              className={`flex flex-col items-center justify-center py-2 rounded-xl transition-all ${
+                isSelected
+                  ? "bg-[#c58b59] text-white shadow-md" // Cor de destaque acobreada da barbearia
+                  : "bg-zinc-900/40 border border-zinc-800/60 text-zinc-400 hover:bg-zinc-800/50"
+              }`}
+            >
+              <span
+                className={`text-[9px] font-semibold ${isSelected ? "text-white/90" : "text-zinc-400"}`}
+              >
+                {item.labelShort}
+              </span>
+              <span className="text-xs font-bold mt-0.5">{item.dayNum}</span>
+
+              {/* Indicador sutil para o dia de hoje ou seleção */}
+              <div
+                className={`w-1 h-1 rounded-full mt-1 ${
+                  isSelected
+                    ? "bg-white"
+                    : isToday
+                      ? "bg-emerald-500"
+                      : "bg-transparent"
+                }`}
+              />
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
