@@ -6,25 +6,21 @@ import { todayInShop, addDaysStr } from "@/lib/dates";
 export default function DateStepper({ value, onChange }) {
   const today = todayInShop();
 
-  // Converte a data selecionada atual (string YYYY-MM-DD) para um objeto Date seguro
   const currentDateObj = new Date(`${value}T00:00:00`);
 
-  // Função auxiliar para encontrar a segunda-feira da semana da data atual
   const getMonday = (d) => {
     const date = new Date(d);
     const day = date.getDay();
-    const diff = date.getDate() - day + (day === 0 ? -6 : 1); // Ajusta para segunda-feira
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
     return new Date(date.setDate(diff));
   };
 
   const currentMonday = getMonday(currentDateObj);
 
-  // Gera os 7 dias da semana (Segunda a Domingo)
   const weekDays = Array.from({ length: 7 }).map((_, index) => {
     const dayDate = new Date(currentMonday);
     dayDate.setDate(currentMonday.getDate() + index);
 
-    // Formata a data para string YYYY-MM-DD sem problemas de fuso horário
     const year = dayDate.getFullYear();
     const month = String(dayDate.getMonth() + 1).padStart(2, "0");
     const day = String(dayDate.getDate()).padStart(2, "0");
@@ -39,7 +35,6 @@ export default function DateStepper({ value, onChange }) {
     return { dateStr, labelShort, dayNum };
   });
 
-  // Label do intervalo da semana exibido no topo (Ex: 28 set. a 04 out.)
   const startDateStr = weekDays[0].dateStr;
   const endDateStr = weekDays[6].dateStr;
   const startFormatted = new Date(
@@ -52,7 +47,6 @@ export default function DateStepper({ value, onChange }) {
 
   return (
     <div className="w-full bg-surface border border-zinc-800 rounded-xl p-3 flex flex-col gap-3">
-      {/* Cabeçalho com o intervalo da semana e botões de avançar/retroceder semana */}
       <div className="flex items-center justify-between px-1">
         <span className="text-white text-xs font-medium flex items-center gap-1.5">
           📅 {startFormatted} a {endFormatted}
@@ -75,7 +69,6 @@ export default function DateStepper({ value, onChange }) {
         </div>
       </div>
 
-      {/* Grid horizontal dos 7 dias da semana (Carrossel compacto) */}
       <div className="grid grid-cols-7 gap-1.5">
         {weekDays.map((item) => {
           const isSelected = item.dateStr === value;
@@ -87,7 +80,7 @@ export default function DateStepper({ value, onChange }) {
               onClick={() => onChange(item.dateStr)}
               className={`flex flex-col items-center justify-center py-2 rounded-xl transition-all ${
                 isSelected
-                  ? "bg-[#c58b59] text-white shadow-md" // Cor de destaque acobreada da barbearia
+                  ? "bg-red-600 text-white shadow-md shadow-red-900/30" // Destaque em vermelho alinhado à identidade visual
                   : "bg-zinc-900/40 border border-zinc-800/60 text-zinc-400 hover:bg-zinc-800/50"
               }`}
             >
@@ -98,7 +91,6 @@ export default function DateStepper({ value, onChange }) {
               </span>
               <span className="text-xs font-bold mt-0.5">{item.dayNum}</span>
 
-              {/* Indicador sutil para o dia de hoje ou seleção */}
               <div
                 className={`w-1 h-1 rounded-full mt-1 ${
                   isSelected
