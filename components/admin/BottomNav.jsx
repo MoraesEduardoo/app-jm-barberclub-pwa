@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { CalendarDays, Scissors, Clock, Wallet, Users2 } from 'lucide-react';
+import { CalendarDays, Scissors, Clock, Wallet, Users2, Images } from 'lucide-react';
 import { useBarber } from '@/lib/barber-context';
 
 const BASE_TABS = [
@@ -10,6 +10,7 @@ const BASE_TABS = [
   { href: '/admin/servicos', label: 'Serviços', icon: Scissors },
   { href: '/admin/expediente', label: 'Expediente', icon: Clock },
   { href: '/admin/financeiro', label: 'Financeiro', icon: Wallet },
+  { href: '/admin/galeria', label: 'Galeria', icon: Images },
 ];
 
 const CHEFE_TAB = { href: '/admin/equipe', label: 'Equipe', icon: Users2 };

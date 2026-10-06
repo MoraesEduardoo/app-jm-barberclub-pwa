@@ -42,6 +42,24 @@ export default function AppointmentCard({ appointment, onChangeStatus, onOpenPay
             {appointment.services?.name}
             {appointment.barbers?.name ? ` · ${appointment.barbers.name}` : ''}
           </p>
+          {appointment.reference_photo && (
+            <a
+              href={appointment.reference_photo.image_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-elevated p-1 pr-2.5 active:opacity-80"
+            >
+              <img
+                src={appointment.reference_photo.image_url}
+                alt=""
+                loading="lazy"
+                className="h-10 w-10 rounded-md object-cover"
+              />
+              <span className="text-[11px] text-zinc-300">
+                Referência: <span className="text-white font-medium">{appointment.reference_photo.title}</span>
+              </span>
+            </a>
+          )}
         </div>
 
         <div className="text-right shrink-0">

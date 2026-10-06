@@ -153,3 +153,14 @@ encontrada."}` = ninguém ativou o botão ainda (passo 1).
 - **Plano B:** o chefe gera um link de uso único em *Equipe* e envia por WhatsApp
   (`/auth/confirm` → `/auth/verify` → `/update-password`).
 - Defina `NEXT_PUBLIC_SITE_URL` (usado no link do chefe) e, opcionalmente, `RECOVERY_CODE_PEPPER`.
+
+
+## Galeria de Cortes (v6)
+
+- Rode `supabase/migrations/004_haircut_gallery.sql` **antes** de publicar: cria a tabela `haircut_gallery`,
+  o bucket público `haircut-gallery`, a leitura pública (RLS), o Realtime e `appointments.reference_photo_id`.
+- Painel: aba **Galeria** (`/admin/galeria`). Todo barbeiro sobe fotos e vê o catálogo; edita/oculta/remove só as
+  próprias; o chefe gerencia todas e pode subir em nome de outro barbeiro.
+- A foto é comprimida no celular (WebP, lado maior 1600 px) antes do envio; o servidor confere tipo (magic bytes) e 3 MB.
+- App do cliente: copie `client-app/HaircutGalleryPicker.jsx` (leitura via anon key + Realtime). O cliente escolhe uma
+  referência e o app grava `reference_photo_id` no agendamento; o card da agenda mostra a miniatura.

@@ -14,6 +14,7 @@ const TITLES = {
   '/admin/financeiro/completo': 'Financeiro Completo',
   '/admin/financeiro': 'Caixa & Faturamento',
   '/admin/equipe': 'Equipe & Permissões',
+  '/admin/galeria': 'Galeria de Cortes',
 };
 
 // Telas cujos dados mudam conforme o profissional selecionado pelo Chefe.
