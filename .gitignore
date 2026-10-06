@@ -1,0 +1,14 @@
+node_modules/
+.next/
+.env
+.env.local
+.env*.local
+*.zip
+*.bundle
+*.patch
+# gerados pelo next-pwa a cada build
+public/sw.js
+public/sw.js.map
+public/workbox-*.js
+public/worker-*.js
+.vercel/
