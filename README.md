@@ -142,3 +142,14 @@ curl -X POST https://SEU-DOMINIO/api/push/send \
 
 Resposta `{"sent":1,...}` = chegou. `{"sent":0,"message":"Nenhuma inscrição
 encontrada."}` = ninguém ativou o botão ainda (passo 1).
+
+
+## Recuperação de senha
+
+- **Self-service (padrão):** o barbeiro gera 8 códigos em *Perfil → Códigos de recuperação*
+  (pede a senha atual). Em *Esqueci a minha senha* ele informa telefone + 1 código + nova senha
+  (8 a 72 caracteres) e já entra no painel. Código de uso único, 5 erros = bloqueio de 15 min.
+  Rode `supabase/migrations/003_recovery_codes.sql` antes de usar.
+- **Plano B:** o chefe gera um link de uso único em *Equipe* e envia por WhatsApp
+  (`/auth/confirm` → `/auth/verify` → `/update-password`).
+- Defina `NEXT_PUBLIC_SITE_URL` (usado no link do chefe) e, opcionalmente, `RECOVERY_CODE_PEPPER`.

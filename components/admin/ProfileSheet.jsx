@@ -10,11 +10,13 @@ import {
   ShieldCheck,
   Users,
   Check,
+  KeyRound,
 } from "lucide-react";
 import BottomSheet from "./BottomSheet";
 import { todayInShop } from "@/lib/dates";
 import EditProfileSheet from "./EditProfileSheet";
 import PushNotificationButton from "./PushNotificationButton";
+import RecoveryCodesSheet from "./RecoveryCodesSheet";
 import { getFinanceSummary } from "@/lib/actions/finance";
 import { listTeam } from "@/lib/actions/team";
 
@@ -45,6 +47,7 @@ export default function ProfileSheet({
   const router = useRouter();
   const [summary, setSummary] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [codesOpen, setCodesOpen] = useState(false);
   const [team, setTeam] = useState([]);
 
   // Identifica qual ID está sendo visualizado atualmente (o próprio ou o membro selecionado)
@@ -75,7 +78,7 @@ export default function ProfileSheet({
   return (
     <>
       <BottomSheet
-        open={open && !editOpen}
+        open={open && !editOpen && !codesOpen}
         onClose={onClose}
         title="Meu perfil"
       >
@@ -187,6 +190,19 @@ export default function ProfileSheet({
         </button>
 
         <h3 className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-2 mt-6">
+          Segurança
+        </h3>
+        <button
+          onClick={() => setCodesOpen(true)}
+          className="w-full flex items-center justify-between bg-elevated border border-zinc-800 rounded-xl px-4 py-3"
+        >
+          <span className="flex items-center gap-2 text-white text-sm font-medium">
+            <KeyRound size={15} className="text-zinc-400" /> Códigos de recuperação
+          </span>
+          <ChevronRight size={16} className="text-zinc-500" />
+        </button>
+
+        <h3 className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-2 mt-6">
           Notificações no celular
         </h3>
         <p className="text-zinc-500 text-xs mb-2.5">
@@ -195,6 +211,8 @@ export default function ProfileSheet({
         </p>
         <PushNotificationButton />
       </BottomSheet>
+
+      <RecoveryCodesSheet open={open && codesOpen} onClose={() => setCodesOpen(false)} />
 
       <EditProfileSheet
         open={editOpen}
