@@ -31,7 +31,7 @@ export function CategoryChips({ value, onChange, disabled }) {
             disabled={disabled}
             onClick={() => onChange(c.value)}
             aria-pressed={active}
-            className={`h-9 rounded-full px-3.5 text-xs font-medium border transition-colors ${
+            className={`h-9 rounded-full px-3.5 text-xs font-medium border transition-all touch-manipulation select-none active:scale-95 ${
               active
                 ? "bg-accent/15 border-accent/40 text-accent-light"
                 : "bg-elevated border-zinc-700 text-zinc-300 active:bg-zinc-800"
@@ -168,7 +168,7 @@ export default function GalleryUploadSheet({ open, onClose, onUploaded }) {
               value={ownerId}
               onChange={(e) => setOwnerId(e.target.value)}
               disabled={busy}
-              className="w-full h-11 rounded-lg bg-elevated border border-zinc-700 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full h-12 rounded-lg bg-elevated border border-zinc-700 px-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-accent touch-manipulation"
             >
               {team
                 .filter((m) => m.active !== false)

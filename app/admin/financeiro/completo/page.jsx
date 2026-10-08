@@ -78,10 +78,10 @@ export default function FinanceiroCompletoPage() {
           <button
             key={r.key}
             onClick={() => setRange(r.key)}
-            className={`flex-1 h-9 rounded-lg text-xs font-medium border transition-colors ${
+            className={`flex-1 h-9 rounded-lg text-xs font-medium border transition-all touch-manipulation select-none active:scale-95 ${
               range === r.key
                 ? 'bg-accent border-accent text-white'
-                : 'border-zinc-700 text-zinc-400'
+                : 'border-zinc-700 text-zinc-400 active:bg-zinc-800'
             }`}
           >
             {r.label}
@@ -136,7 +136,7 @@ export default function FinanceiroCompletoPage() {
           </div>
 
           {Object.keys(overview.porCategoria).length > 0 && (
-            <div className="flex gap-2 mb-5 overflow-x-auto -mx-1 px-1 pb-1">
+            <div className="flex gap-2 mb-5 overflow-x-auto -mx-1 px-1 pb-1 scroll-touch no-scrollbar">
               {Object.entries(overview.porCategoria).map(([cat, total]) => (
                 <div
                   key={cat}
@@ -155,7 +155,7 @@ export default function FinanceiroCompletoPage() {
             </p>
             <button
               onClick={() => setSheetOpen(true)}
-              className="flex items-center gap-1.5 bg-accent text-white text-xs font-semibold rounded-full pl-2.5 pr-3 py-1.5 active:bg-accent-dark"
+              className="flex items-center gap-1.5 bg-accent text-white text-xs font-semibold rounded-full pl-2.5 pr-3 py-1.5 active:scale-95 active:bg-accent-dark transition-all touch-manipulation select-none"
             >
               <Plus size={14} /> Nova despesa
             </button>

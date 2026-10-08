@@ -78,7 +78,7 @@ export default function LoginScreen({ onSuccess }) {
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="(83) 9 9999-9999"
-            className="w-full h-12 rounded-lg bg-elevated border border-zinc-700 pl-9 pr-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+            className="w-full h-12 rounded-lg bg-elevated border border-zinc-700 pl-9 pr-3 text-base text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent touch-manipulation"
           />
         </div>
 
@@ -93,7 +93,7 @@ export default function LoginScreen({ onSuccess }) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Senha"
-            className="w-full h-12 rounded-lg bg-elevated border border-zinc-700 pl-9 pr-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+            className="w-full h-12 rounded-lg bg-elevated border border-zinc-700 pl-9 pr-3 text-base text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent touch-manipulation"
           />
         </div>
 

@@ -1,14 +1,37 @@
 import webpush from 'web-push'
 import { createClient } from '@/lib/supabase/server'
 
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT,
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
-  process.env.VAPID_PRIVATE_KEY
-)
+let vapidConfigured = false
+
+function ensureVapid() {
+  if (vapidConfigured) return true
+  const subject = process.env.VAPID_SUBJECT || 'mailto:moraesedu1313@gmail.com'
+  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+  const privateKey = process.env.VAPID_PRIVATE_KEY
+
+  if (!publicKey || !privateKey) {
+    return false
+  }
+
+  try {
+    webpush.setVapidDetails(subject, publicKey, privateKey)
+    vapidConfigured = true
+    return true
+  } catch (err) {
+    console.error('Erro ao configurar VAPID:', err)
+    return false
+  }
+}
 
 export async function POST(request) {
   try {
+    if (!ensureVapid()) {
+      return Response.json(
+        { success: false, error: 'VAPID credentials not configured' },
+        { status: 503 }
+      )
+    }
+
     const { title, body, userId } = await request.json()
     const supabase = createClient()
 

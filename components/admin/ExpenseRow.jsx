@@ -19,8 +19,9 @@ export default function ExpenseRow({ expense, onClick }) {
 
   return (
     <button
+      type="button"
       onClick={onClick}
-      className="w-full flex items-center justify-between gap-3 bg-surface border border-zinc-800 rounded-xl px-4 py-3 text-left active:bg-zinc-900 transition-colors"
+      className="w-full flex items-center justify-between gap-3 bg-surface border border-zinc-800 rounded-xl px-4 py-3 text-left active:scale-[0.99] active:opacity-90 active:bg-zinc-900 transition-all touch-manipulation select-none"
     >
       <div className="flex items-center gap-3 min-w-0">
         <div className="h-9 w-9 rounded-full bg-elevated flex items-center justify-center shrink-0">

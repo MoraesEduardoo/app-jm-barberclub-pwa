@@ -231,7 +231,7 @@ export default function TeamMemberCard({ member, onChanged }) {
                 value={commissionDraft}
                 onChange={(e) => handleCommissionChange(e.target.value)}
                 onBlur={handleCommissionBlur}
-                className="w-16 h-8 rounded-lg bg-elevated border border-zinc-700 px-2 text-xs text-white text-right focus:outline-none focus:ring-1 focus:ring-accent"
+                className="w-20 h-10 rounded-lg bg-elevated border border-zinc-700 px-2.5 text-base text-white text-right focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation"
               />
               <span className="text-zinc-500 text-xs">%</span>
             </div>

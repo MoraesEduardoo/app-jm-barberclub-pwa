@@ -77,11 +77,12 @@ export default function PaymentSheet({ open, onClose, appointment }) {
         {METHODS.map(({ value, label, icon: Icon }) => (
           <button
             key={value}
+            type="button"
             onClick={() => setMethod(value)}
-            className={`flex flex-col items-center gap-1.5 rounded-lg border py-3 text-xs font-medium transition-colors ${
+            className={`flex flex-col items-center gap-1.5 rounded-lg border py-3 text-xs font-medium transition-all touch-manipulation select-none active:scale-95 ${
               method === value
                 ? "border-accent bg-accent/10 text-white"
-                : "border-zinc-700 text-zinc-400"
+                : "border-zinc-700 text-zinc-400 active:bg-zinc-800"
             }`}
           >
             <Icon

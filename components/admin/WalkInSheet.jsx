@@ -123,7 +123,7 @@ export default function WalkInSheet({
             <select
               value={barberId}
               onChange={(e) => setBarberId(e.target.value)}
-              className="w-full h-11 rounded-lg bg-elevated border border-zinc-700 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full h-12 rounded-lg bg-elevated border border-zinc-700 px-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-accent touch-manipulation"
             >
               {team.map((member) => (
                 <option key={member.id} value={member.id}>
@@ -139,7 +139,7 @@ export default function WalkInSheet({
             value={serviceId}
             onChange={(e) => setServiceId(e.target.value)}
             required
-            className="w-full h-11 rounded-lg bg-elevated border border-zinc-700 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full h-12 rounded-lg bg-elevated border border-zinc-700 px-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-accent touch-manipulation"
           >
             <option value="">Selecione…</option>
             {services.map((s) => (
@@ -175,10 +175,10 @@ export default function WalkInSheet({
             <button
               type="button"
               onClick={() => setUseNow(true)}
-              className={`h-10 rounded-lg text-sm font-medium border transition-colors ${
+              className={`h-11 rounded-lg text-sm font-medium border transition-all touch-manipulation select-none active:scale-95 ${
                 useNow
                   ? "bg-accent border-accent text-white"
-                  : "border-zinc-700 text-zinc-400"
+                  : "border-zinc-700 text-zinc-400 active:bg-zinc-800"
               }`}
             >
               Agora
@@ -186,10 +186,10 @@ export default function WalkInSheet({
             <button
               type="button"
               onClick={() => setUseNow(false)}
-              className={`h-10 rounded-lg text-sm font-medium border transition-colors ${
+              className={`h-11 rounded-lg text-sm font-medium border transition-all touch-manipulation select-none active:scale-95 ${
                 !useNow
                   ? "bg-accent border-accent text-white"
-                  : "border-zinc-700 text-zinc-400"
+                  : "border-zinc-700 text-zinc-400 active:bg-zinc-800"
               }`}
             >
               Escolher horário
@@ -213,10 +213,10 @@ export default function WalkInSheet({
                       key={slot}
                       type="button"
                       onClick={() => setManualTime(slot)}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                      className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all touch-manipulation select-none active:scale-95 ${
                         manualTime === slot
                           ? "bg-accent border-accent text-white"
-                          : "border-zinc-700 text-zinc-400"
+                          : "border-zinc-700 text-zinc-400 active:bg-zinc-800"
                       }`}
                     >
                       {slot}

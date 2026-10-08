@@ -44,7 +44,7 @@ export default function ScheduleDayRow({ day, entry, onChange }) {
           role="switch"
           aria-checked={active}
           onClick={() => emit({ active: !active })}
-          className={`relative shrink-0 w-11 h-6 rounded-full transition-colors ${
+          className={`relative shrink-0 w-11 h-6 rounded-full transition-all touch-manipulation active:scale-95 ${
             active ? "bg-accent" : "bg-zinc-700"
           }`}
         >
@@ -71,7 +71,7 @@ export default function ScheduleDayRow({ day, entry, onChange }) {
               value={start}
               onChange={(e) => setStart(e.target.value)}
               onBlur={() => emit({ start_time: start })}
-              className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-white w-[74px] focus:outline-none focus:ring-1 focus:ring-accent"
+              className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-base text-white w-[86px] focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation"
             />
             <span className="text-zinc-600 text-xs">–</span>
             <input
@@ -79,7 +79,7 @@ export default function ScheduleDayRow({ day, entry, onChange }) {
               value={end}
               onChange={(e) => setEnd(e.target.value)}
               onBlur={() => emit({ end_time: end })}
-              className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-white w-[74px] focus:outline-none focus:ring-1 focus:ring-accent"
+              className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-base text-white w-[86px] focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation"
             />
           </div>
         )}
@@ -91,7 +91,7 @@ export default function ScheduleDayRow({ day, entry, onChange }) {
             role="switch"
             aria-checked={hasLunch}
             onClick={() => emit({ has_lunch_break: !hasLunch })}
-            className={`relative shrink-0 w-9 h-5 rounded-full transition-colors ${
+            className={`relative shrink-0 w-9 h-5 rounded-full transition-all touch-manipulation active:scale-95 ${
               hasLunch ? "bg-accent" : "bg-zinc-700"
             }`}
           >
@@ -114,7 +114,7 @@ export default function ScheduleDayRow({ day, entry, onChange }) {
                 value={lunchStart}
                 onChange={(e) => setLunchStart(e.target.value)}
                 onBlur={() => emit({ lunch_start: lunchStart })}
-                className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-white w-[74px] focus:outline-none focus:ring-1 focus:ring-accent"
+                className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-base text-white w-[86px] focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation"
               />
               <span className="text-zinc-600 text-xs">–</span>
               <input
@@ -122,7 +122,7 @@ export default function ScheduleDayRow({ day, entry, onChange }) {
                 value={lunchEnd}
                 onChange={(e) => setLunchEnd(e.target.value)}
                 onBlur={() => emit({ lunch_end: lunchEnd })}
-                className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-white w-[74px] focus:outline-none focus:ring-1 focus:ring-accent"
+                className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-base text-white w-[86px] focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation"
               />
             </div>
           )}

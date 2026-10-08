@@ -88,13 +88,13 @@ export default function GaleriaPage() {
         </p>
         <button
           onClick={() => setUploadOpen(true)}
-          className="flex items-center gap-1.5 bg-accent text-white text-xs font-semibold rounded-full pl-2.5 pr-3 py-1.5 active:bg-accent-dark"
+          className="flex items-center gap-1.5 bg-accent text-white text-xs font-semibold rounded-full pl-2.5 pr-3 py-1.5 active:scale-95 active:bg-accent-dark transition-all touch-manipulation select-none"
         >
           <Plus size={14} /> Adicionar
         </button>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-3 -mx-4 px-4">
+      <div className="flex gap-2 overflow-x-auto pb-3 -mx-4 px-4 scroll-touch no-scrollbar">
         {[{ value: "todos", label: "Todos" }, ...GALLERY_CATEGORIES].map((c) => {
           const active = filter === c.value;
           return (
@@ -102,10 +102,10 @@ export default function GaleriaPage() {
               key={c.value}
               onClick={() => setFilter(c.value)}
               aria-pressed={active}
-              className={`shrink-0 h-8 rounded-full px-3.5 text-xs font-medium border transition-colors ${
+              className={`shrink-0 h-8 rounded-full px-3.5 text-xs font-medium border transition-all touch-manipulation select-none active:scale-95 ${
                 active
                   ? "bg-accent text-white border-accent shadow-md shadow-red-900/30"
-                  : "bg-zinc-900/45 border-zinc-800 text-zinc-300"
+                  : "bg-zinc-900/45 border-zinc-800 text-zinc-300 active:bg-zinc-800"
               }`}
             >
               {c.label}
@@ -143,7 +143,7 @@ export default function GaleriaPage() {
             <button
               key={item.id}
               onClick={() => setSelected(item)}
-              className="relative aspect-[4/5] rounded-xl overflow-hidden border border-zinc-800 bg-surface text-left active:opacity-80 transition-opacity"
+              className="relative aspect-[4/5] rounded-xl overflow-hidden border border-zinc-800 bg-surface text-left active:scale-[0.98] active:opacity-85 transition-all touch-manipulation select-none"
             >
               <img
                 src={item.image_url}

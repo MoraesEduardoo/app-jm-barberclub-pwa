@@ -29,7 +29,7 @@ function formatShort(dateStr) {
 }
 
 const NAV_BTN =
-  "h-8 w-8 flex items-center justify-center rounded-lg bg-zinc-800/60 text-zinc-300 transition-colors hover:bg-zinc-800 active:bg-zinc-700";
+  "h-8 w-8 flex items-center justify-center rounded-lg bg-zinc-800/60 text-zinc-300 transition-all active:scale-95 active:bg-zinc-700 touch-manipulation select-none";
 
 /**
  * Carrossel semanal (segunda a domingo).
@@ -91,10 +91,10 @@ export default function DateStepper({ value, onChange }) {
               onClick={() => onChange(dateStr)}
               aria-pressed={isSelected}
               aria-current={isToday ? "date" : undefined}
-              className={`flex flex-col items-center justify-center py-2 rounded-xl border transition-all ${
+              className={`flex flex-col items-center justify-center py-2 rounded-xl border transition-all touch-manipulation select-none active:scale-95 ${
                 isSelected
                   ? "bg-red-600 border-red-600 text-white shadow-md shadow-red-900/30"
-                  : "bg-zinc-900/45 border-zinc-800/60 text-zinc-400 hover:bg-zinc-800/50"
+                  : "bg-zinc-900/45 border-zinc-800/60 text-zinc-400 active:bg-zinc-800"
               }`}
             >
               <span

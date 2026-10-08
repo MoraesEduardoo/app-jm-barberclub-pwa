@@ -151,7 +151,7 @@ export default function RecoveryCodesSheet({ open, onClose }) {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Confirme a sua senha atual"
               disabled={loading}
-              className="w-full h-12 rounded-lg bg-elevated border border-zinc-700 pl-9 pr-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+              className="w-full h-12 rounded-lg bg-elevated border border-zinc-700 pl-9 pr-3 text-base text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent touch-manipulation"
             />
           </div>
 

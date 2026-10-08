@@ -154,17 +154,17 @@ export default function ExpedientePage() {
   );
 
   return (
-    <div className={`px-4 pt-4 pb-10 ${hasChanges ? "mb-20" : ""}`}>
+    <div className={`px-4 pt-4 pb-10 ${hasChanges ? "mb-[calc(env(safe-area-inset-bottom,0px)+88px)]" : ""}`}>
       {canManageOthers && team.length > 0 && (
-        <div className="mb-4 -mx-1 flex gap-2 overflow-x-auto pb-1">
+        <div className="mb-4 -mx-1 flex gap-2 overflow-x-auto pb-1 scroll-touch no-scrollbar">
           {team.map((member) => (
             <button
               key={member.id}
               onClick={() => handleSelectBarber(member.id)}
-              className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium border transition-colors ${
+              className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium border transition-all touch-manipulation select-none active:scale-95 ${
                 targetBarberId === member.id
                   ? "bg-accent border-accent text-white"
-                  : "border-zinc-700 text-zinc-400"
+                  : "border-zinc-700 text-zinc-400 active:bg-zinc-800"
               }`}
             >
               {member.name}
@@ -262,13 +262,13 @@ export default function ExpedientePage() {
         </form>
       </BottomSheet>
 
-      {/* Barra flutuante de salvamento manual */}
+      {/* Barra flutuante de salvamento manual posicionada com respeito ao Home Indicator e BottomNav do iPhone */}
       {hasChanges && (
-        <div className="fixed bottom-20 left-0 right-0 p-4 z-40 animate-in slide-in-from-bottom-5">
+        <div className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+64px)] left-0 right-0 p-4 z-40 animate-in slide-in-from-bottom-5 pointer-events-none">
           <button
             onClick={handleSaveChanges}
             disabled={isSaving}
-            className="w-full flex items-center justify-center gap-2 h-14 rounded-full bg-accent text-white font-semibold shadow-lg shadow-accent/20 active:bg-accent-dark transition-all disabled:opacity-70"
+            className="pointer-events-auto w-full flex items-center justify-center gap-2 h-14 rounded-full bg-accent text-white font-semibold shadow-lg shadow-accent/25 active:scale-[0.98] active:bg-accent-dark transition-all touch-manipulation select-none disabled:opacity-70"
           >
             {isSaving ? (
               <Loader2 size={20} className="animate-spin" />

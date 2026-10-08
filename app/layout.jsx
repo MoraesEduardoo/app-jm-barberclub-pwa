@@ -6,9 +6,13 @@ export const metadata = {
   description:
     "Painel administrativo exclusivo da equipe da Barbearia do Matheus",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/icons/logo-192.png",
+    apple: "/icons/logo-192.png",
+  },
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-opaque",
+    statusBarStyle: "black-translucent",
     title: "Painel Barbeiro",
   },
 };
@@ -18,6 +22,7 @@ export const viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: "cover",
   themeColor: "#000000",
 };
 

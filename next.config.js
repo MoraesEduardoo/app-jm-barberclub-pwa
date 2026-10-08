@@ -26,6 +26,7 @@ const withPWA = require('@ducanh2912/next-pwa').default({
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  output: 'standalone',
   // Upload da galeria: a foto já chega comprimida (~300 KB), mas o padrão de 1 MB é apertado.
   experimental: {
     serverActions: { bodySizeLimit: '4mb' },

@@ -27,7 +27,7 @@ function AdminShell({ children, onProfileUpdated }) {
       <div className="min-h-screen bg-black flex flex-col">
         <Header pathname={pathname} onOpenProfile={() => setProfileOpen(true)} />
         <ToastStack />
-        <main className="flex-1 pb-24">{children}</main>
+        <main className="flex-1 pb-[calc(env(safe-area-inset-bottom,0px)+84px)]">{children}</main>
         <BottomNav />
       </div>
 

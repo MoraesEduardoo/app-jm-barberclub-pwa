@@ -17,7 +17,7 @@ function withTimeout(promise, ms) {
 }
 
 const INPUT =
-  "w-full h-12 rounded-lg bg-elevated border border-zinc-700 pl-9 pr-10 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent";
+  "w-full h-12 rounded-lg bg-elevated border border-zinc-700 pl-9 pr-10 text-base text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent touch-manipulation";
 
 export default function UpdatePasswordForm() {
   const [password, setPassword] = useState("");

@@ -102,7 +102,7 @@ export default function ExpenseFormSheet({ open, onClose, expense, chefeId }) {
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="w-full h-11 rounded-lg bg-elevated border border-zinc-700 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+            className="w-full h-12 rounded-lg bg-elevated border border-zinc-700 px-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent touch-manipulation"
           >
             {(Array.isArray(EXPENSE_CATEGORIES) ? EXPENSE_CATEGORIES : []).map((c) => (
               <option key={c.key} value={c.key}>

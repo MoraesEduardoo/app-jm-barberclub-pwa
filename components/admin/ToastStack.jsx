@@ -20,7 +20,7 @@ export default function ToastStack() {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed top-16 inset-x-0 z-50 flex flex-col items-center gap-2 px-4 pointer-events-none safe-top">
+    <div className="fixed top-[calc(env(safe-area-inset-top,0px)+62px)] inset-x-0 z-50 flex flex-col items-center gap-2 px-4 pointer-events-none">
       {toasts.map((toast) => {
         const Icon = ICONS[toast.type] || CalendarPlus;
         return (

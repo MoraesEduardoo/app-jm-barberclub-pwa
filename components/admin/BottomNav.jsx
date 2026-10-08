@@ -23,7 +23,7 @@ export default function BottomNav() {
 
   return (
     <nav
-      className="fixed bottom-0 inset-x-0 z-40 border-t border-zinc-800 bg-black/95 backdrop-blur safe-bottom"
+      className="fixed bottom-0 inset-x-0 z-40 border-t border-zinc-800 bg-black/95 backdrop-blur-md safe-bottom select-none"
       role="navigation"
       aria-label="Navegação principal do painel"
     >
@@ -34,7 +34,7 @@ export default function BottomNav() {
             <li key={href} className="flex-1">
               <Link
                 href={href}
-                className="relative flex flex-col items-center justify-center gap-1 py-2.5 min-h-[56px] active:opacity-70 transition-opacity"
+                className="relative flex flex-col items-center justify-center gap-1 py-2 min-h-[52px] active:scale-95 active:opacity-75 transition-all touch-manipulation"
               >
                 {active && <span className="tab-indicator" aria-hidden="true" />}
                 <Icon

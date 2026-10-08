@@ -3,7 +3,7 @@
   "short_name": "Painel Barbeiro",
   "description": "Painel administrativo exclusivo da equipe da barbearia",
   "start_url": "/admin",
-  "scope": "/admin",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#000000",

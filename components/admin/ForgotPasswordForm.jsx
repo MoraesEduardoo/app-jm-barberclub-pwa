@@ -24,7 +24,7 @@ function formatCodeInput(raw) {
 }
 
 const INPUT =
-  "w-full h-12 rounded-lg bg-elevated border border-zinc-700 pl-9 pr-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent disabled:opacity-60";
+  "w-full h-12 rounded-lg bg-elevated border border-zinc-700 pl-9 pr-3 text-base text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent disabled:opacity-60 touch-manipulation";
 
 export default function ForgotPasswordForm({ initialError = "" }) {
   const [phone, setPhone] = useState("");

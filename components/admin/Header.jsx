@@ -38,7 +38,7 @@ export default function Header({ pathname, onOpenProfile }) {
     Object.entries(TITLES).find(([path]) => pathname?.startsWith(path))?.[1] ?? 'Painel';
 
   return (
-    <header className="sticky top-0 z-30 safe-top bg-black/95 backdrop-blur border-b border-zinc-800">
+    <header className="sticky top-0 z-30 safe-top bg-black/95 backdrop-blur-md border-b border-zinc-800 select-none">
       <div className="flex items-center justify-between px-4 h-14">
         <div className="flex flex-col leading-tight">
           <span className="text-white font-semibold text-base">{title}</span>
@@ -58,7 +58,7 @@ export default function Header({ pathname, onOpenProfile }) {
           <button
             onClick={onOpenProfile}
             aria-label="Abrir meu perfil"
-            className="h-8 w-8 rounded-full bg-elevated border border-zinc-700 overflow-hidden flex items-center justify-center text-xs font-semibold text-white active:opacity-80"
+            className="h-8 w-8 rounded-full bg-elevated border border-zinc-700 overflow-hidden flex items-center justify-center text-xs font-semibold text-white active:scale-95 active:opacity-80 transition-transform touch-manipulation"
           >
             {barber?.avatar_url ? (
               <img src={barber.avatar_url} alt="" className="h-full w-full object-cover" />
@@ -69,7 +69,7 @@ export default function Header({ pathname, onOpenProfile }) {
           <button
             onClick={signOut}
             aria-label="Sair do painel"
-            className="h-8 w-8 rounded-full flex items-center justify-center text-zinc-500 active:text-accent-light active:bg-zinc-900 transition-colors"
+            className="h-8 w-8 rounded-full flex items-center justify-center text-zinc-500 active:scale-95 active:text-accent-light active:bg-zinc-900 transition-all touch-manipulation"
           >
             <LogOut size={16} />
           </button>

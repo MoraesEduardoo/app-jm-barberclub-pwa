@@ -11,10 +11,49 @@ body {
   background-color: #000000;
   color: #f4f4f5;
   overscroll-behavior-y: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 * {
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Prevenção obrigatória de Auto-Zoom no iOS WebKit:
+   No Safari Mobile, qualquer input/select/textarea com font-size < 16px
+   força um zoom automático na tela ao receber foco, quebrando o layout do painel. */
+input,
+select,
+textarea {
+  font-size: 16px !important;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Suporte avançado às Safe Areas do iPhone (Notch, Dynamic Island e Home Indicator) */
+.safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px);
+}
+.safe-bottom-sheet {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
+}
+.safe-top {
+  padding-top: max(env(safe-area-inset-top, 0px), 0px);
+}
+
+/* Scroll suave nativo para WebKit/iOS */
+.scroll-touch {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* Esconde barras de rolagem mantendo a navegação tátil fluida */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 ::-webkit-scrollbar {
@@ -24,13 +63,6 @@ body {
 ::-webkit-scrollbar-thumb {
   background: #27272a;
   border-radius: 999px;
-}
-
-.safe-bottom {
-  padding-bottom: env(safe-area-inset-bottom);
-}
-.safe-top {
-  padding-top: env(safe-area-inset-top);
 }
 
 @keyframes fade-in {

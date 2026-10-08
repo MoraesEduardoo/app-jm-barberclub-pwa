@@ -81,7 +81,7 @@ export default function AppointmentCard({ appointment, onChangeStatus, onOpenPay
             type="button"
             disabled={busy}
             onClick={() => onChangeStatus(appointment.id, 'confirmado')}
-            className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg bg-elevated border border-zinc-700 text-xs font-medium text-white active:bg-zinc-800 disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg bg-elevated border border-zinc-700 text-xs font-medium text-white active:scale-95 active:bg-zinc-800 transition-all touch-manipulation select-none disabled:opacity-50"
           >
             <CheckCircle2 size={14} /> Confirmar
           </button>
@@ -91,7 +91,7 @@ export default function AppointmentCard({ appointment, onChangeStatus, onOpenPay
             type="button"
             disabled={busy}
             onClick={() => onChangeStatus(appointment.id, 'cancelado')}
-            className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg bg-elevated border border-zinc-700 text-xs font-medium text-zinc-400 active:bg-zinc-800 disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg bg-elevated border border-zinc-700 text-xs font-medium text-zinc-400 active:scale-95 active:bg-zinc-800 transition-all touch-manipulation select-none disabled:opacity-50"
           >
             <XCircle size={14} /> Cancelar
           </button>
@@ -101,7 +101,7 @@ export default function AppointmentCard({ appointment, onChangeStatus, onOpenPay
             type="button"
             disabled={busy}
             onClick={() => onOpenPayment(appointment)}
-            className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg bg-accent text-xs font-semibold text-white active:bg-accent-dark disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg bg-accent text-xs font-semibold text-white active:scale-95 active:bg-accent-dark transition-all touch-manipulation select-none disabled:opacity-50"
           >
             <Wallet size={14} /> Pagamento
           </button>

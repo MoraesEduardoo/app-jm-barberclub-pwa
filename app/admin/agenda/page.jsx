@@ -215,7 +215,7 @@ export default function AgendaPage() {
         <button
           type="button"
           onClick={() => setWalkInOpen(true)}
-          className="fixed bottom-24 right-4 z-30 flex items-center gap-2 h-12 pl-4 pr-5 rounded-full bg-accent text-white text-sm font-semibold shadow-accent-glow active:bg-accent-dark"
+          className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+72px)] right-4 z-30 flex items-center gap-2 h-12 pl-4 pr-5 rounded-full bg-accent text-white text-sm font-semibold shadow-accent-glow active:scale-95 active:bg-accent-dark transition-all touch-manipulation select-none"
         >
           <UserPlus size={18} />
           Sem hora

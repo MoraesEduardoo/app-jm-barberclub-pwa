@@ -5,8 +5,9 @@ import { Clock, ChevronRight, PauseCircle } from 'lucide-react';
 export default function ServiceRow({ service, onClick }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className="w-full flex items-center justify-between gap-3 bg-surface border border-zinc-800 rounded-xl px-4 py-3.5 active:bg-zinc-900 transition-colors"
+      className="w-full flex items-center justify-between gap-3 bg-surface border border-zinc-800 rounded-xl px-4 py-3.5 active:scale-[0.99] active:opacity-90 active:bg-zinc-900 transition-all touch-manipulation select-none"
     >
       <div className="flex-1 text-left min-w-0">
         <div className="flex items-center gap-2">

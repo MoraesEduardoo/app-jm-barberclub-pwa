@@ -96,13 +96,13 @@ export default function FinanceiroPage() {
   return (
     <div className="px-4 pt-4">
       {canManageFinance && team.length > 0 && (
-        <div className="mb-3 -mx-1 flex gap-2 overflow-x-auto pb-1">
+        <div className="mb-3 -mx-1 flex gap-2 overflow-x-auto pb-1 scroll-touch no-scrollbar">
           <button
             onClick={() => changeScope("todos")}
-            className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium border transition-colors ${
+            className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium border transition-all touch-manipulation select-none active:scale-95 ${
               scopeId === "todos"
                 ? "bg-accent border-accent text-white"
-                : "border-zinc-700 text-zinc-400"
+                : "border-zinc-700 text-zinc-400 active:bg-zinc-800"
             }`}
           >
             Todos
@@ -111,10 +111,10 @@ export default function FinanceiroPage() {
             <button
               key={member.id}
               onClick={() => changeScope(member.id)}
-              className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium border transition-colors ${
+              className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium border transition-all touch-manipulation select-none active:scale-95 ${
                 scopeId === member.id
                   ? "bg-accent border-accent text-white"
-                  : "border-zinc-700 text-zinc-400"
+                  : "border-zinc-700 text-zinc-400 active:bg-zinc-800"
               }`}
             >
               {member.name}
@@ -128,10 +128,10 @@ export default function FinanceiroPage() {
           <button
             key={r.key}
             onClick={() => setRange(r.key)}
-            className={`flex-1 h-9 rounded-lg text-xs font-medium border transition-colors ${
+            className={`flex-1 h-9 rounded-lg text-xs font-medium border transition-all touch-manipulation select-none active:scale-95 ${
               range === r.key
                 ? "bg-accent border-accent text-white"
-                : "border-zinc-700 text-zinc-400"
+                : "border-zinc-700 text-zinc-400 active:bg-zinc-800"
             }`}
           >
             {r.label}

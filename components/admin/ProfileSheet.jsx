@@ -108,7 +108,7 @@ export default function ProfileSheet({
           <button
             onClick={() => setEditOpen(true)}
             aria-label="Editar perfil"
-            className="h-9 w-9 rounded-full border border-zinc-700 flex items-center justify-center text-zinc-300 active:bg-zinc-900 shrink-0"
+            className="h-9 w-9 rounded-full border border-zinc-700 flex items-center justify-center text-zinc-300 active:scale-95 active:bg-zinc-900 transition-all touch-manipulation select-none shrink-0"
           >
             <Pencil size={15} />
           </button>
@@ -130,10 +130,10 @@ export default function ProfileSheet({
                       onSelectBarber?.(member.id);
                       onClose();
                     }}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all touch-manipulation select-none active:scale-[0.99] ${
                       isSelected
                         ? "bg-accent/15 text-accent-light border border-accent/30"
-                        : "text-zinc-300 hover:bg-elevated"
+                        : "text-zinc-300 active:bg-elevated"
                     }`}
                   >
                     <span>
@@ -181,7 +181,7 @@ export default function ProfileSheet({
               isChefe ? "/admin/financeiro/completo" : "/admin/financeiro",
             );
           }}
-          className="w-full flex items-center justify-between bg-elevated border border-zinc-800 rounded-xl px-4 py-3 mt-2"
+          className="w-full flex items-center justify-between bg-elevated border border-zinc-800 rounded-xl px-4 py-3 mt-2 active:scale-[0.99] active:bg-zinc-900 transition-all touch-manipulation select-none"
         >
           <span className="text-white text-sm font-medium">
             Ver financeiro completo
@@ -194,7 +194,7 @@ export default function ProfileSheet({
         </h3>
         <button
           onClick={() => setCodesOpen(true)}
-          className="w-full flex items-center justify-between bg-elevated border border-zinc-800 rounded-xl px-4 py-3"
+          className="w-full flex items-center justify-between bg-elevated border border-zinc-800 rounded-xl px-4 py-3 active:scale-[0.99] active:bg-zinc-900 transition-all touch-manipulation select-none"
         >
           <span className="flex items-center gap-2 text-white text-sm font-medium">
             <KeyRound size={15} className="text-zinc-400" /> Códigos de recuperação

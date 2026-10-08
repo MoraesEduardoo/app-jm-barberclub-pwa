@@ -225,9 +225,15 @@ export default function PushNotificationButton() {
         err,
       );
 
-      // Alerta direto no ecrã do telemóvel para identificar o erro sem USB
-      const errorMsg = err.message || JSON.stringify(err);
-      window.alert("ERRO DETALHADO: " + errorMsg);
+      // No iOS, se não estiver em modo standalone (adicionado à Tela de Início),
+      // o PushManager lança erro de permissão. Exibe mensagem clara e amigável.
+      const isIOS = typeof window !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const isStandalone = typeof window !== "undefined" && Boolean(window.navigator.standalone || window.matchMedia("(display-mode: standalone)").matches);
+
+      let errorMsg = err.message || "Erro ao ativar notificações.";
+      if (isIOS && !isStandalone) {
+        errorMsg = "No iPhone, toque em Compartilhar no Safari e 'Adicionar à Tela de Início' para receber notificações.";
+      }
 
       setErrorMessage(errorMsg);
       setStatus("error");

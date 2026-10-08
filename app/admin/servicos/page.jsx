@@ -55,7 +55,7 @@ export default function ServicosPage() {
         </p>
         <button
           onClick={() => setSheetOpen(true)}
-          className="flex items-center gap-1.5 bg-accent text-white text-xs font-semibold rounded-full pl-2.5 pr-3 py-1.5 active:bg-accent-dark"
+          className="flex items-center gap-1.5 bg-accent text-white text-xs font-semibold rounded-full pl-2.5 pr-3 py-1.5 active:scale-95 active:bg-accent-dark transition-all touch-manipulation select-none"
         >
           <Plus size={14} /> Novo
         </button>
