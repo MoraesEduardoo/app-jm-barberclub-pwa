@@ -86,7 +86,12 @@ export default function ServicosPage() {
         </div>
       )}
 
-      <ServiceFormSheet open={sheetOpen} onClose={handleClose} service={editing} />
+      <ServiceFormSheet
+        key={editing?.id || (sheetOpen ? 'new-service' : 'none')}
+        open={sheetOpen}
+        onClose={handleClose}
+        service={editing}
+      />
     </div>
   );
 }

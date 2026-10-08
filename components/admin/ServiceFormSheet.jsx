@@ -1,17 +1,64 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import BottomSheet from './BottomSheet';
 import { FormField, TextInput, PrimaryButton, GhostButton } from './FormField';
 import { createService, updateService, deleteService } from '@/lib/actions/services';
 
+/**
+ * ServiceFormSheet:
+ * Modal/BottomSheet para criação e edição de serviços do painel admin.
+ *
+ * CORREÇÃO CRÍTICA DE GESTÃO DE ESTADO:
+ * Em componentes montados no React, hooks `useState(initialValue)` só avaliam o valor
+ * inicial uma única vez durante a montagem inicial. Quando o usuário clica em um serviço
+ * da lista, o modal recebia a prop `service`, mas os inputs continuavam com o estado
+ * inicial vazio ('') ou desatualizado.
+ *
+ * O hook `useEffect` abaixo sincroniza os estados de `name`, `price` e `duration`
+ * toda vez que `open` ou `service` mudar:
+ * - Se `service` existir (modo Edição): injeta os dados reais do serviço nos inputs.
+ * - Se `service` for nulo (modo Novo Serviço): reseta os campos para que os placeholders fiquem visíveis.
+ */
 export default function ServiceFormSheet({ open, onClose, service }) {
-  const isEditing = Boolean(service);
+  const isEditing = Boolean(service && service.id);
+
   const [name, setName] = useState(service?.name || '');
-  const [price, setPrice] = useState(service?.price ?? '');
-  const [duration, setDuration] = useState(service?.default_duration_minutes ?? '');
+  const [price, setPrice] = useState(
+    service?.price !== undefined && service?.price !== null ? String(service.price) : ''
+  );
+  const [duration, setDuration] = useState(
+    service?.default_duration_minutes !== undefined && service?.default_duration_minutes !== null
+      ? String(service.default_duration_minutes)
+      : ''
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  // Sincronização obrigatória: popula os campos ao abrir o modal com um serviço selecionado
+  useEffect(() => {
+    if (open) {
+      if (service) {
+        setName(service.name || '');
+        setPrice(
+          service.price !== undefined && service.price !== null
+            ? String(service.price)
+            : ''
+        );
+        setDuration(
+          service.default_duration_minutes !== undefined &&
+            service.default_duration_minutes !== null
+            ? String(service.default_duration_minutes)
+            : ''
+        );
+      } else {
+        setName('');
+        setPrice('');
+        setDuration('');
+      }
+      setError('');
+    }
+  }, [open, service]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -25,7 +72,7 @@ export default function ServiceFormSheet({ open, onClose, service }) {
     setSaving(true);
     try {
       const payload = {
-        name,
+        name: name.trim(),
         price: Number(price),
         default_duration_minutes: Number(duration),
       };
@@ -43,7 +90,7 @@ export default function ServiceFormSheet({ open, onClose, service }) {
   }
 
   async function handleDelete() {
-    if (!confirm(`Remover o serviço "${service.name}"?`)) return;
+    if (!service || !confirm(`Remover o serviço "${service.name}"?`)) return;
     setSaving(true);
     try {
       await deleteService(service.id);
@@ -67,6 +114,7 @@ export default function ServiceFormSheet({ open, onClose, service }) {
             onChange={(e) => setName(e.target.value)}
             placeholder="Ex.: Corte + Barba"
             autoFocus
+            required
           />
         </FormField>
 
@@ -80,6 +128,7 @@ export default function ServiceFormSheet({ open, onClose, service }) {
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               placeholder="45,00"
+              required
             />
           </FormField>
           <FormField label="Duração (min)">
@@ -91,6 +140,7 @@ export default function ServiceFormSheet({ open, onClose, service }) {
               value={duration}
               onChange={(e) => setDuration(e.target.value)}
               placeholder="30"
+              required
             />
           </FormField>
         </div>

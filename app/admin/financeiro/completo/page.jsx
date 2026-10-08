@@ -183,6 +183,7 @@ export default function FinanceiroCompletoPage() {
       )}
 
       <ExpenseFormSheet
+        key={editing?.id || (sheetOpen ? 'new-expense' : 'none')}
         open={sheetOpen}
         onClose={handleSheetClose}
         expense={editing}

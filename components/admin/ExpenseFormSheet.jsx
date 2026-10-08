@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import BottomSheet from './BottomSheet';
 import { todayInShop } from '@/lib/dates';
 import { FormField, TextInput, PrimaryButton, GhostButton } from './FormField';
@@ -12,7 +12,7 @@ function todayISO() {
 }
 
 export default function ExpenseFormSheet({ open, onClose, expense, chefeId }) {
-  const isEditing = Boolean(expense);
+  const isEditing = Boolean(expense && expense.id);
 
   const [amount, setAmount] = useState(expense?.amount ?? '');
   const [description, setDescription] = useState(expense?.description ?? '');
@@ -22,6 +22,24 @@ export default function ExpenseFormSheet({ open, onClose, expense, chefeId }) {
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  // Sincroniza o estado interno sempre que o modal abre ou a despesa selecionada é alterada
+  useEffect(() => {
+    if (open) {
+      if (expense) {
+        setAmount(expense.amount !== undefined && expense.amount !== null ? String(expense.amount) : '');
+        setDescription(expense.description || '');
+        setCategory(expense.category || 'outros');
+        setOccurredAt(expense.occurred_at ? expense.occurred_at.slice(0, 10) : todayISO());
+      } else {
+        setAmount('');
+        setDescription('');
+        setCategory('outros');
+        setOccurredAt(todayISO());
+      }
+      setError('');
+    }
+  }, [open, expense]);
 
   async function handleSubmit(e) {
     e.preventDefault();
