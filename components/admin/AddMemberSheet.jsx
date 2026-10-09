@@ -27,13 +27,19 @@ export default function AddMemberSheet({ open, onClose }) {
 
     setSaving(true);
     try {
-      const commNumber = Math.min(100, Math.max(0, Math.round(Number(commission) || 50)));
-      await addTeamMember({
+      const commNumber = Math.min(100, Math.max(0, Math.round(Number(commission) || 25)));
+      const res = await addTeamMember({
         name,
         phone,
         password,
         commissionPercent: commNumber,
       });
+
+      if (res && res.success === false) {
+        setError(res.error || 'Erro ao adicionar barbeiro.');
+        return;
+      }
+
       setName('');
       setPhone('');
       setPassword('');
