@@ -10,6 +10,7 @@ import { PERMISSION_KEYS } from "@/lib/auth";
 import {
   listAppointmentsByDate,
   updateAppointmentStatus,
+  deleteAppointment,
 } from "@/lib/actions/appointments";
 import { listTeam } from "@/lib/actions/team";
 import DateStepper from "@/components/admin/DateStepper";
@@ -132,6 +133,36 @@ export default function AgendaPage() {
     }
   }
 
+  async function handleDeleteAppointment(id) {
+    if (busyId) return;
+    if (!window.confirm("Excluir este agendamento definitivamente do histórico?")) {
+      return;
+    }
+
+    setBusyId(id);
+    setActionError("");
+
+    try {
+      const response = await deleteAppointment(id);
+
+      if (response?.error === "AUTH_EXPIRED") {
+        endSession();
+        return;
+      }
+
+      if (!response?.success) {
+        setActionError(response?.error || "Não foi possível excluir o agendamento.");
+        return;
+      }
+
+      setAppointments((prev) => prev.filter((a) => a.id !== id));
+    } catch {
+      setActionError("Sem conexão. Não foi possível excluir o agendamento.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   function handleClosePayment() {
     setPaymentTarget(null);
     load({ silent: true });
@@ -199,6 +230,7 @@ export default function AgendaPage() {
                 busy={busyId === appointment.id}
                 onChangeStatus={handleChangeStatus}
                 onOpenPayment={setPaymentTarget}
+                onDelete={handleDeleteAppointment}
               />
             ))}
           </div>

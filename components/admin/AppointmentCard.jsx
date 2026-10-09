@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle2, XCircle, Clock3, Wallet, User, Zap } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock3, Wallet, User, Zap, Trash2 } from 'lucide-react';
 
 const STATUS_STYLES = {
   pendente: { label: 'Pendente', className: 'bg-zinc-800 text-zinc-300' },
@@ -8,7 +8,7 @@ const STATUS_STYLES = {
   cancelado: { label: 'Cancelado', className: 'bg-accent/15 text-accent-light' },
 };
 
-export default function AppointmentCard({ appointment, onChangeStatus, onOpenPayment, busy = false }) {
+export default function AppointmentCard({ appointment, onChangeStatus, onOpenPayment, onDelete, busy = false }) {
   const status = STATUS_STYLES[appointment.status] || STATUS_STYLES.pendente;
   const paid = appointment.payment_status === 'pago';
   const time = appointment.appointment_date
@@ -104,6 +104,16 @@ export default function AppointmentCard({ appointment, onChangeStatus, onOpenPay
             className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg bg-accent text-xs font-semibold text-white active:scale-95 active:bg-accent-dark transition-all touch-manipulation select-none disabled:opacity-50"
           >
             <Wallet size={14} /> Pagamento
+          </button>
+        )}
+        {appointment.status === 'cancelado' && onDelete && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onDelete(appointment.id)}
+            className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg bg-red-950/30 border border-red-900/50 text-xs font-medium text-red-400 active:scale-95 active:bg-red-900/50 transition-all touch-manipulation select-none disabled:opacity-50"
+          >
+            <Trash2 size={14} /> Excluir registro
           </button>
         )}
       </div>
