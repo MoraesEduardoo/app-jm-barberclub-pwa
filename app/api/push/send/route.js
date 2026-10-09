@@ -1,7 +1,19 @@
 import webpush from 'web-push'
-import { createClient } from '@/lib/supabase/server'
+import { createClient as createServerClient } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
 
 let vapidConfigured = false
+
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (supabaseUrl && serviceRoleKey) {
+    return createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  }
+  return createServerClient();
+}
 
 function ensureVapid() {
   if (vapidConfigured) return true
@@ -41,7 +53,7 @@ export async function POST(request) {
     } = payloadBody || {};
 
     const targetId = barberId || userId;
-    const supabase = createClient();
+    const supabase = getSupabaseAdmin();
 
     let query = supabase.from('push_subscriptions').select('*');
     if (targetId) {

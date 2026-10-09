@@ -12,7 +12,7 @@ import {
   RefreshCcw,
   Send,
   Loader2,
-  Check,
+  RotateCcw,
 } from 'lucide-react';
 import { useNotifications } from '@/lib/notifications';
 import { useBarber } from '@/lib/barber-context';
@@ -33,29 +33,168 @@ function timeAgo(isoString) {
   return `${hours} h atrás`;
 }
 
+/**
+ * Converte e valida rigorosamente a chave pública VAPID (base64url)
+ * para o Uint8Array de 65 bytes (ponto não-comprimido P-256) exigido
+ * pelo PushManager.subscribe (applicationServerKey).
+ */
 function urlBase64ToUint8Array(base64String) {
-  if (!base64String) {
-    throw new Error('Chave VAPID pública ausente.');
+  if (!base64String || typeof base64String !== 'string') {
+    throw new Error('A chave pública VAPID não foi informada.');
   }
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; i++) {
+
+  // Remove aspas simples/duplas e espaços das extremidades
+  const cleanKey = base64String.trim().replace(/^["']|["']$/g, '');
+  if (!cleanKey) {
+    throw new Error('A chave pública VAPID está vazia.');
+  }
+
+  const padding = '='.repeat((4 - (cleanKey.length % 4)) % 4);
+  const base64 = (cleanKey + padding).replace(/-/g, '+').replace(/_/g, '/');
+
+  let rawData;
+  try {
+    rawData = window.atob(base64);
+  } catch {
+    throw new Error('A chave pública VAPID possui codificação base64 inválida.');
+  }
+
+  let outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
     outputArray[i] = rawData.charCodeAt(i);
   }
+
+  // Se a chave foi fornecida com 64 bytes (coordenadas X e Y sem o prefixo 0x04),
+  // ajustamos automaticamente adicionando 0x04 no início (RFC 8292 / ANSI X9.62)
+  if (outputArray.length === 64) {
+    const prefixed = new Uint8Array(65);
+    prefixed[0] = 0x04;
+    prefixed.set(outputArray, 1);
+    outputArray = prefixed;
+  }
+
+  // Validação estrita da especificação Web Push
+  if (outputArray.length !== 65 || outputArray[0] !== 0x04) {
+    throw new Error(
+      `Chave pública VAPID inválida: esperado ponto P-256 de 65 bytes iniciando em 0x04 (recebido ${outputArray.length} bytes).`
+    );
+  }
+
   return outputArray;
+}
+
+/**
+ * Obtém a chave pública VAPID das variáveis de ambiente do cliente
+ * ou via fallback da API /api/push/vapid-public-key.
+ */
+async function getVapidPublicKeyString() {
+  const envKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  if (envKey && typeof envKey === 'string' && envKey.trim().length > 0) {
+    return envKey.trim().replace(/^["']|["']$/g, '');
+  }
+
+  try {
+    const res = await fetch('/api/push/vapid-public-key');
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.publicKey) {
+        return data.publicKey.trim().replace(/^["']|["']$/g, '');
+      }
+    }
+  } catch (err) {
+    console.warn('[Push] Não foi possível obter chave via /api/push/vapid-public-key:', err);
+  }
+
+  throw new Error(
+    'Chave VAPID pública não encontrada. Configure NEXT_PUBLIC_VAPID_PUBLIC_KEY nas variáveis de ambiente.'
+  );
+}
+
+/**
+ * Garante que o Service Worker está registrado e ATIVO/READY
+ * antes de qualquer tentativa de inscrição no PushManager.
+ * Evita a famosa falha DOMException "Registration failed - push service error".
+ */
+async function getReadyServiceWorkerRegistration() {
+  if (!('serviceWorker' in navigator)) {
+    throw new Error('Service Worker não é suportado neste navegador.');
+  }
+
+  let reg = await navigator.serviceWorker.getRegistration();
+  if (!reg) {
+    reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+  }
+
+  if (reg.active) {
+    return reg;
+  }
+
+  try {
+    const readyReg = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error('Tempo esgotado aguardando ativação do Service Worker.')),
+          8000
+        )
+      ),
+    ]);
+    if (readyReg) return readyReg;
+  } catch {
+    // Continua para verificar o estado do registro
+  }
+
+  if (reg.installing || reg.waiting) {
+    const worker = reg.installing || reg.waiting;
+    await new Promise((resolve) => {
+      const stateListener = () => {
+        if (worker.state === 'activated' || reg.active) {
+          worker.removeEventListener('statechange', stateListener);
+          resolve();
+        }
+      };
+      worker.addEventListener('statechange', stateListener);
+      setTimeout(resolve, 4000);
+    });
+  }
+
+  return reg;
+}
+
+function checkSameVapidKey(subscription, expectedBytes) {
+  const actualKey = subscription?.options?.applicationServerKey;
+  if (!actualKey) return true;
+  const actual = new Uint8Array(actualKey);
+  if (actual.length !== expectedBytes.length) return false;
+  return actual.every((val, i) => val === expectedBytes[i]);
+}
+
+function cleanPushErrorMessage(err) {
+  const msg = String(err?.message || err || '');
+  const isIOS =
+    typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isStandalone =
+    typeof window !== 'undefined' &&
+    Boolean(window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches);
+
+  if (isIOS && !isStandalone) {
+    return 'No iPhone, adicione o app à Tela de Início pelo Safari ("Compartilhar" → "Adicionar à Tela de Início") para receber notificações.';
+  }
+
+  if (/push service error|registration failed/i.test(msg)) {
+    return 'Falha de comunicação com o serviço Push (Google FCM). Verifique a conexão com a internet, desative bloqueadores ou saia do modo anônimo e tente novamente.';
+  }
+
+  if (/permission denied|denied/i.test(msg)) {
+    return 'Notificações bloqueadas nas configurações do navegador. Libere o acesso para ativar.';
+  }
+
+  return msg || 'Não foi possível ativar as notificações push.';
 }
 
 /**
  * NotificationBell:
  * Sininho de notificações inteligente com indicador visual de status das notificações push.
- *
- * REQUISITOS IMPLEMENTADOS:
- * 1. O clique não oculta o cabeçalho nem o conteúdo da página (renderizado via createPortal).
- * 2. Quando ativo / subscrito, o ícone fica em DESTAQUE NA COR VERMELHA com ponto indicador.
- * 3. Permite verificar permissão, ativar/desativar e testar o envio de notificação push.
- * 4. Mostra o histórico recente de agendamentos e notificações internas.
  */
 export default function NotificationBell() {
   const { barber } = useBarber();
@@ -86,87 +225,134 @@ export default function NotificationBell() {
     }
 
     try {
-      let reg = await navigator.serviceWorker.getRegistration();
-      if (!reg) {
-        reg = await navigator.serviceWorker.register('/sw.js');
-      }
-
+      const reg = await getReadyServiceWorkerRegistration();
       const subscription = await reg?.pushManager?.getSubscription();
+
       if (subscription) {
         setPushStatus('subscribed');
+
+        // Se o barbeiro está autenticado, sincroniza silenciosamente com o Supabase
+        if (barber?.id) {
+          fetch('/api/push/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+              subscription: subscription.toJSON(),
+              barberId: barber.id,
+            }),
+          }).catch(() => {});
+        }
       } else {
         setPushStatus('unsubscribed');
       }
     } catch {
       setPushStatus('unsubscribed');
     }
-  }, []);
+  }, [barber?.id]);
 
   useEffect(() => {
     checkPushSubscription();
   }, [checkPushSubscription]);
 
-  // Ativação de push notifications
+  // Ativação de push notifications com auto-recuperação
   async function handleSubscribe() {
+    if (!barber?.id) {
+      setFeedbackError('Aguardando identificação do barbeiro. Aguarde um instante e tente novamente.');
+      return;
+    }
+
     setBusy(true);
     setFeedbackError('');
-    try {
-      const vapidKey = urlBase64ToUint8Array(
-        process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-      );
 
+    try {
+      // 1. Permissão do usuário
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
         setPushStatus(permission === 'denied' ? 'denied' : 'unsubscribed');
         setBusy(false);
+        if (permission === 'denied') {
+          setFeedbackError('Permissão negada. Desbloqueie as notificações nas configurações do navegador.');
+        }
         return;
       }
 
-      let reg = await navigator.serviceWorker.getRegistration();
-      if (!reg) {
-        reg = await navigator.serviceWorker.register('/sw.js');
-      }
+      // 2. Chave pública VAPID e validação
+      const keyStr = await getVapidPublicKeyString();
+      const vapidKeyBytes = urlBase64ToUint8Array(keyStr);
 
+      // 3. Service Worker ativo e pronto
+      const reg = await getReadyServiceWorkerRegistration();
+
+      // 4. Verificação de inscrição existente
       let subscription = await reg.pushManager.getSubscription();
-      if (!subscription) {
-        subscription = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: vapidKey,
-        });
+
+      // Se existe inscrição mas foi feita com outra chave VAPID, cancela para renovar limpo
+      if (subscription && !checkSameVapidKey(subscription, vapidKeyBytes)) {
+        console.log('[Push] Inscrição com chave antiga detectada. Renovando...');
+        try {
+          await subscription.unsubscribe();
+        } catch (unsubErr) {
+          console.warn('[Push] Erro ao desinscrever chave antiga:', unsubErr);
+        }
+        subscription = null;
       }
 
-      if (barber?.id) {
-        await fetch('/api/push/subscribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({
-            subscription: subscription.toJSON(),
-            barberId: barber.id,
-          }),
-        });
+      // 5. Inscrição no PushManager com recuperação inteligente de erro
+      if (!subscription) {
+        try {
+          subscription = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: vapidKeyBytes,
+          });
+        } catch (subErr) {
+          // Se disparar "push service error" (comum no Chrome/Android quando o FCM está dessincronizado)
+          const isServiceErr =
+            subErr.name === 'AbortError' ||
+            /push service error|registration failed/i.test(subErr.message || '');
+
+          if (isServiceErr) {
+            console.warn('[Push] Falha inicial do Push Service. Executando tentativa de recuperação automática...');
+            try {
+              const stale = await reg.pushManager.getSubscription();
+              if (stale) await stale.unsubscribe();
+              // Pausa de 600ms para estabilização do daemon do navegador
+              await new Promise((r) => setTimeout(r, 600));
+
+              subscription = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: vapidKeyBytes,
+              });
+            } catch (retryErr) {
+              console.error('[Push] Falha na segunda tentativa:', retryErr);
+              throw retryErr;
+            }
+          } else {
+            throw subErr;
+          }
+        }
+      }
+
+      // 6. Persistência na tabela push_subscriptions do Supabase
+      const response = await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          subscription: subscription.toJSON(),
+          barberId: barber.id,
+        }),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Erro (${response.status}) ao gravar inscrição no servidor.`);
       }
 
       setPushStatus('subscribed');
     } catch (err) {
       console.error('Erro ao assinar push:', err);
-      const isIOS =
-        typeof window !== 'undefined' &&
-        /iPad|iPhone|iPod/.test(navigator.userAgent);
-      const isStandalone =
-        typeof window !== 'undefined' &&
-        Boolean(
-          window.navigator.standalone ||
-            window.matchMedia('(display-mode: standalone)').matches
-        );
-
-      if (isIOS && !isStandalone) {
-        setFeedbackError(
-          'No iPhone, adicione o app à Tela de Início pelo Safari para receber notificações.'
-        );
-      } else {
-        setFeedbackError(err.message || 'Não foi possível ativar as notificações.');
-      }
+      setFeedbackError(cleanPushErrorMessage(err));
       setPushStatus('error');
     } finally {
       setBusy(false);
@@ -178,7 +364,7 @@ export default function NotificationBell() {
     setBusy(true);
     setFeedbackError('');
     try {
-      const reg = await navigator.serviceWorker.getRegistration();
+      const reg = await getReadyServiceWorkerRegistration();
       const subscription = await reg?.pushManager?.getSubscription();
       if (subscription) {
         const endpoint = subscription.endpoint;
@@ -302,6 +488,8 @@ export default function NotificationBell() {
                       ? 'Ativas neste dispositivo'
                       : pushStatus === 'denied'
                       ? 'Bloqueadas pelo navegador'
+                      : pushStatus === 'unsupported'
+                      ? 'Não suportadas neste navegador'
                       : 'Desativadas no momento'}
                   </p>
                 </div>
@@ -320,9 +508,19 @@ export default function NotificationBell() {
             </div>
 
             {feedbackError && (
-              <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl px-3 py-2 text-xs">
-                <AlertCircle size={14} className="shrink-0" />
-                <span>{feedbackError}</span>
+              <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl px-3 py-2.5 text-xs">
+                <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                <div className="flex-1 space-y-1.5">
+                  <span className="block leading-relaxed">{feedbackError}</span>
+                  <button
+                    type="button"
+                    onClick={handleSubscribe}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-red-300 hover:text-white underline underline-offset-2"
+                  >
+                    <RotateCcw size={11} />
+                    Tentar novamente
+                  </button>
+                </div>
               </div>
             )}
 
@@ -365,6 +563,14 @@ export default function NotificationBell() {
                     <span>Testar push</span>
                   </button>
                 </>
+              ) : pushStatus === 'denied' ? (
+                <div className="col-span-2 flex items-center justify-center p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800 text-zinc-400 text-xs text-center">
+                  Permissão bloqueada no navegador. Abra as configurações do site e altere Notificações para &quot;Permitir&quot;.
+                </div>
+              ) : pushStatus === 'unsupported' ? (
+                <div className="col-span-2 flex items-center justify-center p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800 text-zinc-400 text-xs text-center">
+                  Este navegador não possui suporte a Web Push Notifications.
+                </div>
               ) : (
                 <button
                   type="button"
