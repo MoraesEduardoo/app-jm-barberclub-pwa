@@ -32,7 +32,7 @@ export default function NotificationBell() {
           markAllRead();
         }}
         aria-label="Notificações"
-        className="relative h-8 w-8 rounded-full flex items-center justify-center text-zinc-500 active:text-accent-light active:bg-zinc-900 transition-colors"
+        className="relative h-8 w-8 rounded-full flex items-center justify-center text-zinc-500 active:scale-95 active:text-accent-light active:bg-zinc-900 transition-all touch-manipulation"
       >
         <Bell size={17} />
         {unreadCount > 0 && (

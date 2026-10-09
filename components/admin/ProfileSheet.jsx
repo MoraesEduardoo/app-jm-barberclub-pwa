@@ -15,7 +15,6 @@ import {
 import BottomSheet from "./BottomSheet";
 import { todayInShop } from "@/lib/dates";
 import EditProfileSheet from "./EditProfileSheet";
-import PushNotificationButton from "./PushNotificationButton";
 import RecoveryCodesSheet from "./RecoveryCodesSheet";
 import { getFinanceSummary } from "@/lib/actions/finance";
 import { listTeam } from "@/lib/actions/team";
@@ -201,15 +200,6 @@ export default function ProfileSheet({
           </span>
           <ChevronRight size={16} className="text-zinc-500" />
         </button>
-
-        <h3 className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-2 mt-6">
-          Notificações no celular
-        </h3>
-        <p className="text-zinc-500 text-xs mb-2.5">
-          Ative para receber um aviso no aparelho assim que um novo agendamento
-          entrar — mesmo com o app fechado.
-        </p>
-        <PushNotificationButton />
       </BottomSheet>
 
       <RecoveryCodesSheet open={open && codesOpen} onClose={() => setCodesOpen(false)} />

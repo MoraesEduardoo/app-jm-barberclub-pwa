@@ -2,14 +2,18 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { CalendarDays, Scissors, Clock, Wallet, Users2, Images } from 'lucide-react';
+import { CalendarDays, Scissors, Clock, Users2, Images } from 'lucide-react';
 import { useBarber } from '@/lib/barber-context';
 
+/**
+ * Abas principais da barra inferior (mobile-first):
+ * 'Financeiro' foi retirado da barra de navegação principal e agora fica acessível
+ * diretamente dentro do menu de Perfil (ProfileSheet) para simplificar a navegação.
+ */
 const BASE_TABS = [
   { href: '/admin/agenda', label: 'Agenda', icon: CalendarDays },
   { href: '/admin/servicos', label: 'Serviços', icon: Scissors },
   { href: '/admin/expediente', label: 'Expediente', icon: Clock },
-  { href: '/admin/financeiro', label: 'Financeiro', icon: Wallet },
   { href: '/admin/galeria', label: 'Galeria', icon: Images },
 ];
 
