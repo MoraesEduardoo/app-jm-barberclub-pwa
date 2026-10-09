@@ -29,44 +29,62 @@ export async function POST(request) {
       return Response.json(
         { success: false, error: 'VAPID credentials not configured' },
         { status: 503 }
-      )
+      );
     }
 
-    const { title, body, userId } = await request.json()
-    const supabase = createClient()
+    const payloadBody = await request.json().catch(() => ({}));
+    const {
+      title = 'JM Barberclub — Teste',
+      body = 'Notificações push estão ativas e funcionando no seu dispositivo!',
+      userId,
+      barberId,
+    } = payloadBody || {};
 
-    const { data: subscriptions, error } = await supabase
-      .from('push_subscriptions')
-      .select('*')
-      .eq('user_id', userId)
+    const targetId = barberId || userId;
+    const supabase = createClient();
 
-    if (error || !subscriptions) {
-      return Response.json({ success: false, error: 'Subscrições não encontradas' }, { status: 404 })
+    let query = supabase.from('push_subscriptions').select('*');
+    if (targetId) {
+      query = query.or(`barber_id.eq.${targetId},user_id.eq.${targetId}`);
     }
 
-    const payload = JSON.stringify({ title, body, icon: '/icons/logo-192.png' })
+    const { data: subscriptions, error } = await query;
+
+    if (error || !subscriptions || subscriptions.length === 0) {
+      return Response.json(
+        { success: false, message: 'Nenhuma subscrição push ativa encontrada para este barbeiro.' },
+        { status: 200 }
+      );
+    }
+
+    const payload = JSON.stringify({
+      title,
+      body,
+      icon: '/icons/logo-192.png',
+      badge: '/icons/logo-192.png',
+      url: '/admin/agenda',
+    });
 
     const notifications = subscriptions.map(async (sub) => {
       const pushSubscription = {
         endpoint: sub.endpoint,
         keys: { p256dh: sub.p256dh, auth: sub.auth },
-      }
+      };
 
       try {
-        await webpush.sendNotification(pushSubscription, payload)
+        await webpush.sendNotification(pushSubscription, payload);
       } catch (err) {
         if (err.statusCode === 410 || err.statusCode === 404) {
-          // Remove subscrição expirada/inválida do Supabase
-          await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint)
+          await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
         } else {
-          console.error('Erro ao enviar push notification:', err)
+          console.error('Erro ao enviar push notification:', err);
         }
       }
-    })
+    });
 
-    await Promise.all(notifications)
-    return Response.json({ success: true })
+    await Promise.all(notifications);
+    return Response.json({ success: true, sentCount: subscriptions.length });
   } catch (err) {
-    return Response.json({ success: false, error: err.message }, { status: 500 })
+    return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }

@@ -1,49 +1,40 @@
 'use client';
 
 import { X } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 /**
- * BottomSheet 100% otimizado para iOS Safari / iPhone:
- * 1. Implementa o padrão rigoroso de Body Scroll Lock do WebKit (position: fixed + top offset).
- *    No iOS, apenas overflow: hidden no body NÃO funciona e causa vazamento de scroll e rubber-band.
- * 2. Utiliza unidades dinâmicas 85dvh para se adaptar com perfeição ao teclado virtual do iOS.
- * 3. Incorpora drag-handle tátil superior e padding seguro para a barra Home Indicator do iPhone.
+ * BottomSheet 100% otimizado para iOS Safari / iPhone e Next.js:
+ * 1. Usa createPortal para renderizar o modal DIRETAMENTE no <body>.
+ *    Isso evita que elementos ancestrais com backdrop-filter (como o Header)
+ *    ou overflow/transforms prendam o modal ou façam o topo da página sumir.
+ * 2. Bloqueio seguro de rolagem no body sem aplicar position: fixed que quebrava o scroll.
+ * 3. Utiliza unidades dinâmicas 88dvh adaptáveis ao teclado virtual do iOS.
+ * 4. Incorpora drag-handle tátil superior e padding seguro para a barra Home Indicator do iPhone.
  */
 export default function BottomSheet({ open, onClose, title, children }) {
-  const scrollOffsetRef = useRef(0);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
 
-    // Guarda a posição atual de rolagem da tela
-    const scrollY = window.scrollY || window.pageYOffset || 0;
-    scrollOffsetRef.current = scrollY;
-
-    // Trava de rolagem verdadeira para o Safari do iOS
-    const originalPosition = document.body.style.position;
-    const originalTop = document.body.style.top;
-    const originalWidth = document.body.style.width;
+    // Bloqueia rolagem do fundo mantendo a posição e o cabeçalho visíveis
     const originalOverflow = document.body.style.overflow;
-
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.width = '100%';
     document.body.style.overflow = 'hidden';
 
     return () => {
-      // Restaura o layout e a rolagem original sem saltos na tela
-      document.body.style.position = originalPosition;
-      document.body.style.top = originalTop;
-      document.body.style.width = originalWidth;
       document.body.style.overflow = originalOverflow;
-      window.scrollTo(0, scrollOffsetRef.current);
     };
   }, [open]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  const content = (
     <div className="fixed inset-0 z-50 flex items-end justify-center select-none">
       {/* Backdrop com desfoque e toque para fechar */}
       <button
@@ -80,4 +71,6 @@ export default function BottomSheet({ open, onClose, title, children }) {
       </div>
     </div>
   );
+
+  return createPortal(content, document.body);
 }

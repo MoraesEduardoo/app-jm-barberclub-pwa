@@ -8,17 +8,12 @@ const TITLES = {
   '/admin/agenda': 'Agenda',
   '/admin/servicos': 'Serviços & Preços',
   '/admin/expediente': 'Expediente',
-  // Mais específica primeiro: startsWith('/admin/financeiro') também bate
-  // com '/admin/financeiro/completo', então essa entrada precisa ser
-  // checada antes da genérica logo abaixo.
   '/admin/financeiro/completo': 'Financeiro Completo',
   '/admin/financeiro': 'Caixa & Faturamento',
   '/admin/equipe': 'Equipe & Permissões',
   '/admin/galeria': 'Galeria de Cortes',
 };
 
-// Telas cujos dados mudam conforme o profissional selecionado pelo Chefe.
-// (Serviços, Equipe e Financeiro Completo são da barbearia inteira.)
 function isScopedPath(pathname) {
   if (!pathname) return false;
   if (pathname.startsWith('/admin/financeiro/completo')) return false;
@@ -29,6 +24,16 @@ function isScopedPath(pathname) {
   );
 }
 
+/**
+ * Header:
+ * Cabeçalho principal mobile-first do painel administrativo.
+ *
+ * NOTIFICAÇÕES & PUSH (UI/UX):
+ * - O botão do sininho (NotificationBell) permanece fixo no topo ao lado do cargo e avatar.
+ * - O clique no sininho NÃO oculta nem quebra o layout do cabeçalho, renderizando
+ *   o BottomSheet diretamente no body via portal sem interferir no backdrop-blur do header.
+ * - Apresenta destaque em vermelho quando as notificações push do aparelho estão ativas.
+ */
 export default function Header({ pathname, onOpenProfile }) {
   const { barber, isChefe, signOut, isViewingOther, viewedBarber, resetView } = useBarber();
   const showViewBanner = isChefe && isViewingOther && isScopedPath(pathname);
@@ -54,8 +59,13 @@ export default function Header({ pathname, onOpenProfile }) {
               Chefe
             </span>
           )}
+
+          {/* Sininho com indicador de push ativo e modal de controle */}
           <NotificationBell />
+
+          {/* Avatar e Perfil */}
           <button
+            type="button"
             onClick={onOpenProfile}
             aria-label="Abrir meu perfil"
             className="h-8 w-8 rounded-full bg-elevated border border-zinc-700 overflow-hidden flex items-center justify-center text-xs font-semibold text-white active:scale-95 active:opacity-80 transition-transform touch-manipulation"
@@ -66,7 +76,10 @@ export default function Header({ pathname, onOpenProfile }) {
               barber?.name?.charAt(0)?.toUpperCase() ?? '?'
             )}
           </button>
+
+          {/* Sair do painel */}
           <button
+            type="button"
             onClick={signOut}
             aria-label="Sair do painel"
             className="h-8 w-8 rounded-full flex items-center justify-center text-zinc-500 active:scale-95 active:text-accent-light active:bg-zinc-900 transition-all touch-manipulation"
@@ -86,6 +99,7 @@ export default function Header({ pathname, onOpenProfile }) {
             </span>
           </span>
           <button
+            type="button"
             onClick={resetView}
             className="shrink-0 flex items-center gap-1 rounded-full border border-accent/40 px-2.5 py-0.5 text-[11px] font-medium text-accent-light active:bg-accent/20"
           >
