@@ -25,21 +25,55 @@ export default function EditProfileSheet({ open, onClose, barber, onSaved }) {
     setSaving(true);
     setError('');
     try {
+      const barberId = barber?.id;
+      if (!barberId) {
+        setError('Identificador do perfil não encontrado. Recarregue a página.');
+        setSaving(false);
+        return;
+      }
+
       let avatarUrl = barber.avatar_url || null;
 
+      // 1. Processa upload da foto de perfil se um ficheiro novo foi selecionado
       if (pendingFile) {
         const formData = new FormData();
         formData.append('file', pendingFile);
-        avatarUrl = await uploadBarberAvatar(barber.id, formData);
+        const uploadRes = await uploadBarberAvatar(barberId, formData);
+
+        if (!uploadRes?.success) {
+          setError(uploadRes?.error || 'Falha ao salvar foto de perfil.');
+          setSaving(false);
+          return;
+        }
+
+        avatarUrl = uploadRes.avatarUrl;
       }
 
-      if (name.trim() !== barber.name) {
-        await updateOwnProfile(barber.id, { name });
+      // 2. Processa atualização do nome se houver alteração
+      const cleanName = (name || '').trim();
+      if (!cleanName) {
+        setError('O nome do barbeiro é obrigatório.');
+        setSaving(false);
+        return;
       }
 
-      onSaved({ ...barber, name: name.trim() || barber.name, avatar_url: avatarUrl });
+      if (cleanName !== barber.name) {
+        const updateRes = await updateOwnProfile(barberId, { name: cleanName });
+        if (!updateRes?.success) {
+          setError(updateRes?.error || 'Falha ao salvar o novo nome.');
+          setSaving(false);
+          return;
+        }
+      }
+
+      onSaved({
+        ...barber,
+        name: cleanName || barber.name,
+        avatar_url: avatarUrl,
+      });
     } catch (err) {
-      setError(err.message);
+      console.error('[EditProfileSheet] Erro ao salvar alterações:', err);
+      setError(err?.message || 'Erro inesperado ao salvar alterações do perfil.');
     } finally {
       setSaving(false);
     }
