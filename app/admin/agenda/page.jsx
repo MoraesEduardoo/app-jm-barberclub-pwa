@@ -17,6 +17,8 @@ import DateStepper from "@/components/admin/DateStepper";
 import AppointmentCard from "@/components/admin/AppointmentCard";
 import PaymentSheet from "@/components/admin/PaymentSheet";
 import WalkInSheet from "@/components/admin/WalkInSheet";
+import AgendaDashboardWidget from "@/components/admin/AgendaDashboardWidget";
+import { toast } from "@/lib/toast";
 
 export default function AgendaPage() {
   const { can, scopeBarberId, viewedBarber } = useBarber();
@@ -119,15 +121,24 @@ export default function AgendaPage() {
       }
 
       if (!response?.success) {
-        setActionError(response?.error || "Não foi possível atualizar o status.");
+        const msg = response?.error || "Não foi possível atualizar o status.";
+        setActionError(msg);
+        toast.error(msg);
         return;
       }
 
       setAppointments((prev) =>
         prev.map((a) => (a.id === id ? { ...a, status } : a)),
       );
+      toast.success(
+        status === "confirmado"
+          ? "Agendamento confirmado com sucesso!"
+          : "Agendamento cancelado com sucesso."
+      );
     } catch {
-      setActionError("Sem conexão. Não foi possível atualizar o status.");
+      const msg = "Sem conexão. Não foi possível atualizar o status.";
+      setActionError(msg);
+      toast.error(msg);
     } finally {
       setBusyId(null);
     }
@@ -151,13 +162,18 @@ export default function AgendaPage() {
       }
 
       if (!response?.success) {
-        setActionError(response?.error || "Não foi possível excluir o agendamento.");
+        const msg = response?.error || "Não foi possível excluir o agendamento.";
+        setActionError(msg);
+        toast.error(msg);
         return;
       }
 
       setAppointments((prev) => prev.filter((a) => a.id !== id));
+      toast.success("Agendamento excluído do histórico.");
     } catch {
-      setActionError("Sem conexão. Não foi possível excluir o agendamento.");
+      const msg = "Sem conexão. Não foi possível excluir o agendamento.";
+      setActionError(msg);
+      toast.error(msg);
     } finally {
       setBusyId(null);
     }
@@ -178,6 +194,11 @@ export default function AgendaPage() {
   return (
     <div className="px-4 pt-4 relative">
       <DateStepper value={date} onChange={setDate} />
+
+      {/* Dashboard Dinâmico de Performance & Ocupação */}
+      <div className="mt-3">
+        <AgendaDashboardWidget appointments={appointments} isToday={isToday} />
+      </div>
 
       {actionError && (
         <div

@@ -1,39 +1,105 @@
 'use client';
 
-import { CalendarPlus, Zap, RefreshCcw, X } from 'lucide-react';
+import {
+  CalendarPlus,
+  Zap,
+  RefreshCcw,
+  CheckCircle2,
+  AlertCircle,
+  AlertTriangle,
+  Info,
+  X,
+} from 'lucide-react';
 import { useNotifications } from '@/lib/notifications';
 
-const ICONS = {
-  new_appointment: CalendarPlus,
-  walk_in: Zap,
-  status_change: RefreshCcw,
+const TOAST_CONFIG = {
+  success: {
+    icon: CheckCircle2,
+    iconClass: 'text-emerald-400',
+    borderClass: 'border-emerald-500/30',
+    accentClass: 'bg-emerald-500',
+  },
+  error: {
+    icon: AlertCircle,
+    iconClass: 'text-red-400',
+    borderClass: 'border-red-500/40',
+    accentClass: 'bg-red-500',
+  },
+  warning: {
+    icon: AlertTriangle,
+    iconClass: 'text-amber-400',
+    borderClass: 'border-amber-500/30',
+    accentClass: 'bg-amber-500',
+  },
+  info: {
+    icon: Info,
+    iconClass: 'text-blue-400',
+    borderClass: 'border-blue-500/30',
+    accentClass: 'bg-blue-500',
+  },
+  new_appointment: {
+    icon: CalendarPlus,
+    iconClass: 'text-red-400',
+    borderClass: 'border-red-500/40',
+    accentClass: 'bg-red-500',
+  },
+  walk_in: {
+    icon: Zap,
+    iconClass: 'text-amber-400',
+    borderClass: 'border-amber-500/40',
+    accentClass: 'bg-amber-500',
+  },
+  status_change: {
+    icon: RefreshCcw,
+    iconClass: 'text-zinc-300',
+    borderClass: 'border-zinc-700/60',
+    accentClass: 'bg-zinc-400',
+  },
 };
 
 /**
- * Alertas visuais que aparecem sozinhos no topo da tela quando chega um
- * evento em tempo real (novo agendamento, walk-in, mudança de status) e
- * somem depois de alguns segundos — não exigem que o barbeiro abra o sino.
+ * ToastStack:
+ * Notificações flutuantes modernas com tokens de design refinados:
+ * fundo escuro #0f0f0f, detalhes em vermelho vivo/acentos temáticos e alto contraste.
  */
 export default function ToastStack() {
   const { toasts, dismissToast } = useNotifications();
 
-  if (toasts.length === 0) return null;
+  if (!toasts || toasts.length === 0) return null;
 
   return (
-    <div className="fixed top-[calc(env(safe-area-inset-top,0px)+62px)] inset-x-0 z-50 flex flex-col items-center gap-2 px-4 pointer-events-none">
+    <div
+      aria-live="polite"
+      className="fixed top-[calc(env(safe-area-inset-top,0px)+62px)] inset-x-0 z-50 flex flex-col items-center gap-2 px-4 pointer-events-none"
+    >
       {toasts.map((toast) => {
-        const Icon = ICONS[toast.type] || CalendarPlus;
+        const config = TOAST_CONFIG[toast.type] || TOAST_CONFIG.info;
+        const Icon = config.icon;
+
         return (
           <div
             key={toast.toastId}
-            className="pointer-events-auto w-full max-w-sm flex items-center gap-2.5 bg-elevated border border-accent/30 rounded-xl px-3.5 py-3 shadow-accent-glow animate-fade-in"
+            role="status"
+            className={`pointer-events-auto w-full max-w-sm flex items-center gap-3 bg-[#0f0f0f]/95 backdrop-blur-md border ${config.borderClass} rounded-2xl px-4 py-3 shadow-xl transition-all animate-fade-in relative overflow-hidden`}
           >
-            <Icon size={16} className="text-accent-light shrink-0" />
-            <p className="flex-1 text-white text-xs font-medium">{toast.message}</p>
+            {/* Linha indicadora sutil no topo do card */}
+            <div
+              className={`absolute top-0 left-0 right-0 h-[2px] ${config.accentClass} opacity-80`}
+            />
+
+            <div className="shrink-0 p-1.5 rounded-xl bg-zinc-900/90 border border-zinc-800">
+              <Icon size={16} className={config.iconClass} />
+            </div>
+
+            <p className="flex-1 text-zinc-100 text-xs font-medium leading-relaxed">
+              {toast.message}
+            </p>
+
             <button
+              type="button"
               onClick={() => dismissToast(toast.toastId)}
-              aria-label="Fechar"
-              className="text-zinc-500 shrink-0"
+              aria-label="Fechar notificação"
+              className="text-zinc-500 hover:text-white p-1 rounded-lg transition-colors shrink-0"
             >
               <X size={14} />
             </button>

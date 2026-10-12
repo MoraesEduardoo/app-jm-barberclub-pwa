@@ -10,7 +10,6 @@ import {
   CalendarPlus,
   Zap,
   RefreshCcw,
-  Send,
   Loader2,
   RotateCcw,
 } from 'lucide-react';
@@ -203,8 +202,6 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [pushStatus, setPushStatus] = useState('checking'); // checking | subscribed | unsubscribed | denied | unsupported | error
   const [busy, setBusy] = useState(false);
-  const [testSending, setTestSending] = useState(false);
-  const [testSentFeedback, setTestSentFeedback] = useState(false);
   const [feedbackError, setFeedbackError] = useState('');
 
   // Sincroniza o estado de inscrição Push
@@ -387,37 +384,6 @@ export default function NotificationBell() {
     }
   }
 
-  // Disparo de notificação de teste
-  async function handleSendTest() {
-    setTestSending(true);
-    setTestSentFeedback(false);
-    setFeedbackError('');
-
-    try {
-      const response = await fetch('/api/push/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: 'JM Barberclub — Teste Push',
-          body: `Olá, ${barber?.name || 'barbeiro'}! Suas notificações push estão ativas e funcionando perfeitamente.`,
-          barberId: barber?.id,
-        }),
-      });
-
-      const res = await response.json();
-      if (res.success) {
-        setTestSentFeedback(true);
-        setTimeout(() => setTestSentFeedback(false), 4000);
-      } else {
-        setFeedbackError(res.message || 'Inscrição ainda não vinculada ao servidor.');
-      }
-    } catch {
-      setFeedbackError('Falha ao disparar teste de notificação.');
-    } finally {
-      setTestSending(false);
-    }
-  }
-
   const isSubscribed = pushStatus === 'subscribed';
 
   return (
@@ -524,51 +490,28 @@ export default function NotificationBell() {
               </div>
             )}
 
-            {testSentFeedback && (
-              <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl px-3 py-2 text-xs">
-                <CheckCircle2 size={14} className="shrink-0" />
-                <span>Notificação de teste enviada com sucesso!</span>
-              </div>
-            )}
-
             {/* Ações de Controle */}
-            <div className="grid grid-cols-2 gap-2 pt-1">
+            <div className="pt-1">
               {isSubscribed ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleUnsubscribe}
-                    disabled={busy}
-                    className="flex items-center justify-center gap-1.5 h-11 rounded-xl bg-elevated border border-zinc-700/80 text-zinc-300 text-xs font-semibold active:bg-zinc-900 transition-all touch-manipulation disabled:opacity-50"
-                  >
-                    {busy ? (
-                      <Loader2 size={14} className="animate-spin" />
-                    ) : (
-                      <BellOff size={14} />
-                    )}
-                    <span>Desativar</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleSendTest}
-                    disabled={testSending}
-                    className="flex items-center justify-center gap-1.5 h-11 rounded-xl bg-red-600 text-white text-xs font-semibold active:bg-red-700 transition-all touch-manipulation shadow-sm disabled:opacity-50"
-                  >
-                    {testSending ? (
-                      <Loader2 size={14} className="animate-spin" />
-                    ) : (
-                      <Send size={14} />
-                    )}
-                    <span>Testar push</span>
-                  </button>
-                </>
+                <button
+                  type="button"
+                  onClick={handleUnsubscribe}
+                  disabled={busy}
+                  className="w-full flex items-center justify-center gap-2 h-11 rounded-xl bg-elevated hover:bg-zinc-800 border border-zinc-700/80 text-zinc-300 hover:text-white text-xs font-semibold active:bg-zinc-900 transition-all touch-manipulation disabled:opacity-50"
+                >
+                  {busy ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <BellOff size={14} />
+                  )}
+                  <span>Desativar notificações</span>
+                </button>
               ) : pushStatus === 'denied' ? (
-                <div className="col-span-2 flex items-center justify-center p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800 text-zinc-400 text-xs text-center">
+                <div className="w-full flex items-center justify-center p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800 text-zinc-400 text-xs text-center">
                   Permissão bloqueada no navegador. Abra as configurações do site e altere Notificações para &quot;Permitir&quot;.
                 </div>
               ) : pushStatus === 'unsupported' ? (
-                <div className="col-span-2 flex items-center justify-center p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800 text-zinc-400 text-xs text-center">
+                <div className="w-full flex items-center justify-center p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800 text-zinc-400 text-xs text-center">
                   Este navegador não possui suporte a Web Push Notifications.
                 </div>
               ) : (
@@ -576,7 +519,7 @@ export default function NotificationBell() {
                   type="button"
                   onClick={handleSubscribe}
                   disabled={busy}
-                  className="col-span-2 flex items-center justify-center gap-2 h-11 rounded-xl bg-red-600 text-white text-xs font-bold active:bg-red-700 transition-all touch-manipulation shadow-sm disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-2 h-11 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold active:bg-red-700 transition-all touch-manipulation shadow-sm disabled:opacity-50"
                 >
                   {busy ? (
                     <Loader2 size={14} className="animate-spin" />

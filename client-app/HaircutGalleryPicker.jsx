@@ -119,12 +119,22 @@ export default function HaircutGalleryPicker({
 
   const selectedId = value?.id || value;
 
+  function triggerHaptic(duration = 10) {
+    if (typeof navigator !== "undefined" && navigator.vibrate) {
+      try {
+        navigator.vibrate(duration);
+      } catch {}
+    }
+  }
+
   function handleSelect(item) {
+    triggerHaptic(18);
     if (onChange) onChange(item.id);
     if (onSelect) onSelect(item);
   }
 
   function handleClear() {
+    triggerHaptic(8);
     if (onChange) onChange(null);
     if (onSelect) onSelect(null);
     if (onSkip) onSkip();
@@ -140,8 +150,11 @@ export default function HaircutGalleryPicker({
             <button
               key={cat.value}
               type="button"
-              onClick={() => setCategory(cat.value)}
-              className={`shrink-0 h-8 rounded-full px-3.5 text-xs font-medium border transition-all touch-manipulation select-none ${
+              onClick={() => {
+                triggerHaptic(8);
+                setCategory(cat.value);
+              }}
+              className={`shrink-0 h-8 rounded-full px-3.5 text-xs font-medium border transition-all duration-150 active:scale-95 touch-manipulation select-none ${
                 active
                   ? "bg-red-600 text-white border-red-600 shadow-sm shadow-red-900/40"
                   : "bg-zinc-900 border-zinc-800 text-zinc-300 active:bg-zinc-800"

@@ -1,13 +1,39 @@
 {
   "name": "JM Barberclub — Painel do Barbeiro",
-  "short_name": "Painel Barbeiro",
-  "description": "Painel administrativo exclusivo da equipe da barbearia",
-  "start_url": "/admin",
+  "short_name": "JM Barberclub",
+  "description": "Sistema de gestão e agendamento de alta performance para a Barbearia JM",
+  "start_url": "/admin/agenda",
   "scope": "/",
   "display": "standalone",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone",
+    "minimal-ui"
+  ],
   "orientation": "portrait",
   "background_color": "#000000",
-  "theme_color": "#000000",
+  "theme_color": "#0f0f0f",
+  "categories": ["business", "productivity", "lifestyle"],
+  "shortcuts": [
+    {
+      "name": "Agenda de Hoje",
+      "short_name": "Agenda",
+      "url": "/admin/agenda",
+      "icons": [{ "src": "/icons/logo-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Financeiro & Caixa",
+      "short_name": "Financeiro",
+      "url": "/admin/financeiro",
+      "icons": [{ "src": "/icons/logo-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Galeria de Cortes",
+      "short_name": "Galeria",
+      "url": "/admin/galeria",
+      "icons": [{ "src": "/icons/logo-192.png", "sizes": "192x192" }]
+    }
+  ],
   "icons": [
     {
       "src": "/icons/logo-192.png",
