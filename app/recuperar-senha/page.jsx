@@ -6,6 +6,7 @@ export const metadata = { title: "Esqueci a senha — JM Barberclub", robots: { 
 const LINK_ERRORS = {
   link: "Esse link expirou ou já foi usado. Peça um novo ao chefe ou use um código de recuperação.",
   rede: "Não foi possível validar o link agora. Tente abrir de novo.",
+  limite: "Muitas tentativas a partir deste endereço IP. Aguarde alguns minutos antes de tentar novamente.",
 };
 
 export default function RecuperarSenhaPage({ searchParams }) {
