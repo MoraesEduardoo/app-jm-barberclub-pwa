@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { UserPlus, AlertCircle, RefreshCcw } from "lucide-react";
+import { UserPlus, AlertCircle, RefreshCcw, Clock, Sparkles } from "lucide-react";
 import { useBarber } from "@/lib/barber-context";
 import { useNotifications } from "@/lib/notifications";
 import { endSession } from "@/lib/session";
@@ -17,6 +17,8 @@ import DateStepper from "@/components/admin/DateStepper";
 import AppointmentCard from "@/components/admin/AppointmentCard";
 import PaymentSheet from "@/components/admin/PaymentSheet";
 import WalkInSheet from "@/components/admin/WalkInSheet";
+import WaitlistSheet from "@/components/admin/WaitlistSheet";
+import ClientCyclesSheet from "@/components/admin/ClientCyclesSheet";
 import AgendaDashboardWidget from "@/components/admin/AgendaDashboardWidget";
 import { toast } from "@/lib/toast";
 
@@ -33,6 +35,8 @@ export default function AgendaPage() {
   const [busyId, setBusyId] = useState(null); // agendamento com ação em andamento
   const [paymentTarget, setPaymentTarget] = useState(null);
   const [walkInOpen, setWalkInOpen] = useState(false);
+  const [waitlistOpen, setWaitlistOpen] = useState(false);
+  const [cyclesOpen, setCyclesOpen] = useState(false);
   const [team, setTeam] = useState([]);
   const requestIdRef = useRef(0);
 
@@ -200,6 +204,27 @@ export default function AgendaPage() {
         <AgendaDashboardWidget appointments={appointments} isToday={isToday} />
       </div>
 
+      {/* Ações de Gestão de Fluxo: Lista de Espera & Ciclos de Retorno */}
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => setWaitlistOpen(true)}
+          className="flex items-center justify-center gap-1.5 h-10 px-3 rounded-xl bg-surface border border-zinc-800 text-xs font-semibold text-white active:scale-95 active:bg-elevated transition-all touch-manipulation select-none"
+        >
+          <Clock size={14} className="text-accent" />
+          Fila de espera
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setCyclesOpen(true)}
+          className="flex items-center justify-center gap-1.5 h-10 px-3 rounded-xl bg-surface border border-zinc-800 text-xs font-semibold text-white active:scale-95 active:bg-elevated transition-all touch-manipulation select-none"
+        >
+          <Sparkles size={14} className="text-emerald-400" />
+          Lembretes (Retorno)
+        </button>
+      </div>
+
       {actionError && (
         <div
           role="alert"
@@ -282,6 +307,24 @@ export default function AgendaPage() {
         team={team}
         canPickBarber={canViewAll}
         existingAppointments={appointments}
+      />
+
+      <WaitlistSheet
+        open={waitlistOpen}
+        onClose={() => {
+          setWaitlistOpen(false);
+          load({ silent: true });
+        }}
+        date={date}
+        barber={viewedBarber}
+        team={team}
+        canPickBarber={canViewAll}
+      />
+
+      <ClientCyclesSheet
+        open={cyclesOpen}
+        onClose={() => setCyclesOpen(false)}
+        scopeBarberId={scopeBarberId}
       />
     </div>
   );

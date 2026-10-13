@@ -8,7 +8,7 @@ import { FormField, TextInput, PrimaryButton } from "./FormField";
 import { listServices } from "@/lib/actions/services";
 import { listSchedule } from "@/lib/actions/schedule";
 import { createWalkInAppointment } from "@/lib/actions/appointments";
-import { dayOfWeekFromDate } from "@/lib/constants/schedule";
+import { dayOfWeekFromDate, CLEANING_BUFFER_MINUTES } from "@/lib/constants/schedule";
 import { generateAvailableSlots, roundUpToNextSlot } from "@/lib/slots";
 
 export default function WalkInSheet({
@@ -70,7 +70,7 @@ export default function WalkInSheet({
       daySchedule,
       busyRanges,
       selectedService.default_duration_minutes,
-      { nowTime: roundUpToNextSlot() },
+      { nowTime: roundUpToNextSlot(), bufferMinutes: CLEANING_BUFFER_MINUTES },
     );
   }, [useNow, daySchedule, selectedService, existingAppointments, barberId]);
 
@@ -144,7 +144,7 @@ export default function WalkInSheet({
             <option value="">Selecione…</option>
             {services.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.name} — {s.default_duration_minutes} min
+                {s.name} — {s.default_duration_minutes} min (+ {CLEANING_BUFFER_MINUTES} min higienização)
               </option>
             ))}
           </select>
