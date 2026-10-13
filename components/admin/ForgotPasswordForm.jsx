@@ -79,9 +79,9 @@ export default function ForgotPasswordForm({ initialError = "" }) {
       </div>
 
       <div className="text-center max-w-xs">
-        <h1 className="text-white font-semibold text-lg">Esqueci a minha senha</h1>
+        <h1 className="text-white font-semibold text-lg">Primeiro Acesso ou Nova Senha</h1>
         <p className="text-zinc-500 text-sm mt-1">
-          Use um dos seus códigos de recuperação para criar uma nova senha.
+          Use um código de recuperação para ativar o seu acesso ou definir uma nova senha.
         </p>
       </div>
 

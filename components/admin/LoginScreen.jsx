@@ -115,12 +115,12 @@ export default function LoginScreen({ onSuccess }) {
           )}
         </button>
 
-        <div className="mt-6 text-center">
+        <div className="mt-6 text-center space-y-2">
           <Link
             href="/recuperar-senha"
-            className="text-sm text-zinc-500 hover:text-white transition-colors"
+            className="text-sm text-zinc-500 hover:text-white transition-colors block"
           >
-            Esqueci a minha senha
+            Primeiro acesso ou recuperar senha
           </Link>
         </div>
       </form>

@@ -159,3 +159,13 @@ FULL OUTER JOIN monthly_expenses e ON r.month_ref = e.month_ref
 ORDER BY month_ref DESC;
 
 COMMENT ON VIEW view_monthly_cash_flow IS 'Consolidação de receitas de serviços, despesas operacionais e lucro líquido mensal.';
+
+-- ------------------------------------------------------------------------------
+-- 5. PERMISSÕES DE LEITURA (GRANTS) NAS VISTAS ANALÍTICAS
+-- Garante que o PostgREST e conexões autenticadas consigam consultar as vistas.
+-- ------------------------------------------------------------------------------
+GRANT SELECT ON view_daily_agenda TO authenticated, anon;
+GRANT SELECT ON view_barber_performance TO authenticated, anon;
+GRANT SELECT ON view_client_return_cycles TO authenticated, anon;
+GRANT SELECT ON view_monthly_cash_flow TO authenticated;
+
