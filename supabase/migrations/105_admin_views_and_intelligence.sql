@@ -93,17 +93,17 @@ client_intervals AS (
     SELECT 
         client_phone,
         client_name,
-        appointment_date - previous_appointment_date AS days_interval
+        appointment_date,
+        (appointment_date - previous_appointment_date) AS days_interval
     FROM appointments_ranked
-    WHERE previous_appointment_date IS NOT NULL
 ),
 client_summary AS (
     SELECT 
         client_phone,
         MAX(client_name) AS client_name,
-        COUNT(*) + 1 AS total_appointments,
+        COUNT(appointment_date) AS total_appointments,
         MAX(appointment_date) AS last_appointment_date,
-        ROUND(AVG(days_interval), 1) AS avg_days_between_cuts
+        ROUND(AVG(days_interval) FILTER (WHERE days_interval IS NOT NULL), 1) AS avg_days_between_cuts
     FROM client_intervals
     GROUP BY client_phone
 )
