@@ -8,8 +8,8 @@ import { FormField, TextInput, PrimaryButton } from "./FormField";
 import { listServices } from "@/lib/actions/services";
 import { listSchedule } from "@/lib/actions/schedule";
 import { createWalkInAppointment } from "@/lib/actions/appointments";
-import { dayOfWeekFromDate, CLEANING_BUFFER_MINUTES } from "@/lib/constants/schedule";
-import { generateAvailableSlots, roundUpToNextSlot } from "@/lib/slots";
+import { dayOfWeekFromDate } from "@/lib/constants/schedule";
+import { generateAvailableSlots, roundUpToNextSlot, extractBusyRangesFromAppointments } from "@/lib/slots";
 
 export default function WalkInSheet({
   open,
@@ -56,21 +56,13 @@ export default function WalkInSheet({
 
   const availableSlots = useMemo(() => {
     if (useNow || !daySchedule || !selectedService) return [];
-    const busyRanges = (existingAppointments || [])
-      .filter((a) => a.barbers?.id === barberId && a.status !== "cancelado")
-      .map((a) => {
-        const start = new Date(a.appointment_date);
-        const startTime = start.toTimeString().slice(0, 5);
-        const durationMin = a.services?.default_duration_minutes || 30;
-        const end = new Date(start.getTime() + durationMin * 60000);
-        return { start: startTime, end: end.toTimeString().slice(0, 5) };
-      });
+    const busyRanges = extractBusyRangesFromAppointments(existingAppointments, barberId);
 
     return generateAvailableSlots(
       daySchedule,
       busyRanges,
       selectedService.default_duration_minutes,
-      { nowTime: roundUpToNextSlot(), bufferMinutes: CLEANING_BUFFER_MINUTES },
+      { nowTime: roundUpToNextSlot() },
     );
   }, [useNow, daySchedule, selectedService, existingAppointments, barberId]);
 

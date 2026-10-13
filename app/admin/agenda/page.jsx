@@ -137,7 +137,7 @@ export default function AgendaPage() {
       toast.success(
         status === "confirmado"
           ? "Agendamento confirmado com sucesso!"
-          : "Agendamento cancelado com sucesso."
+          : "Agendamento cancelado. Vaga liberada na agenda!"
       );
     } catch {
       const msg = "Sem conexão. Não foi possível atualizar o status.";
