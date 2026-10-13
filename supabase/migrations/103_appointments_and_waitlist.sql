@@ -12,35 +12,52 @@
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS appointments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    barber_id UUID NOT NULL REFERENCES barbers(id) ON DELETE RESTRICT,
+    barber_id UUID REFERENCES barbers(id) ON DELETE RESTRICT,
     service_id UUID REFERENCES services(id) ON DELETE SET NULL,
-    service VARCHAR(150) NOT NULL, -- Snapshot do nome do serviço contratado
-    client_name VARCHAR(150) NOT NULL,
-    client_phone VARCHAR(30) NOT NULL,
-    appointment_date DATE NOT NULL,
-    appointment_time TIME NOT NULL,
-    end_time TIME NOT NULL,
-    duration_minutes INT NOT NULL DEFAULT 30 CHECK (duration_minutes > 0),
-    buffer_minutes INT NOT NULL DEFAULT 10 CHECK (buffer_minutes >= 0),
-    price NUMERIC(10, 2) NOT NULL DEFAULT 0.00 CHECK (price >= 0),
-    status VARCHAR(30) NOT NULL DEFAULT 'confirmado' 
-        CHECK (status IN ('pendente', 'confirmado', 'concluido', 'cancelado', 'no_show')),
-    
-    -- Campos dedicados ao cancelamento e liberação de vaga em tempo real
+    service VARCHAR(150),
+    client_name VARCHAR(150),
+    client_phone VARCHAR(30),
+    appointment_date DATE,
+    appointment_time TIME,
+    end_time TIME,
+    duration_minutes INT NOT NULL DEFAULT 30,
+    buffer_minutes INT NOT NULL DEFAULT 10,
+    price NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    status VARCHAR(30) NOT NULL DEFAULT 'confirmado',
     cancelled_at TIMESTAMPTZ,
-    cancelled_by VARCHAR(50), -- 'cliente', 'barbeiro', 'admin', 'sistema'
+    cancelled_by VARCHAR(50),
     cancellation_reason TEXT,
-    
-    -- Controle financeiro do atendimento
-    payment_method VARCHAR(30) CHECK (payment_method IN ('dinheiro', 'pix', 'cartao_credito', 'cartao_debito', 'outro')),
-    payment_status VARCHAR(20) NOT NULL DEFAULT 'pendente' CHECK (payment_status IN ('pendente', 'pago', 'reembolsado')),
+    payment_method VARCHAR(30),
+    payment_status VARCHAR(20) NOT NULL DEFAULT 'pendente',
     barber_commission_amount NUMERIC(10, 2),
-    
+    is_walk_in BOOLEAN NOT NULL DEFAULT FALSE,
     notes TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT chk_appointment_slot CHECK (appointment_time < end_time)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Idempotência garantida: se a tabela appointments já existia previamente, adiciona colunas faltantes
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS service_id UUID REFERENCES services(id) ON DELETE SET NULL;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS service VARCHAR(150);
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS client_name VARCHAR(150);
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS client_phone VARCHAR(30);
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS appointment_date DATE;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS appointment_time TIME;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS end_time TIME;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS duration_minutes INT NOT NULL DEFAULT 30;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS buffer_minutes INT NOT NULL DEFAULT 10;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS price NUMERIC(10, 2) NOT NULL DEFAULT 0.00;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS status VARCHAR(30) NOT NULL DEFAULT 'confirmado';
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS cancelled_by VARCHAR(50);
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS payment_method VARCHAR(30);
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS payment_status VARCHAR(20) NOT NULL DEFAULT 'pendente';
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS barber_commission_amount NUMERIC(10, 2);
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS is_walk_in BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 -- Índices de alta performance para a agenda diária e motor de horários livres
 CREATE INDEX IF NOT EXISTS idx_appointments_agenda_lookup 

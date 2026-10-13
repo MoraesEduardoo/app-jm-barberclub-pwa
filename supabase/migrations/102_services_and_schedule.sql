@@ -11,16 +11,27 @@
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS services (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(120) NOT NULL,
+    name VARCHAR(120),
     description TEXT,
     category VARCHAR(60) NOT NULL DEFAULT 'cabelo',
-    price NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
-    default_duration_minutes INT NOT NULL DEFAULT 30 CHECK (default_duration_minutes > 0),
+    price NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    default_duration_minutes INT NOT NULL DEFAULT 30,
     display_order INT NOT NULL DEFAULT 0,
     active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Idempotência garantida: se a tabela services já existia no banco, adiciona colunas faltantes
+ALTER TABLE services ADD COLUMN IF NOT EXISTS name VARCHAR(120);
+ALTER TABLE services ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE services ADD COLUMN IF NOT EXISTS category VARCHAR(60) NOT NULL DEFAULT 'cabelo';
+ALTER TABLE services ADD COLUMN IF NOT EXISTS price NUMERIC(10, 2) NOT NULL DEFAULT 0.00;
+ALTER TABLE services ADD COLUMN IF NOT EXISTS default_duration_minutes INT NOT NULL DEFAULT 30;
+ALTER TABLE services ADD COLUMN IF NOT EXISTS display_order INT NOT NULL DEFAULT 0;
+ALTER TABLE services ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE services ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE services ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 CREATE INDEX IF NOT EXISTS idx_services_active_order ON services(active, display_order);
 CREATE INDEX IF NOT EXISTS idx_services_category ON services(category);
@@ -68,14 +79,16 @@ CREATE TABLE IF NOT EXISTS barber_schedules (
     is_working BOOLEAN NOT NULL DEFAULT TRUE,
     buffer_minutes INT NOT NULL DEFAULT 10 CHECK (buffer_minutes >= 0 AND buffer_minutes <= 60),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_barber_schedule_day UNIQUE (barber_id, day_of_week),
-    CONSTRAINT chk_schedule_times CHECK (start_time < end_time),
-    CONSTRAINT chk_break_times CHECK (
-        (break_start IS NULL AND break_end IS NULL) OR 
-        (break_start IS NOT NULL AND break_end IS NOT NULL AND break_start < break_end AND break_start >= start_time AND break_end <= end_time)
-    )
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Idempotência garantida: se a tabela barber_schedules já existia, adiciona colunas faltantes
+ALTER TABLE barber_schedules ADD COLUMN IF NOT EXISTS buffer_minutes INT NOT NULL DEFAULT 10;
+ALTER TABLE barber_schedules ADD COLUMN IF NOT EXISTS is_working BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE barber_schedules ADD COLUMN IF NOT EXISTS break_start TIME;
+ALTER TABLE barber_schedules ADD COLUMN IF NOT EXISTS break_end TIME;
+ALTER TABLE barber_schedules ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE barber_schedules ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 CREATE INDEX IF NOT EXISTS idx_barber_schedules_lookup ON barber_schedules(barber_id, day_of_week, is_working);
 

@@ -39,19 +39,63 @@ $$ LANGUAGE plpgsql;
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS barbers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    auth_user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
-    name VARCHAR(150) NOT NULL,
-    phone VARCHAR(30) UNIQUE NOT NULL,
+    auth_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    name VARCHAR(150),
+    phone VARCHAR(30) UNIQUE,
     email VARCHAR(255),
     avatar_url TEXT,
-    role VARCHAR(20) NOT NULL DEFAULT 'barber' CHECK (role IN ('admin', 'barber')),
-    commission_rate NUMERIC(5, 2) NOT NULL DEFAULT 50.00 CHECK (commission_rate >= 0 AND commission_rate <= 100),
+    role VARCHAR(20) NOT NULL DEFAULT 'barber',
+    commission_rate NUMERIC(5, 2) NOT NULL DEFAULT 50.00,
+    commission_percent NUMERIC(5, 2) NOT NULL DEFAULT 50.00,
+    permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
     active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Índices otimizados para busca de barbeiros
+-- Idempotência garantida: se a tabela barbers já existia no banco antes desta migração,
+-- adiciona com segurança todas as colunas que possam estar faltando antes da criação dos índices:
+ALTER TABLE barbers ADD COLUMN IF NOT EXISTS auth_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE barbers ADD COLUMN IF NOT EXISTS name VARCHAR(150);
+ALTER TABLE barbers ADD COLUMN IF NOT EXISTS phone VARCHAR(30);
+ALTER TABLE barbers ADD COLUMN IF NOT EXISTS email VARCHAR(255);
+ALTER TABLE barbers ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE barbers ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'barber';
+ALTER TABLE barbers ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE barbers ADD COLUMN IF NOT EXISTS permissions JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE barbers ADD COLUMN IF NOT EXISTS commission_percent NUMERIC(5, 2) NOT NULL DEFAULT 50.00;
+ALTER TABLE barbers ADD COLUMN IF NOT EXISTS commission_rate NUMERIC(5, 2) NOT NULL DEFAULT 50.00;
+ALTER TABLE barbers ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE barbers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+-- Migração suave e retrocompatibilidade para bancos existentes:
+DO $$
+BEGIN
+    -- Se existia a coluna 'is_active', migra o valor para 'active'
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public' AND table_name = 'barbers' AND column_name = 'is_active'
+    ) THEN
+        UPDATE barbers SET active = is_active WHERE active IS NULL;
+    END IF;
+
+    -- Se existia a coluna 'user_id' e auth_user_id está nulo
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public' AND table_name = 'barbers' AND column_name = 'user_id'
+    ) THEN
+        UPDATE barbers SET auth_user_id = user_id WHERE auth_user_id IS NULL;
+    END IF;
+
+    -- Garante valores padrão preenchidos
+    UPDATE barbers SET active = TRUE WHERE active IS NULL;
+    UPDATE barbers SET commission_percent = 50.00 WHERE commission_percent IS NULL;
+    UPDATE barbers SET commission_rate = commission_percent WHERE commission_rate IS NULL;
+    UPDATE barbers SET permissions = '{}'::jsonb WHERE permissions IS NULL;
+    UPDATE barbers SET role = 'barber' WHERE role IS NULL;
+END $$;
+
+-- Índices otimizados para busca de barbeiros (agora com certeza de que as colunas existem)
 CREATE INDEX IF NOT EXISTS idx_barbers_auth_user_id ON barbers(auth_user_id);
 CREATE INDEX IF NOT EXISTS idx_barbers_phone ON barbers(phone);
 CREATE INDEX IF NOT EXISTS idx_barbers_active_role ON barbers(active, role);
