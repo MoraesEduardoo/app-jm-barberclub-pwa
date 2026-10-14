@@ -124,7 +124,7 @@ export default function ExpedientePage() {
       await loadData(targetBarberId);
     } catch (error) {
       console.error("Erro ao salvar horários:", error);
-      alert("Ocorreu um erro ao salvar as mudanças. Tente novamente.");
+      alert(error?.message || "Ocorreu um erro ao salvar as mudanças. Tente novamente.");
     } finally {
       setIsSaving(false);
     }
