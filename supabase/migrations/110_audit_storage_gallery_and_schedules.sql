@@ -128,6 +128,33 @@ ALTER TABLE barber_schedules ADD COLUMN IF NOT EXISTS buffer_minutes INT NOT NUL
 ALTER TABLE barber_schedules ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE barber_schedules ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
+-- Remove quaisquer constraints CHECK antigas em day_of_week (ex: CHECK (day_of_week BETWEEN 0 AND 6))
+-- Isso evita o erro 'operator does not exist: character varying >= integer' ao mudar o tipo
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN (
+        SELECT c.conname
+        FROM pg_constraint c
+        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+        WHERE c.conrelid = 'barber_schedules'::regclass
+          AND c.contype = 'c'
+          AND a.attname = 'day_of_week'
+    ) LOOP
+        EXECUTE 'ALTER TABLE barber_schedules DROP CONSTRAINT IF EXISTS ' || quote_ident(r.conname);
+    END LOOP;
+
+    -- Quedas nominais adicionais por segurança
+    BEGIN
+        ALTER TABLE barber_schedules DROP CONSTRAINT IF EXISTS barber_schedules_day_of_week_check;
+        ALTER TABLE barber_schedules DROP CONSTRAINT IF EXISTS chk_day_of_week;
+        ALTER TABLE barber_schedules DROP CONSTRAINT IF EXISTS barber_schedules_day_check;
+    EXCEPTION WHEN OTHERS THEN
+        NULL;
+    END;
+END $$;
+
 -- Garante que day_of_week aceite strings (domingo, segunda, etc.) mesmo que tenha sido criado como SMALLINT
 DO $$
 BEGIN
