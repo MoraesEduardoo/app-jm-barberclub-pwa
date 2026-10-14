@@ -11,11 +11,13 @@ import {
   Users,
   Check,
   KeyRound,
+  Lock,
 } from "lucide-react";
 import BottomSheet from "./BottomSheet";
 import { todayInShop } from "@/lib/dates";
 import EditProfileSheet from "./EditProfileSheet";
 import RecoveryCodesSheet from "./RecoveryCodesSheet";
+import ChangePasswordSheet from "./ChangePasswordSheet";
 import { getFinanceSummary } from "@/lib/actions/finance";
 import { listTeam } from "@/lib/actions/team";
 
@@ -47,6 +49,7 @@ export default function ProfileSheet({
   const [summary, setSummary] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
   const [codesOpen, setCodesOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const [team, setTeam] = useState([]);
 
   // Identifica qual ID está sendo visualizado atualmente (o próprio ou o membro selecionado)
@@ -77,7 +80,7 @@ export default function ProfileSheet({
   return (
     <>
       <BottomSheet
-        open={open && !editOpen && !codesOpen}
+        open={open && !editOpen && !codesOpen && !passwordOpen}
         onClose={onClose}
         title="Meu perfil"
       >
@@ -189,20 +192,20 @@ export default function ProfileSheet({
         </button>
 
         <h3 className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-2 mt-6">
-          Segurança
+          Segurança da Conta
         </h3>
         <button
-          onClick={() => setCodesOpen(true)}
+          onClick={() => setPasswordOpen(true)}
           className="w-full flex items-center justify-between bg-elevated border border-zinc-800 rounded-xl px-4 py-3 active:scale-[0.99] active:bg-zinc-900 transition-all touch-manipulation select-none"
         >
           <span className="flex items-center gap-2 text-white text-sm font-medium">
-            <KeyRound size={15} className="text-zinc-400" /> Códigos de recuperação
+            <Lock size={15} className="text-zinc-400" /> Alterar minha senha
           </span>
           <ChevronRight size={16} className="text-zinc-500" />
         </button>
       </BottomSheet>
 
-      <RecoveryCodesSheet open={open && codesOpen} onClose={() => setCodesOpen(false)} />
+      <ChangePasswordSheet open={open && passwordOpen} onClose={() => setPasswordOpen(false)} />
 
       <EditProfileSheet
         open={editOpen}
