@@ -5,25 +5,19 @@ import BottomSheet from './BottomSheet';
 import { FormField, TextInput, PrimaryButton, GhostButton } from './FormField';
 import { createService, updateService, deleteService } from '@/lib/actions/services';
 
-/**
- * ServiceFormSheet:
- * Modal/BottomSheet para criação e edição de serviços do painel admin.
- *
- * CORREÇÃO CRÍTICA DE GESTÃO DE ESTADO:
- * Em componentes montados no React, hooks `useState(initialValue)` só avaliam o valor
- * inicial uma única vez durante a montagem inicial. Quando o usuário clica em um serviço
- * da lista, o modal recebia a prop `service`, mas os inputs continuavam com o estado
- * inicial vazio ('') ou desatualizado.
- *
- * O hook `useEffect` abaixo sincroniza os estados de `name`, `price` e `duration`
- * toda vez que `open` ou `service` mudar:
- * - Se `service` existir (modo Edição): injeta os dados reais do serviço nos inputs.
- * - Se `service` for nulo (modo Novo Serviço): reseta os campos para que os placeholders fiquem visíveis.
- */
+const CATEGORIES = [
+  { value: 'cabelo', label: 'Cabelo' },
+  { value: 'barba', label: 'Barba' },
+  { value: 'combo', label: 'Combo' },
+  { value: 'tratamento', label: 'Tratamento' },
+  { value: 'outros', label: 'Outros' },
+];
+
 export default function ServiceFormSheet({ open, onClose, service }) {
   const isEditing = Boolean(service && service.id);
 
   const [name, setName] = useState(service?.name || '');
+  const [category, setCategory] = useState(service?.category || 'cabelo');
   const [price, setPrice] = useState(
     service?.price !== undefined && service?.price !== null ? String(service.price) : ''
   );
@@ -35,11 +29,11 @@ export default function ServiceFormSheet({ open, onClose, service }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Sincronização obrigatória: popula os campos ao abrir o modal com um serviço selecionado
   useEffect(() => {
     if (open) {
       if (service) {
         setName(service.name || '');
+        setCategory(service.category || 'cabelo');
         setPrice(
           service.price !== undefined && service.price !== null
             ? String(service.price)
@@ -53,6 +47,7 @@ export default function ServiceFormSheet({ open, onClose, service }) {
         );
       } else {
         setName('');
+        setCategory('cabelo');
         setPrice('');
         setDuration('');
       }
@@ -73,6 +68,7 @@ export default function ServiceFormSheet({ open, onClose, service }) {
     try {
       const payload = {
         name: name.trim(),
+        category,
         price: Number(price),
         default_duration_minutes: Number(duration),
       };
@@ -107,16 +103,36 @@ export default function ServiceFormSheet({ open, onClose, service }) {
       onClose={onClose}
       title={isEditing ? 'Editar serviço' : 'Novo serviço'}
     >
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} className="space-y-4">
         <FormField label="Nome do serviço">
           <TextInput
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Ex.: Corte + Barba"
+            placeholder="Ex.: Degradê"
             autoFocus
             required
           />
         </FormField>
+
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1.5">Categoria</label>
+          <div className="grid grid-cols-5 gap-1.5 bg-surface border border-zinc-800 rounded-xl p-1">
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat.value}
+                type="button"
+                onClick={() => setCategory(cat.value)}
+                className={`py-1.5 text-xs font-medium rounded-lg text-center transition-all ${
+                  category === cat.value
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <FormField label="Preço (R$)">
@@ -127,7 +143,7 @@ export default function ServiceFormSheet({ open, onClose, service }) {
               step="0.5"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
-              placeholder="45,00"
+              placeholder="25,00"
               required
             />
           </FormField>
@@ -145,9 +161,9 @@ export default function ServiceFormSheet({ open, onClose, service }) {
           </FormField>
         </div>
 
-        {error && <p className="text-accent-light text-xs mb-3">{error}</p>}
+        {error && <p className="text-accent-light text-xs">{error}</p>}
 
-        <div className="flex flex-col gap-2 mt-2">
+        <div className="flex flex-col gap-2 pt-2">
           <PrimaryButton type="submit" disabled={saving}>
             {saving ? 'Salvando…' : isEditing ? 'Salvar alterações' : 'Adicionar serviço'}
           </PrimaryButton>
