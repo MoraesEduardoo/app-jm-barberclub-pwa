@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Loader2, Phone, Lock, Eye, EyeOff, ShieldCheck, Sparkles, ArrowRight, KeyRound } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { phoneDigits, phoneToAuthEmail } from "@/lib/auth-identity";
-import { setupOrResetBarberPasswordAction } from "@/lib/actions/barber-auth";
+import { setupOrResetBarberPasswordAction, loginWithPhoneAction } from "@/lib/actions/barber-auth";
 
 export default function LoginScreen({ onSuccess }) {
   // Mode: "login" (padrão com telefone + senha) | "first_access" (definir senha direto)
@@ -28,7 +28,7 @@ export default function LoginScreen({ onSuccess }) {
     setConfirmPassword("");
   }
 
-  // Login normal: Telefone + Senha
+  // Login normal: Telefone + Senha puro (sem e-mail)
   async function handleLogin(e) {
     e.preventDefault();
     setError("");
@@ -46,25 +46,17 @@ export default function LoginScreen({ onSuccess }) {
 
     setLoading(true);
     try {
-      const supabase = getSupabaseBrowserClient();
-      const syntheticEmail = phoneToAuthEmail(phone);
+      const res = await loginWithPhoneAction({ phone, password });
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: syntheticEmail,
-        password,
-      });
-
-      if (signInError) {
-        setError(
-          "Telefone ou senha incorretos. Se ainda não cadastrou sua senha, toque em 'Primeiro acesso' abaixo."
-        );
+      if (!res.ok) {
+        setError(res.error || "Telefone ou senha incorretos.");
+        setLoading(false);
         return;
       }
 
       onSuccess ? onSuccess() : window.location.assign("/admin/agenda");
     } catch {
       setError("Falha de conexão. Verifique sua internet e tente novamente.");
-    } finally {
       setLoading(false);
     }
   }

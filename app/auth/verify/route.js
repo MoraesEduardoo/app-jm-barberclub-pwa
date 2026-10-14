@@ -42,7 +42,7 @@ export async function POST(request) {
   }
 
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
     const { error } = await supabase.auth.verifyOtp({ type: "recovery", token_hash: tokenHash });
     if (error) {
       if (process.env.NODE_ENV !== "production") {
