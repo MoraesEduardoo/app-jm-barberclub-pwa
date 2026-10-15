@@ -20,8 +20,13 @@ import {
 
 const STATUS_STYLES = {
   pendente: { label: 'Pendente', className: 'bg-zinc-800 text-zinc-300' },
+  pending: { label: 'Pendente', className: 'bg-zinc-800 text-zinc-300' },
   confirmado: { label: 'Confirmado', className: 'bg-emerald-500/15 text-emerald-400' },
+  confirmed: { label: 'Confirmado', className: 'bg-emerald-500/15 text-emerald-400' },
+  concluido: { label: 'Concluído', className: 'bg-blue-500/15 text-blue-400' },
+  completed: { label: 'Concluído', className: 'bg-blue-500/15 text-blue-400' },
   cancelado: { label: 'Cancelado', className: 'bg-accent/15 text-accent-light' },
+  cancelled: { label: 'Cancelado', className: 'bg-accent/15 text-accent-light' },
 };
 
 export default function AppointmentCard({
@@ -31,13 +36,19 @@ export default function AppointmentCard({
   onDelete,
   busy = false,
 }) {
-  const status = STATUS_STYLES[appointment.status] || STATUS_STYLES.pendente;
+  const status = STATUS_STYLES[appointment.status] || STATUS_STYLES.confirmado;
   const paid = appointment.payment_status === 'pago';
-  const time = appointment.appointment_date
+  const isCancelled = appointment.status === 'cancelado' || appointment.status === 'cancelled';
+  const isPending = appointment.status === 'pendente' || appointment.status === 'pending';
+
+  // Extração rigorosa do horário local (elimina o desvio de UTC que jogava tudo para 21:00)
+  const time = appointment.appointment_time
+    ? String(appointment.appointment_time).slice(0, 5)
+    : appointment.appointment_date && String(appointment.appointment_date).includes('T')
     ? new Date(appointment.appointment_date).toLocaleTimeString('pt-BR', {
         hour: '2-digit',
         minute: '2-digit',
-        timeZone: 'America/Fortaleza', // UTC-3 fixo
+        timeZone: 'America/Fortaleza',
       })
     : '';
 
@@ -47,7 +58,7 @@ export default function AppointmentCard({
   // Heurística de cliente recorrente (quando possui telefone e dados completos)
   const isFrequentClient = Boolean(hasPhone && appointment.client_name);
 
-  // Lembrete ESPECÍFICO deste agendamento (Horário, Serviço, Barbeiro e Data)
+  // Lembrete ESPECÍFICO deste agendamento (100% limpo, sem emojis e com horário correto)
   function handleSendWhatsAppReminder(e) {
     e.stopPropagation();
     if (!appointment.client_phone) {
@@ -63,6 +74,7 @@ export default function AppointmentCard({
       clientName: appointment.client_name,
       serviceName,
       appointmentDate: appointment.appointment_date,
+      appointmentTime: appointment.appointment_time || (time ? `${time}:00` : null),
       barberName,
     });
 
@@ -76,7 +88,7 @@ export default function AppointmentCard({
     toast.success(`Lembrete de agendamento gerado para ${firstName}!`);
   }
 
-  const durationMin = appointment.services?.default_duration_minutes;
+  const durationMin = appointment.duration_minutes || appointment.services?.default_duration_minutes;
 
   return (
     <div className="bg-[#0f0f0f] border border-zinc-800/80 rounded-2xl p-4 shadow-sm hover:border-zinc-700/80 transition-colors">
@@ -84,7 +96,7 @@ export default function AppointmentCard({
         <div className="min-w-0 flex-1">
           {/* Header com Horário, Status e Badges */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-white font-bold text-sm tracking-tight">{time}</span>
+            <span className="text-white font-bold text-sm tracking-tight">{time || 'Horário'}</span>
 
             <span
               className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${status.className}`}
@@ -121,7 +133,7 @@ export default function AppointmentCard({
           {durationMin ? (
             <div className="flex items-center gap-1.5 mt-1 text-[11px] text-zinc-500">
               <Clock size={11} className="text-zinc-500 shrink-0" />
-              <span>Duração estimada: ~{durationMin} min</span>
+              <span>Duração: ~{durationMin} min</span>
             </div>
           ) : null}
 
@@ -165,7 +177,7 @@ export default function AppointmentCard({
 
       {/* Botões de Ação */}
       <div className="flex flex-wrap items-center gap-2 mt-3.5 pt-2 border-t border-zinc-800/60">
-        {appointment.status === 'pendente' && (
+        {isPending && (
           <button
             type="button"
             disabled={busy}
@@ -176,7 +188,7 @@ export default function AppointmentCard({
           </button>
         )}
 
-        {appointment.status !== 'cancelado' && (
+        {!isCancelled && (
           <button
             type="button"
             disabled={busy}
@@ -187,7 +199,7 @@ export default function AppointmentCard({
           </button>
         )}
 
-        {!paid && appointment.status !== 'cancelado' && (
+        {!paid && !isCancelled && (
           <button
             type="button"
             disabled={busy}
@@ -210,7 +222,7 @@ export default function AppointmentCard({
           </button>
         )}
 
-        {appointment.status === 'cancelado' && onDelete && (
+        {isCancelled && onDelete && (
           <button
             type="button"
             disabled={busy}

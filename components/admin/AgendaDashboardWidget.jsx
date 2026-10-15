@@ -56,8 +56,14 @@ export default function AgendaDashboardWidget({ appointments = [], isToday = tru
     let eveningCount = 0;
 
     active.forEach((a) => {
-      if (!a.appointment_date) return;
-      const hour = new Date(a.appointment_date).getHours();
+      let hour = 12;
+      if (a.appointment_time) {
+        hour = parseInt(String(a.appointment_time).split(':')[0], 10) || 12;
+      } else if (a.appointment_date) {
+        hour = new Date(a.appointment_date).getHours();
+      } else {
+        return;
+      }
       if (hour < 12) morningCount++;
       else if (hour < 18) afternoonCount++;
       else eveningCount++;

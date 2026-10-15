@@ -22,24 +22,35 @@ function formatBRL(value) {
     .replace('.', ',')}`;
 }
 
-function formatTime(isoString) {
-  try {
-    return new Date(isoString).toLocaleTimeString('pt-BR', {
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: 'America/Sao_Paulo',
-    });
-  } catch {
-    return '';
+function formatTime(isoString, timeVal) {
+  if (timeVal) return String(timeVal).slice(0, 5);
+  if (!isoString) return '';
+  if (String(isoString).includes('T')) {
+    try {
+      return new Date(isoString).toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'America/Fortaleza',
+      });
+    } catch {
+      return '';
+    }
   }
+  return '';
 }
 
 function formatDate(isoString) {
+  if (!isoString) return '';
+  const raw = String(isoString);
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
+    const [, m, d] = raw.slice(0, 10).split('-');
+    return `${d}/${m}`;
+  }
   try {
     return new Date(isoString).toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: '2-digit',
-      timeZone: 'America/Sao_Paulo',
+      timeZone: 'America/Fortaleza',
     });
   } catch {
     return '';
@@ -220,7 +231,7 @@ export default function TeamMemberCashSheet({ open, onClose, member }) {
                             <span>•</span>
                             <span className="flex items-center gap-0.5 text-zinc-500">
                               <Clock size={10} />
-                              {formatTime(a.appointment_date)}
+                              {formatTime(a.appointment_date, a.appointment_time)}
                               {period === 'month' && ` (${formatDate(a.appointment_date)})`}
                             </span>
                           </div>
