@@ -7,7 +7,7 @@ import { endSession } from "@/lib/session";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { GALLERY_CATEGORIES, GALLERY_TABLE, categoryLabel } from "@/lib/constants/gallery";
 import GalleryUploadSheet from "@/components/admin/GalleryUploadSheet";
-import GalleryItemSheet from "@/components/admin/GalleryItemSheet";
+import Link from "next/link";
 
 export default function GaleriaPage() {
   const [items, setItems] = useState([]);

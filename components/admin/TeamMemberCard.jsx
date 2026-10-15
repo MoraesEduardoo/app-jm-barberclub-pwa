@@ -19,26 +19,19 @@ import {
   ChevronRight,
   Sliders,
 } from "lucide-react";
-import { PERMISSION_KEYS } from "@/lib/auth";
 import {
-  updateTeamMemberPermission,
+  updateTeamMemberRole,
   toggleTeamMemberActive,
   removeTeamMember,
   updateTeamMemberCommission,
   updateTeamMemberAdvancedCommissions,
 } from "@/lib/actions/team";
 import { createRecoveryLink } from "@/lib/actions/recovery";
+import { toast } from "@/lib/toast";
 import TeamMemberCashSheet from "./TeamMemberCashSheet";
 import TeamMemberScheduleSheet from "./TeamMemberScheduleSheet";
 import TeamMemberSpecialtiesSheet from "./TeamMemberSpecialtiesSheet";
 import TeamMemberExceptionsSheet from "./TeamMemberExceptionsSheet";
-
-const PERMISSION_LABELS = {
-  [PERMISSION_KEYS.MANAGE_SERVICES]: "Editar serviços e preços",
-  [PERMISSION_KEYS.MANAGE_SCHEDULE_OTHERS]: "Editar expediente de outros",
-  [PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS]: "Ver agenda de toda a equipe",
-  [PERMISSION_KEYS.MANAGE_FINANCE]: "Ver caixa e faturamento completo",
-};
 
 function whatsappNumber(phone) {
   const digits = (phone || "").replace(/\D/g, "");
@@ -49,12 +42,13 @@ function whatsappNumber(phone) {
  * TeamMemberCard:
  * Card profissional de gerenciamento do colaborador.
  * Suporta:
- * 1. Comissões em número inteiro (ex: 50 para 50%, 30 para 30%)
- * 2. Regras avançadas de comissão (serviços vs produtos)
- * 3. Gestão de expediente individual por colaborador (dias, horas, almoço)
- * 4. Especialidades e catálogo de serviços habilitados
- * 5. Histórico de caixa e faturamento acumulado
- * 6. Bloqueios de agenda e folgas pontuais
+ * 1. Cargos simplificados (Chefe vs Barbeiro)
+ * 2. Comissões em número inteiro (ex: 50 para 50%, 30 para 30%)
+ * 3. Regras avançadas de comissão (serviços vs produtos)
+ * 4. Gestão de expediente individual por colaborador (dias, horas, almoço)
+ * 5. Especialidades e catálogo de serviços habilitados
+ * 6. Histórico de caixa e faturamento acumulado
+ * 7. Bloqueios de agenda e folgas pontuais
  */
 export default function TeamMemberCard({ member, onChanged }) {
   const isChief = member.role === "admin";
@@ -78,26 +72,25 @@ export default function TeamMemberCard({ member, onChanged }) {
   const [specialtiesSheetOpen, setSpecialtiesSheetOpen] = useState(false);
   const [exceptionsSheetOpen, setExceptionsSheetOpen] = useState(false);
 
-  // Acordeão / aba de permissões e detalhes
-  const [showPermissions, setShowPermissions] = useState(false);
+  // Controle de salvamento do cargo
+  const [roleSaving, setRoleSaving] = useState(false);
 
-  function handleToggle(key, value) {
-    const previousPermissions = { ...memberState.permissions };
-
-    setMemberState((prev) => ({
-      ...prev,
-      permissions: { ...prev.permissions, [key]: value },
-    }));
+  function handleRoleChange(newRole) {
+    if (memberState.role === newRole) return;
+    const prevRole = memberState.role;
+    setMemberState((prev) => ({ ...prev, role: newRole }));
+    setRoleSaving(true);
 
     startTransition(async () => {
       try {
-        await updateTeamMemberPermission(member.id, key, value);
-      } catch (error) {
-        console.error(error);
-        setMemberState((prev) => ({
-          ...prev,
-          permissions: previousPermissions,
-        }));
+        await updateTeamMemberRole(member.id, newRole);
+        toast.success(`Cargo de ${member.name} alterado para ${newRole === 'admin' ? 'Chefe' : 'Barbeiro'}.`);
+        if (onChanged) onChanged();
+      } catch (err) {
+        toast.error(err.message || 'Erro ao alterar cargo.');
+        setMemberState((prev) => ({ ...prev, role: prevRole }));
+      } finally {
+        setRoleSaving(false);
       }
     });
   }
@@ -373,56 +366,57 @@ export default function TeamMemberCard({ member, onChanged }) {
             </p>
           </div>
 
-          {/* Acordeão de Permissões de Acesso */}
-          <div className="border-t border-zinc-800/80 pt-2.5">
-            <button
-              type="button"
-              onClick={() => setShowPermissions(!showPermissions)}
-              className="w-full flex items-center justify-between py-1 text-xs text-zinc-400 hover:text-white transition-colors"
-            >
-              <span className="flex items-center gap-1.5 font-medium">
-                <Sliders size={13} className="text-zinc-500" />
-                Permissões no Sistema
+          {/* Seletor Simplificado de Cargos: Chefe vs Barbeiro */}
+          <div className="border-t border-zinc-800/80 pt-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                <ShieldCheck size={14} className="text-accent" />
+                Cargo e Nível de Acesso
               </span>
-              <span className="text-[11px] text-zinc-500">
-                {showPermissions ? "Ocultar" : "Ajustar"}
-              </span>
-            </button>
+              {roleSaving && (
+                <span className="text-[10px] text-accent flex items-center gap-1">
+                  <Loader2 size={10} className="animate-spin" /> Salvando…
+                </span>
+              )}
+            </div>
 
-            {showPermissions && (
-              <div className="mt-2.5 space-y-2 bg-surface/40 border border-zinc-800/60 rounded-xl p-3">
-                {Object.entries(PERMISSION_LABELS).map(([key, label]) => (
-                  <div
-                    key={key}
-                    className="flex items-center justify-between gap-3 py-1"
-                  >
-                    <span className="text-zinc-300 text-xs">{label}</span>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={!!memberState.permissions?.[key]}
-                      onClick={() =>
-                        handleToggle(key, !memberState.permissions?.[key])
-                      }
-                      disabled={isPending}
-                      className={`relative shrink-0 w-9 h-5 rounded-full transition-colors touch-manipulation ${
-                        memberState.permissions?.[key]
-                          ? "bg-accent"
-                          : "bg-zinc-700"
-                      }`}
-                    >
-                      <span
-                        className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-                          memberState.permissions?.[key]
-                            ? "translate-x-4"
-                            : "translate-x-0"
-                        }`}
-                      />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={isPending || roleSaving}
+                onClick={() => handleRoleChange('admin')}
+                className={`p-2.5 rounded-xl border text-left transition-all touch-manipulation ${
+                  memberState.role === 'admin'
+                    ? 'bg-accent/15 border-accent text-white shadow-sm ring-1 ring-accent/40'
+                    : 'bg-surface/50 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 font-bold text-xs text-accent-light">
+                  <span>👑 Chefe / Admin</span>
+                </div>
+                <p className="text-[10px] text-zinc-400 mt-1 leading-tight">
+                  Acesso total: faturamento global, edição de preços e equipe.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                disabled={isPending || roleSaving}
+                onClick={() => handleRoleChange('barber')}
+                className={`p-2.5 rounded-xl border text-left transition-all touch-manipulation ${
+                  memberState.role === 'barber'
+                    ? 'bg-zinc-800/90 border-zinc-600 text-white shadow-sm ring-1 ring-zinc-500/40'
+                    : 'bg-surface/50 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 font-bold text-xs text-zinc-200">
+                  <span>✂️ Barbeiro</span>
+                </div>
+                <p className="text-[10px] text-zinc-400 mt-1 leading-tight">
+                  Acesso focado: agenda própria, comissões e caixa individual.
+                </p>
+              </button>
+            </div>
           </div>
 
           {/* Link de Recuperação de Senha */}

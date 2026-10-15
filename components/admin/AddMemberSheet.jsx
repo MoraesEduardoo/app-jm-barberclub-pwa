@@ -9,6 +9,7 @@ export default function AddMemberSheet({ open, onClose }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState('barber');
   const [commission, setCommission] = useState('50');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -32,6 +33,7 @@ export default function AddMemberSheet({ open, onClose }) {
         name,
         phone,
         password,
+        role,
         commissionPercent: commNumber,
       });
 
@@ -43,6 +45,7 @@ export default function AddMemberSheet({ open, onClose }) {
       setName('');
       setPhone('');
       setPassword('');
+      setRole('barber');
       setCommission('50');
       onClose();
     } catch (err) {
@@ -53,7 +56,7 @@ export default function AddMemberSheet({ open, onClose }) {
   }
 
   return (
-    <BottomSheet open={open} onClose={onClose} title="Adicionar barbeiro">
+    <BottomSheet open={open} onClose={onClose} title="Adicionar à equipe">
       <form onSubmit={handleSubmit} className="space-y-3">
         <FormField label="Nome do profissional">
           <TextInput
@@ -97,8 +100,50 @@ export default function AddMemberSheet({ open, onClose }) {
             />
           </FormField>
         </div>
+        {/* Seletor Simplificado de Cargo */}
+        <div className="space-y-1.5 pt-1">
+          <label className="block text-xs font-medium text-zinc-300">
+            Cargo e Nível de Acesso
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setRole('barber')}
+              className={`p-2.5 rounded-xl border text-left transition-all touch-manipulation ${
+                role === 'barber'
+                  ? 'bg-zinc-800/90 border-zinc-600 text-white shadow-sm ring-1 ring-zinc-500/40'
+                  : 'bg-surface/50 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 font-bold text-xs text-zinc-200">
+                <span>✂️ Barbeiro</span>
+              </div>
+              <p className="text-[10px] text-zinc-400 mt-1 leading-tight">
+                Agenda própria, comissões e caixa individual.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setRole('admin')}
+              className={`p-2.5 rounded-xl border text-left transition-all touch-manipulation ${
+                role === 'admin'
+                  ? 'bg-accent/15 border-accent text-white shadow-sm ring-1 ring-accent/40'
+                  : 'bg-surface/50 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 font-bold text-xs text-accent-light">
+                <span>👑 Chefe / Admin</span>
+              </div>
+              <p className="text-[10px] text-zinc-400 mt-1 leading-tight">
+                Acesso total a todas as abas e configurações.
+              </p>
+            </button>
+          </div>
+        </div>
+
         <p className="text-zinc-500 text-xs">
-          O barbeiro entra no painel com este telefone e esta senha. A comissão pode ser
+          O profissional entra no painel com este telefone e esta senha. A comissão pode ser
           ajustada individualmente para serviços e produtos a qualquer momento.
         </p>
         {error && <p className="text-accent-light text-xs">{error}</p>}

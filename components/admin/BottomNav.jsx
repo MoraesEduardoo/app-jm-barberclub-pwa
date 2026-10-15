@@ -14,7 +14,6 @@ const BASE_TABS = [
   { href: '/admin/agenda', label: 'Agenda', icon: CalendarDays },
   { href: '/admin/servicos', label: 'Serviços', icon: Scissors },
   { href: '/admin/expediente', label: 'Expediente', icon: Clock },
-  { href: '/admin/galeria', label: 'Galeria', icon: Images },
 ];
 
 const CHEFE_TAB = { href: '/admin/equipe', label: 'Equipe', icon: Users2 };

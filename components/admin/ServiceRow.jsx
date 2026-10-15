@@ -1,13 +1,13 @@
 'use client';
 
-import { Clock, ChevronRight, PauseCircle, GripVertical } from 'lucide-react';
+import { Clock, ChevronRight, PauseCircle, GripVertical, Scissors, Image as ImageIcon } from 'lucide-react';
 
 export default function ServiceRow({ service, onClick, dragControls, isDragging = false }) {
   const priceDisplay = Number(service.price || 0).toFixed(2).replace('.', ',');
 
   return (
     <div
-      className={`w-full flex items-center justify-between gap-2.5 bg-surface border rounded-xl px-3 py-3 transition-all select-none ${
+      className={`w-full flex items-center justify-between gap-2.5 bg-surface border rounded-xl px-3 py-2.5 transition-all select-none ${
         isDragging
           ? 'border-accent shadow-2xl shadow-accent/20 bg-zinc-900 ring-2 ring-accent/40'
           : 'border-zinc-800 hover:border-zinc-700 active:bg-zinc-900/80'
@@ -21,12 +21,34 @@ export default function ServiceRow({ service, onClick, dragControls, isDragging 
             dragControls.start(e);
           }
         }}
-        className="cursor-grab active:cursor-grabbing p-1.5 -ml-1 text-zinc-500 hover:text-zinc-300 active:text-accent touch-none transition-colors"
+        className="cursor-grab active:cursor-grabbing p-1 text-zinc-500 hover:text-zinc-300 active:text-accent touch-none transition-colors shrink-0"
         title="Segure e arraste para reordenar"
         aria-label="Arrastar para reordenar"
       >
         <GripVertical size={18} />
       </div>
+
+      {/* Foto Ilustrativa Oficial do Serviço */}
+      <button
+        type="button"
+        onClick={onClick}
+        title="Clique para editar serviço e foto"
+        className="relative h-12 w-12 rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0 active:scale-95 transition-transform"
+      >
+        {service.image_url ? (
+          <img
+            src={service.image_url}
+            alt={service.name}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center text-zinc-600">
+            <Scissors size={16} />
+            <span className="text-[9px] mt-0.5 text-zinc-500">+foto</span>
+          </div>
+        )}
+      </button>
 
       {/* Conteúdo clicável do serviço (Abre modal de edição) */}
       <button
