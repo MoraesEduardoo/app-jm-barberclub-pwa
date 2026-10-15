@@ -14,6 +14,10 @@ import {
 } from "lucide-react";
 import BottomSheet from "./BottomSheet";
 import { getClientReturnCycles } from "@/lib/actions/client-cycles";
+import {
+  buildReturnCycleReminderWhatsAppMessage,
+  getWhatsAppClickToChatUrl,
+} from "@/lib/whatsapp";
 
 export default function ClientCyclesSheet({ open, onClose, scopeBarberId = null }) {
   const [clients, setClients] = useState([]);
@@ -50,12 +54,15 @@ export default function ClientCyclesSheet({ open, onClose, scopeBarberId = null 
   const overdueCount = clients.filter((c) => c.status === "atrasado").length;
 
   function handleWhatsApp(client) {
-    const cleanPhone = client.client_phone.replace(/\D/g, "");
-    const firstName = client.client_name.split(" ")[0] || "amigo";
-    const msg = encodeURIComponent(
-      `Fala, ${firstName}! Tudo bem? Passando para lembrar que já faz cerca de ${client.days_since_last} dias desde o seu último corte aqui na JM Barberclub. Que tal garantir seu horário para manter a régua máxima? Abraço!`
-    );
-    window.open(`https://wa.me/55${cleanPhone}?text=${msg}`, "_blank");
+    if (!client.client_phone) return;
+    const msg = buildReturnCycleReminderWhatsAppMessage({
+      clientName: client.client_name,
+      daysSinceLast: client.days_since_last,
+    });
+    const url = getWhatsAppClickToChatUrl(client.client_phone, msg);
+    if (url) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
   }
 
   return (

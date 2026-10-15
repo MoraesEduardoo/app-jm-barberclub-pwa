@@ -10,9 +10,13 @@ import {
   Trash2,
   MessageSquare,
   Crown,
-  Repeat,
+  Clock,
 } from 'lucide-react';
 import { toast } from '@/lib/toast';
+import {
+  buildAppointmentReminderWhatsAppMessage,
+  getWhatsAppClickToChatUrl,
+} from '@/lib/whatsapp';
 
 const STATUS_STYLES = {
   pendente: { label: 'Pendente', className: 'bg-zinc-800 text-zinc-300' },
@@ -37,12 +41,13 @@ export default function AppointmentCard({
       })
     : '';
 
-  const firstName = appointment.client_name?.split(' ')[0] || 'Amigo';
+  const firstName = appointment.client_name?.trim().split(' ')[0] || 'Cliente';
   const hasPhone = Boolean(appointment.client_phone && appointment.client_phone.length >= 8);
 
   // Heurística de cliente recorrente (quando possui telefone e dados completos)
   const isFrequentClient = Boolean(hasPhone && appointment.client_name);
 
+  // Lembrete ESPECÍFICO deste agendamento (Horário, Serviço, Barbeiro e Data)
   function handleSendWhatsAppReminder(e) {
     e.stopPropagation();
     if (!appointment.client_phone) {
@@ -50,22 +55,34 @@ export default function AppointmentCard({
       return;
     }
 
-    const cleanPhone = appointment.client_phone.replace(/\D/g, '');
-    const phoneWithCountry = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
-    const text = encodeURIComponent(
-      `Fala, ${firstName}! Tudo certo? 💈 Aqui é da JM Barberclub! Passando para te lembrar de manter a régua e o corte alinhados. O ciclo médio ideal é a cada 15 a 20 dias. Bora renovar o visual? Segue o link para escolher seu melhor horário!`
-    );
+    const serviceName =
+      appointment.services?.name || appointment.service || 'Corte';
+    const barberName = appointment.barbers?.name || '';
 
-    const url = `https://api.whatsapp.com/send?phone=${phoneWithCountry}&text=${text}`;
+    const text = buildAppointmentReminderWhatsAppMessage({
+      clientName: appointment.client_name,
+      serviceName,
+      appointmentDate: appointment.appointment_date,
+      barberName,
+    });
+
+    const url = getWhatsAppClickToChatUrl(appointment.client_phone, text);
+    if (!url) {
+      toast.warning('Número de telefone inválido para WhatsApp.');
+      return;
+    }
+
     window.open(url, '_blank', 'noopener,noreferrer');
-    toast.success(`Lembrete gerado para ${firstName}!`);
+    toast.success(`Lembrete de agendamento gerado para ${firstName}!`);
   }
+
+  const durationMin = appointment.services?.default_duration_minutes;
 
   return (
     <div className="bg-[#0f0f0f] border border-zinc-800/80 rounded-2xl p-4 shadow-sm hover:border-zinc-700/80 transition-colors">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          {/* Header com Horário, Status e Badges de Fidelidade */}
+          {/* Header com Horário, Status e Badges */}
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-white font-bold text-sm tracking-tight">{time}</span>
 
@@ -96,15 +113,17 @@ export default function AppointmentCard({
 
           {/* Serviço e Barbeiro */}
           <p className="text-zinc-400 text-xs mt-0.5 font-medium">
-            {appointment.services?.name}
+            {appointment.services?.name || appointment.service || 'Serviço'}
             {appointment.barbers?.name ? ` · ${appointment.barbers.name}` : ''}
           </p>
 
-          {/* Ciclo Médio e Fidelidade */}
-          <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-zinc-500">
-            <Repeat size={11} className="text-red-500 shrink-0" />
-            <span>Ciclo sugerido: a cada ~15 a 21 dias</span>
-          </div>
+          {/* Duração estimada do atendimento */}
+          {durationMin ? (
+            <div className="flex items-center gap-1.5 mt-1 text-[11px] text-zinc-500">
+              <Clock size={11} className="text-zinc-500 shrink-0" />
+              <span>Duração estimada: ~{durationMin} min</span>
+            </div>
+          ) : null}
 
           {/* Foto de Referência */}
           {appointment.reference_photo && (
@@ -183,8 +202,8 @@ export default function AppointmentCard({
           <button
             type="button"
             onClick={handleSendWhatsAppReminder}
-            title="Enviar lembrete de retorno via WhatsApp"
-            className="h-9 px-3 rounded-xl bg-zinc-900/90 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-medium flex items-center gap-1.5 active:scale-95 active:bg-zinc-800 transition-all touch-manipulation"
+            title={`Enviar lembrete deste agendamento (${time}) via WhatsApp`}
+            className="h-9 px-3 rounded-xl bg-zinc-900/90 border border-zinc-800 hover:border-emerald-500/40 text-zinc-300 hover:text-white text-xs font-medium flex items-center gap-1.5 active:scale-95 active:bg-zinc-800 transition-all touch-manipulation"
           >
             <MessageSquare size={13} className="text-emerald-400" />
             <span>Lembrete</span>
