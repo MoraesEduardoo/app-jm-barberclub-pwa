@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Lock, TrendingUp, TrendingDown, Scale } from 'lucide-react';
+import Link from 'next/link';
+import { Plus, Lock, TrendingUp, TrendingDown, Scale, ArrowLeft } from 'lucide-react';
 import { useBarber } from '@/lib/barber-context';
 import { financeRange } from '@/lib/dates';
 import { getFullFinanceOverview } from '@/lib/actions/finance';
@@ -73,6 +74,18 @@ export default function FinanceiroCompletoPage() {
 
   return (
     <div className="px-4 pt-4">
+      <div className="flex items-center justify-between mb-3">
+        <Link
+          href="/admin/financeiro"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-white transition-colors"
+        >
+          <ArrowLeft size={14} /> Voltar para Caixa & Faturamento
+        </Link>
+        <span className="text-[10px] bg-rose-500/10 text-rose-400 border border-rose-500/30 px-2 py-0.5 rounded-full font-bold uppercase">
+          Livro de Despesas
+        </span>
+      </div>
+
       <div className="flex gap-2 mb-4">
         {RANGES.map((r) => (
           <button

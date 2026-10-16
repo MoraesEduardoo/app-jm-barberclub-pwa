@@ -8,7 +8,7 @@ const TITLES = {
   '/admin/agenda': 'Agenda',
   '/admin/servicos': 'Serviços & Preços',
   '/admin/expediente': 'Expediente',
-  '/admin/financeiro/completo': 'Financeiro Completo',
+  '/admin/financeiro/completo': 'Despesas & Faturamento',
   '/admin/financeiro': 'Caixa & Faturamento',
   '/admin/equipe': 'Equipe & Permissões',
   '/admin/galeria': 'Galeria de Cortes',

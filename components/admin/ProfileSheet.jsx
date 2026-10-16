@@ -1,40 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   Pencil,
-  TrendingUp,
-  AlertCircle,
   ChevronRight,
   ShieldCheck,
   Users,
   Check,
-  KeyRound,
   Lock,
 } from "lucide-react";
 import BottomSheet from "./BottomSheet";
-import { todayInShop } from "@/lib/dates";
 import EditProfileSheet from "./EditProfileSheet";
-import RecoveryCodesSheet from "./RecoveryCodesSheet";
 import ChangePasswordSheet from "./ChangePasswordSheet";
-import { getFinanceSummary } from "@/lib/actions/finance";
 import { listTeam } from "@/lib/actions/team";
-
-function formatBRL(value) {
-  return `R$ ${Number(value || 0)
-    .toFixed(2)
-    .replace(".", ",")}`;
-}
-
-function todayISO() {
-  return todayInShop();
-}
 
 /**
  * Aberto ao clicar no avatar no cabeçalho. Mostra os dados do barbeiro
- * logado, resumo financeiro e, se for Chefe, permite alternar a visualização
- * para qualquer membro da equipa (ex: William).
+ * logado, opções de segurança da conta e, se for Chefe, permite alternar
+ * a visualização para qualquer membro da equipe.
  */
 export default function ProfileSheet({
   open,
@@ -45,37 +28,19 @@ export default function ProfileSheet({
   selectedBarberId,
   onSelectBarber,
 }) {
-  const router = useRouter();
-  const [summary, setSummary] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
-  const [codesOpen, setCodesOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [team, setTeam] = useState([]);
 
-  // Identifica qual ID está sendo visualizado atualmente (o próprio ou o membro selecionado)
   const currentTargetId = selectedBarberId || barber.id;
-  const viewingOther = Boolean(selectedBarberId) && selectedBarberId !== barber.id;
-  const targetName = team.find((m) => m.id === currentTargetId)?.name;
 
   useEffect(() => {
-    if (open) {
-      const today = todayISO();
-      setSummary(null);
-      getFinanceSummary({
-        from: today,
-        to: today,
-        scopeBarberId: currentTargetId,
-      })
-        .then(setSummary)
+    if (open && isChefe) {
+      listTeam()
+        .then(setTeam)
         .catch(() => {});
-
-      if (isChefe) {
-        listTeam()
-          .then(setTeam)
-          .catch(() => {});
-      }
     }
-  }, [open, currentTargetId, isChefe]);
+  }, [open, isChefe]);
 
   return (
     <>
@@ -149,49 +114,8 @@ export default function ProfileSheet({
           </div>
         )}
 
-        <h3 className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-2">
-          Controle financeiro — hoje{viewingOther && targetName ? ` · ${targetName}` : ""}
-        </h3>
-
-        {!summary ? (
-          <div className="h-20 rounded-xl bg-surface animate-pulse mb-4" />
-        ) : (
-          <div className="grid grid-cols-2 gap-2.5 mb-2">
-            <div className="bg-surface border border-zinc-800 rounded-xl p-3">
-              <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-medium mb-1">
-                <TrendingUp size={12} /> Faturado
-              </div>
-              <p className="text-white font-bold text-base">
-                {formatBRL(summary.totalFaturado)}
-              </p>
-            </div>
-            <div className="bg-surface border border-zinc-800 rounded-xl p-3">
-              <div className="flex items-center gap-1.5 text-accent-light text-xs font-medium mb-1">
-                <AlertCircle size={12} /> A receber
-              </div>
-              <p className="text-white font-bold text-base">
-                {formatBRL(summary.totalPendente)}
-              </p>
-            </div>
-          </div>
-        )}
-
-        <button
-          onClick={() => {
-            onClose();
-            router.push(
-              isChefe ? "/admin/financeiro/completo" : "/admin/financeiro",
-            );
-          }}
-          className="w-full flex items-center justify-between bg-elevated border border-zinc-800 rounded-xl px-4 py-3 mt-2 active:scale-[0.99] active:bg-zinc-900 transition-all touch-manipulation select-none"
-        >
-          <span className="text-white text-sm font-medium">
-            Ver financeiro completo
-          </span>
-          <ChevronRight size={16} className="text-zinc-500" />
-        </button>
-
-        <h3 className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-2 mt-6">
+        {/* Segurança da Conta */}
+        <h3 className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-2 mt-4">
           Segurança da Conta
         </h3>
         <button

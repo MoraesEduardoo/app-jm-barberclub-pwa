@@ -20,6 +20,7 @@ import {
   Scissors,
   ChevronRight,
   Sparkles,
+  Receipt,
 } from 'lucide-react';
 import { useBarber } from '@/lib/barber-context';
 import { CHATBOT_URL } from '@/lib/site-url';
@@ -240,18 +241,47 @@ export default function HamburgerDrawer({ open, onClose, onOpenRecorrencias }) {
                 href="/admin/financeiro"
                 onClick={onClose}
                 className={`flex items-center justify-between p-2.5 rounded-xl transition-all ${
-                  pathname.startsWith('/admin/financeiro')
-                    ? 'bg-accent/15 text-white font-medium border border-accent/30'
+                  pathname === '/admin/financeiro'
+                    ? 'bg-amber-500/15 text-white font-medium border border-amber-500/30'
                     : 'text-zinc-300 hover:bg-zinc-900 hover:text-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-zinc-800/80 flex items-center justify-center text-amber-400">
+                  <div className="h-8 w-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
                     <TrendingUp size={16} />
                   </div>
                   <div>
-                    <span className="text-xs font-semibold block leading-tight">Faturamento</span>
-                    <span className="text-[10px] text-zinc-500">Caixa, despesas e comissões</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-semibold block leading-tight">Faturamento</span>
+                      <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded font-bold uppercase">
+                        Caixa
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-zinc-500">Entradas, comissões e fechamento</span>
+                  </div>
+                </div>
+                <ChevronRight size={14} className="text-zinc-600" />
+              </Link>
+
+              {/* Despesas */}
+              <Link
+                href={isChefe ? '/admin/financeiro/completo' : '/admin/financeiro'}
+                onClick={onClose}
+                className={`flex items-center justify-between p-2.5 rounded-xl transition-all ${
+                  pathname === '/admin/financeiro/completo'
+                    ? 'bg-rose-500/15 text-white font-medium border border-rose-500/30'
+                    : 'text-zinc-300 hover:bg-zinc-900 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
+                    <Receipt size={16} />
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold block leading-tight">Despesas</span>
+                    <span className="text-[10px] text-zinc-500">
+                      {isChefe ? 'Custos fixos, compras e saldo líquido' : 'Lançamentos e custos'}
+                    </span>
                   </div>
                 </div>
                 <ChevronRight size={14} className="text-zinc-600" />
