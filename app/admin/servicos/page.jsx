@@ -22,12 +22,13 @@ function ReorderableServiceRow({ service, onEdit }) {
       onDragStart={() => setIsDragging(true)}
       onDragEnd={() => setIsDragging(false)}
       whileDrag={{
-        scale: 1.03,
+        scale: 1.02,
         boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(220, 38, 38, 0.3)',
         zIndex: 50,
       }}
       transition={{ duration: 0.2 }}
-      className="relative select-none touch-none list-none"
+      className="relative select-none list-none touch-pan-y"
+      style={{ touchAction: 'pan-y' }}
     >
       <ServiceRow
         service={service}
@@ -108,7 +109,7 @@ export default function ServicosPage() {
   }
 
   return (
-    <div className="px-4 pt-4 pb-24">
+    <div className="px-4 pt-4 pb-32">
       {/* Cabeçalho e Botão de Novo Serviço */}
       <div className="flex items-center justify-between mb-2">
         <div>
@@ -164,7 +165,8 @@ export default function ServicosPage() {
           axis="y"
           values={services}
           onReorder={handleReorder}
-          className="space-y-2.5"
+          className="space-y-2.5 touch-pan-y"
+          style={{ touchAction: 'pan-y' }}
         >
           {services.map((service) => (
             <ReorderableServiceRow

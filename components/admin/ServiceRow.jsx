@@ -7,13 +7,14 @@ export default function ServiceRow({ service, onClick, dragControls, isDragging 
 
   return (
     <div
-      className={`w-full flex items-center justify-between gap-2.5 bg-surface border rounded-xl px-3 py-2.5 transition-all select-none ${
+      className={`w-full flex items-center justify-between gap-2.5 bg-surface border rounded-xl px-3 py-2.5 transition-all select-none touch-pan-y ${
         isDragging
           ? 'border-accent shadow-2xl shadow-accent/20 bg-zinc-900 ring-2 ring-accent/40'
           : 'border-zinc-800 hover:border-zinc-700 active:bg-zinc-900/80'
       }`}
+      style={{ touchAction: 'pan-y' }}
     >
-      {/* Alça de arrastar flutuante (Drag Handle) */}
+      {/* Alça de arrastar flutuante (Drag Handle Exclusivo) */}
       <div
         onPointerDown={(e) => {
           if (dragControls) {
@@ -21,7 +22,8 @@ export default function ServiceRow({ service, onClick, dragControls, isDragging 
             dragControls.start(e);
           }
         }}
-        className="cursor-grab active:cursor-grabbing p-1 text-zinc-500 hover:text-zinc-300 active:text-accent touch-none transition-colors shrink-0"
+        className="cursor-grab active:cursor-grabbing p-2 -ml-1 text-zinc-500 hover:text-zinc-300 active:text-accent touch-none transition-colors shrink-0"
+        style={{ touchAction: 'none' }}
         title="Segure e arraste para reordenar"
         aria-label="Arrastar para reordenar"
       >
