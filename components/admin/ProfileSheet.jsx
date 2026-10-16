@@ -30,6 +30,7 @@ export default function ProfileSheet({
 }) {
   const [editOpen, setEditOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [codesOpen, setCodesOpen] = useState(false);
   const [team, setTeam] = useState([]);
 
   const currentTargetId = selectedBarberId || barber.id;
