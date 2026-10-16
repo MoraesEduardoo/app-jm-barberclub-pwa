@@ -23,7 +23,7 @@ import AgendaDashboardWidget from "@/components/admin/AgendaDashboardWidget";
 import { toast } from "@/lib/toast";
 
 export default function AgendaPage() {
-  const { can, scopeBarberId, selectedBarberId, selectBarber, isLeadership } = useBarber();
+  const { can, scopeBarberId, selectedBarberId, selectBarber, isLeadership, viewedBarber } = useBarber();
   const { notifications } = useNotifications();
   const canViewAll = can(PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS);
 
