@@ -105,13 +105,13 @@ export default function AddMemberSheet({ open, onClose }) {
           <label className="block text-xs font-medium text-zinc-300">
             Cargo e Nível de Acesso
           </label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <button
               type="button"
               onClick={() => setRole('barber')}
               className={`p-2.5 rounded-xl border text-left transition-all touch-manipulation ${
                 role === 'barber'
-                  ? 'bg-zinc-800/90 border-zinc-600 text-white shadow-sm ring-1 ring-zinc-500/40'
+                  ? 'bg-zinc-800/90 border-zinc-500 text-white shadow-sm ring-1 ring-zinc-500/40'
                   : 'bg-surface/50 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
               }`}
             >
@@ -125,14 +125,31 @@ export default function AddMemberSheet({ open, onClose }) {
 
             <button
               type="button"
-              onClick={() => setRole('admin')}
+              onClick={() => setRole('manager')}
               className={`p-2.5 rounded-xl border text-left transition-all touch-manipulation ${
-                role === 'admin'
-                  ? 'bg-accent/15 border-accent text-white shadow-sm ring-1 ring-accent/40'
+                role === 'manager'
+                  ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-sm ring-1 ring-emerald-500/40'
                   : 'bg-surface/50 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
               }`}
             >
-              <div className="flex items-center gap-1.5 font-bold text-xs text-accent-light">
+              <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-400">
+                <span>👔 Gerente</span>
+              </div>
+              <p className="text-[10px] text-zinc-400 mt-1 leading-tight">
+                Visão da agenda da equipe e caixa individual.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setRole('admin')}
+              className={`p-2.5 rounded-xl border text-left transition-all touch-manipulation ${
+                role === 'admin'
+                  ? 'bg-amber-500/15 border-amber-500 text-white shadow-sm ring-1 ring-amber-500/40'
+                  : 'bg-surface/50 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 font-bold text-xs text-amber-300">
                 <span>👑 Chefe / Admin</span>
               </div>
               <p className="text-[10px] text-zinc-400 mt-1 leading-tight">

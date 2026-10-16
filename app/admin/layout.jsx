@@ -12,12 +12,16 @@ import Header from "@/components/admin/Header";
 import BottomNav from "@/components/admin/BottomNav";
 import ProfileSheet from "@/components/admin/ProfileSheet";
 import ToastStack from "@/components/admin/ToastStack";
+import HamburgerDrawer from "@/components/admin/HamburgerDrawer";
+import ClientCyclesSheet from "@/components/admin/ClientCyclesSheet";
 
 // Vive DENTRO do BarberProvider para poder usar useBarber().
 function AdminShell({ children, onProfileUpdated }) {
   const pathname = usePathname();
   const [profileOpen, setProfileOpen] = useState(false);
-  const { barber, isChefe, selectedBarberId, selectBarber } = useBarber();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [recorrenciasOpen, setRecorrenciasOpen] = useState(false);
+  const { barber, isChefe, isLeadership, selectedBarberId, selectBarber } = useBarber();
 
   // Notificações seguem SEMPRE quem está logado, não quem está a ser visualizado.
   const scopeAllNotifications = hasPermission(barber, PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS);
@@ -25,11 +29,27 @@ function AdminShell({ children, onProfileUpdated }) {
   return (
     <NotificationProvider barberId={barber.id} scopeAll={scopeAllNotifications}>
       <div className="min-h-screen bg-black flex flex-col">
-        <Header pathname={pathname} onOpenProfile={() => setProfileOpen(true)} />
+        <Header
+          pathname={pathname}
+          onOpenProfile={() => setProfileOpen(true)}
+          onOpenMenu={() => setDrawerOpen(true)}
+        />
         <ToastStack />
         <main className="flex-1 pb-[calc(env(safe-area-inset-bottom,0px)+84px)]">{children}</main>
         <BottomNav />
       </div>
+
+      <HamburgerDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        onOpenRecorrencias={() => setRecorrenciasOpen(true)}
+      />
+
+      <ClientCyclesSheet
+        open={recorrenciasOpen}
+        onClose={() => setRecorrenciasOpen(false)}
+        scopeBarberId={isLeadership ? selectedBarberId : barber.id}
+      />
 
       <ProfileSheet
         open={profileOpen}

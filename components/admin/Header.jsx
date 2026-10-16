@@ -1,6 +1,6 @@
 'use client';
 
-import { LogOut, ShieldCheck, Eye, X } from 'lucide-react';
+import { LogOut, ShieldCheck, Eye, X, Menu } from 'lucide-react';
 import { useBarber } from '@/lib/barber-context';
 import NotificationBell from './NotificationBell';
 
@@ -12,6 +12,8 @@ const TITLES = {
   '/admin/financeiro': 'Caixa & Faturamento',
   '/admin/equipe': 'Equipe & Permissões',
   '/admin/galeria': 'Galeria de Cortes',
+  '/admin/clientes': 'Clientes',
+  '/admin/cancelados': 'Cancelados',
 };
 
 function isScopedPath(pathname) {
@@ -28,15 +30,17 @@ function isScopedPath(pathname) {
  * Header:
  * Cabeçalho principal mobile-first do painel administrativo.
  *
- * NOTIFICAÇÕES & PUSH (UI/UX):
- * - O botão do sininho (NotificationBell) permanece fixo no topo ao lado do cargo e avatar.
- * - O clique no sininho NÃO oculta nem quebra o layout do cabeçalho, renderizando
- *   o BottomSheet diretamente no body via portal sem interferir no backdrop-blur do header.
- * - Apresenta destaque em vermelho quando as notificações push do aparelho estão ativas.
+ * Inclui:
+ * - Botão de Menu Hamburguer Lateral (abre gaveta de atalhos e ferramentas)
+ * - Título dinâmico por rota
+ * - Badge de identificação de cargo (👑 Chefe ou 👔 Gerente)
+ * - Sininho de notificações push
+ * - Avatar de perfil do usuário
+ * - Botão sair
  */
-export default function Header({ pathname, onOpenProfile }) {
-  const { barber, isChefe, signOut, isViewingOther, viewedBarber, resetView } = useBarber();
-  const showViewBanner = isChefe && isViewingOther && isScopedPath(pathname);
+export default function Header({ pathname, onOpenProfile, onOpenMenu }) {
+  const { barber, isChefe, isManager, signOut, isViewingOther, viewedBarber, resetView } = useBarber();
+  const showViewBanner = (isChefe || isManager) && isViewingOther && isScopedPath(pathname);
   const viewedIsSelf = viewedBarber?.id === barber?.id;
 
   const title =
@@ -44,21 +48,37 @@ export default function Header({ pathname, onOpenProfile }) {
 
   return (
     <header className="sticky top-0 z-30 safe-top bg-black/95 backdrop-blur-md border-b border-zinc-800 select-none">
-      <div className="flex items-center justify-between px-4 h-14">
-        <div className="flex flex-col leading-tight">
-          <span className="text-white font-semibold text-base">{title}</span>
-          <span className="text-zinc-500 text-xs">
-            {isChefe ? 'Acesso total' : 'Meus atendimentos'}
-          </span>
+      <div className="flex items-center justify-between px-3 h-14">
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            type="button"
+            onClick={onOpenMenu}
+            aria-label="Abrir menu de navegação"
+            className="h-9 w-9 rounded-xl flex items-center justify-center text-zinc-300 hover:text-white hover:bg-zinc-800/80 active:scale-95 transition-all touch-manipulation shrink-0"
+          >
+            <Menu size={21} />
+          </button>
+
+          <div className="flex flex-col leading-tight min-w-0">
+            <span className="text-white font-semibold text-base truncate">{title}</span>
+            <span className="text-zinc-500 text-xs truncate">
+              {isChefe ? 'Acesso total' : isManager ? 'Gerência e agenda' : 'Meus atendimentos'}
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {isChefe && (
-            <span className="flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent-light">
+          {isChefe ? (
+            <span className="flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300 shrink-0">
               <ShieldCheck size={12} />
               Chefe
             </span>
-          )}
+          ) : isManager ? (
+            <span className="flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-400 shrink-0">
+              <ShieldCheck size={12} />
+              Gerente
+            </span>
+          ) : null}
 
           {/* Sininho com indicador de push ativo e modal de controle */}
           <NotificationBell />

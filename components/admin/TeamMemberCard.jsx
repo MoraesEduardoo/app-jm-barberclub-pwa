@@ -222,9 +222,13 @@ export default function TeamMemberCard({ member, onChanged }) {
           </div>
         </div>
 
-        {isChief ? (
-          <span className="flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-2.5 py-1 text-[10px] font-semibold text-accent-light shrink-0">
+        {memberState.role === "admin" ? (
+          <span className="flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold text-amber-300 shrink-0">
             <ShieldCheck size={12} /> Chefe
+          </span>
+        ) : memberState.role === "manager" ? (
+          <span className="flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-400 shrink-0">
+            <ShieldCheck size={12} /> Gerente
           </span>
         ) : (
           <button
@@ -380,32 +384,14 @@ export default function TeamMemberCard({ member, onChanged }) {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                disabled={isPending || roleSaving}
-                onClick={() => handleRoleChange('admin')}
-                className={`p-2.5 rounded-xl border text-left transition-all touch-manipulation ${
-                  memberState.role === 'admin'
-                    ? 'bg-accent/15 border-accent text-white shadow-sm ring-1 ring-accent/40'
-                    : 'bg-surface/50 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
-                }`}
-              >
-                <div className="flex items-center gap-1.5 font-bold text-xs text-accent-light">
-                  <span>👑 Chefe / Admin</span>
-                </div>
-                <p className="text-[10px] text-zinc-400 mt-1 leading-tight">
-                  Acesso total: faturamento global, edição de preços e equipe.
-                </p>
-              </button>
-
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <button
                 type="button"
                 disabled={isPending || roleSaving}
                 onClick={() => handleRoleChange('barber')}
                 className={`p-2.5 rounded-xl border text-left transition-all touch-manipulation ${
                   memberState.role === 'barber'
-                    ? 'bg-zinc-800/90 border-zinc-600 text-white shadow-sm ring-1 ring-zinc-500/40'
+                    ? 'bg-zinc-800/90 border-zinc-500 text-white shadow-sm ring-1 ring-zinc-500/40'
                     : 'bg-surface/50 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
                 }`}
               >
@@ -413,7 +399,43 @@ export default function TeamMemberCard({ member, onChanged }) {
                   <span>✂️ Barbeiro</span>
                 </div>
                 <p className="text-[10px] text-zinc-400 mt-1 leading-tight">
-                  Acesso focado: agenda própria, comissões e caixa individual.
+                  Agenda própria, comissões e caixa individual.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                disabled={isPending || roleSaving}
+                onClick={() => handleRoleChange('manager')}
+                className={`p-2.5 rounded-xl border text-left transition-all touch-manipulation ${
+                  memberState.role === 'manager'
+                    ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-sm ring-1 ring-emerald-500/40'
+                    : 'bg-surface/50 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-400">
+                  <span>👔 Gerente</span>
+                </div>
+                <p className="text-[10px] text-zinc-400 mt-1 leading-tight">
+                  Visão da agenda de toda a equipe e caixa individual.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                disabled={isPending || roleSaving}
+                onClick={() => handleRoleChange('admin')}
+                className={`p-2.5 rounded-xl border text-left transition-all touch-manipulation ${
+                  memberState.role === 'admin'
+                    ? 'bg-amber-500/15 border-amber-500 text-white shadow-sm ring-1 ring-amber-500/40'
+                    : 'bg-surface/50 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 font-bold text-xs text-amber-300">
+                  <span>👑 Chefe / Admin</span>
+                </div>
+                <p className="text-[10px] text-zinc-400 mt-1 leading-tight">
+                  Acesso total: faturamento global, edição de preços e equipe.
                 </p>
               </button>
             </div>

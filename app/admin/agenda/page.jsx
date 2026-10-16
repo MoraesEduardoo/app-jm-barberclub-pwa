@@ -23,7 +23,7 @@ import AgendaDashboardWidget from "@/components/admin/AgendaDashboardWidget";
 import { toast } from "@/lib/toast";
 
 export default function AgendaPage() {
-  const { can, scopeBarberId, viewedBarber } = useBarber();
+  const { can, scopeBarberId, selectedBarberId, selectBarber, isLeadership } = useBarber();
   const { notifications } = useNotifications();
   const canViewAll = can(PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS);
 
@@ -197,6 +197,42 @@ export default function AgendaPage() {
 
   return (
     <div className="px-4 pt-4 relative">
+      {/* Seletor Rápido de Equipe para Liderança (Chefe e Gerente) */}
+      {canViewAll && team.length > 0 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-1 no-scrollbar select-none">
+          <button
+            type="button"
+            onClick={() => selectBarber(null)}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all touch-manipulation ${
+              !selectedBarberId
+                ? 'bg-accent text-black shadow-sm ring-1 ring-accent'
+                : 'bg-surface border border-zinc-800 text-zinc-400 hover:text-white'
+            }`}
+          >
+            👥 Toda a equipe
+          </button>
+          {team.map((m) => {
+            const isSelected = selectedBarberId === m.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => selectBarber(m.id)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all touch-manipulation flex items-center gap-1.5 ${
+                  isSelected
+                    ? 'bg-accent text-black shadow-sm ring-1 ring-accent'
+                    : 'bg-surface border border-zinc-800 text-zinc-400 hover:text-white'
+                }`}
+              >
+                <span>{m.name.split(' ')[0]}</span>
+                {m.role === 'admin' && <span className="text-[10px]">👑</span>}
+                {m.role === 'manager' && <span className="text-[10px]">👔</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <DateStepper value={date} onChange={setDate} />
 
       {/* Dashboard Dinâmico de Performance & Ocupação */}
