@@ -28,7 +28,7 @@ function formatBRL(value) {
 function formatTime(isoString, timeVal) {
   if (timeVal) return String(timeVal).slice(0, 5);
   if (!isoString) return '';
-  if (String(isoString).includes('T')) {
+  if (String(isoString).includes('T') && !String(isoString).includes('T00:00:00')) {
     try {
       return new Date(isoString).toLocaleTimeString('pt-BR', {
         hour: '2-digit',

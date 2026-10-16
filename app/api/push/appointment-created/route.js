@@ -60,7 +60,7 @@ export async function POST(request) {
   }
 
   try {
-    const result = await notifyNewAppointment(appointmentId);
+    const result = await notifyNewAppointment(appointmentId, payload?.record);
 
     // Falha de VAPID, Supabase ou leitura do agendamento precisa ser
     // visível para a ponte do chat. Assim ela registra o problema nos logs

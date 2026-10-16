@@ -59,10 +59,15 @@ export default function AgendaDashboardWidget({ appointments = [], isToday = tru
       let hour = 12;
       if (a.appointment_time) {
         hour = parseInt(String(a.appointment_time).split(':')[0], 10) || 12;
-      } else if (a.appointment_date) {
-        hour = new Date(a.appointment_date).getHours();
+      } else if (a.appointment_date && String(a.appointment_date).includes('T') && !String(a.appointment_date).includes('T00:00:00')) {
+        try {
+          const d = new Date(a.appointment_date);
+          hour = parseInt(d.toLocaleTimeString('pt-BR', { hour: '2-digit', timeZone: 'America/Fortaleza', hour12: false }), 10) || 12;
+        } catch {
+          hour = 12;
+        }
       } else {
-        return;
+        hour = 12;
       }
       if (hour < 12) morningCount++;
       else if (hour < 18) afternoonCount++;

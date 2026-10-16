@@ -44,7 +44,9 @@ export default function AppointmentCard({
   // Extração rigorosa do horário local (elimina o desvio de UTC que jogava tudo para 21:00)
   const time = appointment.appointment_time
     ? String(appointment.appointment_time).slice(0, 5)
-    : appointment.appointment_date && String(appointment.appointment_date).includes('T')
+    : appointment.appointment_date &&
+      String(appointment.appointment_date).includes('T') &&
+      !String(appointment.appointment_date).includes('T00:00:00')
     ? new Date(appointment.appointment_date).toLocaleTimeString('pt-BR', {
         hour: '2-digit',
         minute: '2-digit',
