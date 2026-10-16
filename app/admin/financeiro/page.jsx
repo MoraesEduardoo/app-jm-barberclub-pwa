@@ -8,6 +8,8 @@ import {
   TrendingUp,
   AlertCircle,
   Percent,
+  Wallet,
+  ChevronRight,
 } from "lucide-react";
 import { useBarber } from "@/lib/barber-context";
 import { endSession } from "@/lib/session";
@@ -16,6 +18,7 @@ import { PERMISSION_KEYS } from "@/lib/auth";
 import { getFinanceSummary } from "@/lib/actions/finance";
 import { listTeam } from "@/lib/actions/team";
 import FinanceRow from "@/components/admin/FinanceRow";
+import CommissionSettlementSheet from "@/components/admin/CommissionSettlementSheet";
 
 const RANGES = [
   { key: "hoje", label: "Hoje" },
@@ -41,6 +44,7 @@ export default function FinanceiroPage() {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [team, setTeam] = useState([]);
+  const [settlementOpen, setSettlementOpen] = useState(false);
   const requestIdRef = useRef(0);
 
   // Chefe: o filtro é o profissional selecionado no contexto global (mesmo do perfil/agenda).
@@ -95,6 +99,32 @@ export default function FinanceiroPage() {
 
   return (
     <div className="px-4 pt-4">
+      {/* Botão de Destaque: Fechamento & Acerto de Comissões (Exclusivo Chefe) */}
+      {isChefe && (
+        <button
+          type="button"
+          onClick={() => setSettlementOpen(true)}
+          className="w-full mb-3.5 flex items-center justify-between bg-gradient-to-r from-emerald-950/70 via-surface to-emerald-950/40 border border-emerald-500/40 hover:border-emerald-500/60 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-white shadow-sm active:scale-[0.99] transition-all touch-manipulation"
+        >
+          <span className="flex items-center gap-2.5">
+            <span className="h-8 w-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+              <Wallet size={16} />
+            </span>
+            <span className="text-left">
+              <span className="text-white font-bold block text-xs">
+                Fechamento & Acerto de Comissões
+              </span>
+              <span className="text-zinc-400 text-[10.5px] block font-normal">
+                Pagar William e Matheus com recibo no WhatsApp
+              </span>
+            </span>
+          </span>
+          <span className="flex items-center gap-1 text-emerald-400 text-[11px] font-semibold shrink-0">
+            <span>Efetuar Acerto</span>
+            <ChevronRight size={14} />
+          </span>
+        </button>
+      )}
       {canManageFinance && team.length > 0 && (
         <div className="mb-3 -mx-1 flex gap-2 overflow-x-auto pb-1 scroll-touch no-scrollbar">
           <button
@@ -169,18 +199,32 @@ export default function FinanceiroPage() {
           </div>
 
           {summary.comissao && (
-            <div className="bg-surface border border-accent/30 rounded-xl p-3.5 mb-4 flex items-center gap-3">
-              <div className="h-9 w-9 rounded-full bg-accent/15 flex items-center justify-center shrink-0">
-                <Percent size={16} className="text-accent-light" />
+            <div className="bg-surface border border-accent/30 rounded-xl p-3.5 mb-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-full bg-accent/15 flex items-center justify-center shrink-0">
+                  <Percent size={16} className="text-accent-light" />
+                </div>
+                <div>
+                  <p className="text-zinc-400 text-xs">
+                    Comissão ({typeof summary.comissao.percent === "number" ? `${summary.comissao.percent}% do faturado` : "individual por barbeiro"})
+                  </p>
+                  <p className="text-white font-bold text-base">
+                    {formatBRL(summary.comissao.valor)}
+                  </p>
+                </div>
               </div>
-              <div className="flex-1">
-                <p className="text-zinc-400 text-xs">
-                  Comissão ({typeof summary.comissao.percent === "number" ? `${summary.comissao.percent}% do faturado` : "individual por barbeiro"})
-                </p>
-                <p className="text-white font-bold text-base">
-                  {formatBRL(summary.comissao.valor)}
-                </p>
-              </div>
+
+              {isChefe && (
+                <button
+                  type="button"
+                  onClick={() => setSettlementOpen(true)}
+                  className="shrink-0 flex items-center gap-1 text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg px-3 py-1.5 active:scale-95 transition-all shadow-sm"
+                >
+                  <Wallet size={12} />
+                  <span>Acertar</span>
+                  <ChevronRight size={12} />
+                </button>
+              )}
             </div>
           )}
 
@@ -250,6 +294,16 @@ export default function FinanceiroPage() {
             )}
           </div>
         </>
+      )}
+
+      {isChefe && (
+        <CommissionSettlementSheet
+          open={settlementOpen}
+          onClose={() => {
+            setSettlementOpen(false);
+            load();
+          }}
+        />
       )}
     </div>
   );

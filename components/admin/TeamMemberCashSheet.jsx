@@ -11,9 +11,12 @@ import {
   Loader2,
   ChevronRight,
   ExternalLink,
+  Wallet,
 } from 'lucide-react';
 import BottomSheet from './BottomSheet';
 import { getBarberCashHistory } from '@/lib/actions/team';
+import { useBarber } from '@/lib/barber-context';
+import CommissionSettlementSheet from './CommissionSettlementSheet';
 import { useRouter } from 'next/navigation';
 
 function formatBRL(value) {
@@ -65,9 +68,11 @@ function formatDate(isoString) {
  */
 export default function TeamMemberCashSheet({ open, onClose, member }) {
   const router = useRouter();
+  const { isChefe } = useBarber();
   const [period, setPeriod] = useState('today'); // 'today' | 'month'
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+  const [settleOpen, setSettleOpen] = useState(false);
 
   useEffect(() => {
     if (!open || !member?.id) return;
@@ -265,6 +270,18 @@ export default function TeamMemberCashSheet({ open, onClose, member }) {
               )}
             </div>
 
+            {/* Botão de Fechamento de Acerto de Comissão (Exclusivo Chefe) */}
+            {isChefe && (
+              <button
+                type="button"
+                onClick={() => setSettleOpen(true)}
+                className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl py-3 text-xs font-semibold active:scale-95 transition-all touch-manipulation shadow-sm"
+              >
+                <Wallet size={15} />
+                <span>Efetuar Acerto deste Barbeiro</span>
+              </button>
+            )}
+
             {/* Ação rápida para ver no Painel Financeiro */}
             <button
               type="button"
@@ -272,7 +289,7 @@ export default function TeamMemberCashSheet({ open, onClose, member }) {
                 onClose();
                 router.push('/admin/financeiro');
               }}
-              className="w-full flex items-center justify-center gap-1.5 bg-elevated border border-zinc-700/80 rounded-xl py-3 text-xs font-semibold text-white active:bg-zinc-900 transition-all touch-manipulation"
+              className="w-full flex items-center justify-center gap-1.5 bg-elevated border border-zinc-700/80 rounded-xl py-2.5 text-xs font-medium text-zinc-300 hover:text-white active:bg-zinc-900 transition-all touch-manipulation"
             >
               <span>Abrir no Caixa Geral</span>
               <ChevronRight size={14} className="text-zinc-400" />
@@ -280,6 +297,14 @@ export default function TeamMemberCashSheet({ open, onClose, member }) {
           </>
         )}
       </div>
+
+      {isChefe && (
+        <CommissionSettlementSheet
+          open={settleOpen}
+          onClose={() => setSettleOpen(false)}
+          defaultBarberId={member.id}
+        />
+      )}
     </BottomSheet>
   );
 }
