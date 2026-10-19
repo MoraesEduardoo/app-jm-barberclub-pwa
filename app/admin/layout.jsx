@@ -12,6 +12,7 @@ import Header from "@/components/admin/Header";
 import BottomNav from "@/components/admin/BottomNav";
 import ProfileSheet from "@/components/admin/ProfileSheet";
 import ToastStack from "@/components/admin/ToastStack";
+import InstallPwaBanner from "@/components/admin/InstallPwaBanner";
 import HamburgerDrawer from "@/components/admin/HamburgerDrawer";
 import ClientCyclesSheet from "@/components/admin/ClientCyclesSheet";
 
@@ -35,6 +36,7 @@ function AdminShell({ children, onProfileUpdated }) {
           onOpenMenu={() => setDrawerOpen(true)}
         />
         <ToastStack />
+        <InstallPwaBanner />
         <main className="flex-1 pb-[calc(env(safe-area-inset-bottom,0px)+84px)]">{children}</main>
         <BottomNav />
       </div>

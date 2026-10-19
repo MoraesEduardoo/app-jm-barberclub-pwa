@@ -76,6 +76,17 @@ export default function ServiceFormSheet({ open, onClose, service }) {
       setPendingBlob(null);
       setIsPhotoRemoved(false);
       setError('');
+    } else {
+      // Ao fechar, limpa preview temporário de blob se houver
+      setPreviewUrl((prev) => {
+        if (prev && typeof prev === 'string' && prev.startsWith('blob:')) {
+          URL.revokeObjectURL(prev);
+        }
+        return null;
+      });
+      setPendingBlob(null);
+      setIsPhotoRemoved(false);
+      setError('');
     }
   }, [open, service]);
 
@@ -83,23 +94,50 @@ export default function ServiceFormSheet({ open, onClose, service }) {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // 1. Valida se é um arquivo de imagem válido
+    if (!(file instanceof Blob) || (file.type && !file.type.startsWith('image/'))) {
+      setError('Por favor selecione um arquivo de imagem válido (JPG, PNG ou WebP).');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
     setError('');
     setCompressing(true);
     try {
-      const compressed = await compressImage(file, { maxWidth: 1024, maxHeight: 1024, quality: 0.85 });
-      setPendingBlob(compressed);
-      setPreviewUrl(URL.createObjectURL(compressed));
+      // compressImage retorna { blob: Blob, width, height }
+      const compressedResult = await compressImage(file, { maxSide: 1024, quality: 0.85 });
+      const finalBlob = compressedResult?.blob || compressedResult;
+
+      if (!finalBlob || !(finalBlob instanceof Blob)) {
+        throw new Error('Falha ao processar a imagem selecionada.');
+      }
+
+      // Revoga preview de blob anterior se existir
+      setPreviewUrl((prev) => {
+        if (prev && typeof prev === 'string' && prev.startsWith('blob:')) {
+          URL.revokeObjectURL(prev);
+        }
+        return URL.createObjectURL(finalBlob);
+      });
+
+      setPendingBlob(finalBlob);
       setIsPhotoRemoved(false);
     } catch (err) {
       console.error('Falha ao processar imagem:', err);
       setError('Não foi possível processar a imagem. Tente outra foto.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
     } finally {
       setCompressing(false);
     }
   }
 
   function handleRemovePhoto() {
-    setPreviewUrl(null);
+    setPreviewUrl((prev) => {
+      if (prev && typeof prev === 'string' && prev.startsWith('blob:')) {
+        URL.revokeObjectURL(prev);
+      }
+      return null;
+    });
     setPendingBlob(null);
     setIsPhotoRemoved(true);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -136,7 +174,8 @@ export default function ServiceFormSheet({ open, onClose, service }) {
       // Se houver nova foto para upload
       if (pendingBlob && targetServiceId) {
         const formData = new FormData();
-        formData.append('file', pendingBlob, `${targetServiceId}.webp`);
+        const ext = pendingBlob.type === 'image/jpeg' ? 'jpg' : 'webp';
+        formData.append('file', pendingBlob, `${targetServiceId}.${ext}`);
         await uploadServicePhoto(targetServiceId, formData);
       } else if (isPhotoRemoved && targetServiceId) {
         await removeServicePhoto(targetServiceId);
