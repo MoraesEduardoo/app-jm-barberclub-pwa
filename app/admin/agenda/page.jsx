@@ -11,6 +11,8 @@ import {
   listAppointmentsByDate,
   updateAppointmentStatus,
   deleteAppointment,
+  confirmAppointment,
+  rescheduleAppointment,
 } from "@/lib/actions/appointments";
 import { listTeam } from "@/lib/actions/team";
 import DateStepper from "@/components/admin/DateStepper";
@@ -19,7 +21,9 @@ import PaymentSheet from "@/components/admin/PaymentSheet";
 import WalkInSheet from "@/components/admin/WalkInSheet";
 import WaitlistSheet from "@/components/admin/WaitlistSheet";
 import ClientCyclesSheet from "@/components/admin/ClientCyclesSheet";
+import PreScheduleSheet from "@/components/admin/PreScheduleSheet";
 import AgendaDashboardWidget from "@/components/admin/AgendaDashboardWidget";
+import { isPreScheduledAppointment } from "@/lib/pre-scheduled";
 import { toast } from "@/lib/toast";
 
 export default function AgendaPage() {
@@ -34,6 +38,8 @@ export default function AgendaPage() {
   const [actionError, setActionError] = useState("");
   const [busyId, setBusyId] = useState(null); // agendamento com ação em andamento
   const [paymentTarget, setPaymentTarget] = useState(null);
+  const [preScheduleTarget, setPreScheduleTarget] = useState(null);
+  const [filterMode, setFilterMode] = useState("all"); // 'all' | 'pre_scheduled'
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [waitlistOpen, setWaitlistOpen] = useState(false);
   const [cyclesOpen, setCyclesOpen] = useState(false);
@@ -193,7 +199,45 @@ export default function AgendaPage() {
     load({ silent: true });
   }
 
+  async function handleConfirmPreScheduled(id) {
+    const res = await confirmAppointment(id);
+    if (res?.error) {
+      toast.error(res.error);
+      throw new Error(res.error);
+    }
+    setAppointments((prev) =>
+      prev.map((a) => (a.id === id ? { ...a, status: "confirmado" } : a))
+    );
+    load({ silent: true });
+  }
+
+  async function handleReschedulePreScheduled({ id, newDate, newTime, newBarberId }) {
+    const res = await rescheduleAppointment({ id, newDate, newTime, newBarberId });
+    if (res?.error) {
+      toast.error(res.error);
+      throw new Error(res.error);
+    }
+    load({ silent: true });
+  }
+
+  async function handleCancelPreScheduled(id, reason) {
+    const res = await updateAppointmentStatus(id, "cancelado", { reason });
+    if (res?.error) {
+      toast.error(res.error);
+      throw new Error(res.error);
+    }
+    setAppointments((prev) =>
+      prev.map((a) => (a.id === id ? { ...a, status: "cancelado" } : a))
+    );
+    load({ silent: true });
+  }
+
   const isToday = date === todayInShop();
+  const preScheduledCount = appointments.filter(isPreScheduledAppointment).length;
+  const displayedAppointments =
+    filterMode === "pre_scheduled"
+      ? appointments.filter(isPreScheduledAppointment)
+      : appointments;
 
   return (
     <div className="px-4 pt-4 relative">
@@ -261,6 +305,40 @@ export default function AgendaPage() {
         </button>
       </div>
 
+      {/* Banner & Filtro de Pré-Agendamentos Futuros (Chatbot) */}
+      {preScheduledCount > 0 && (
+        <div className="mt-3 flex items-center justify-between gap-2 p-3 rounded-2xl bg-gradient-to-r from-purple-950/40 via-purple-900/25 to-zinc-900 border border-purple-500/30 animate-in fade-in">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="h-7 w-7 rounded-lg bg-purple-500/20 border border-purple-500/40 text-purple-300 flex items-center justify-center shrink-0 text-xs font-bold">
+              🔄
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-white font-bold truncate">
+                {preScheduledCount === 1
+                  ? "1 pré-agendamento futuro"
+                  : `${preScheduledCount} pré-agendamentos futuros`}
+              </p>
+              <p className="text-[10px] text-purple-300 truncate">
+                Recorrência garantida via chatbot
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              setFilterMode((prev) => (prev === "pre_scheduled" ? "all" : "pre_scheduled"))
+            }
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 touch-manipulation ${
+              filterMode === "pre_scheduled"
+                ? "bg-purple-600 text-white shadow-md shadow-purple-950/50"
+                : "bg-purple-900/30 text-purple-300 border border-purple-500/30 hover:bg-purple-900/50"
+            }`}
+          >
+            {filterMode === "pre_scheduled" ? "Ver todos" : "Filtrar"}
+          </button>
+        </div>
+      )}
+
       {actionError && (
         <div
           role="alert"
@@ -299,13 +377,26 @@ export default function AgendaPage() {
               <RefreshCcw size={14} /> Tentar de novo
             </button>
           </div>
-        ) : appointments.length === 0 ? (
-          <p className="text-zinc-600 text-sm text-center mt-16">
-            Nenhum agendamento para essa data.
-          </p>
+        ) : displayedAppointments.length === 0 ? (
+          <div className="text-center py-16 space-y-2">
+            <p className="text-zinc-500 text-sm">
+              {filterMode === "pre_scheduled"
+                ? "Nenhum pré-agendamento para esta data."
+                : "Nenhum agendamento para essa data."}
+            </p>
+            {filterMode === "pre_scheduled" && (
+              <button
+                type="button"
+                onClick={() => setFilterMode("all")}
+                className="text-xs text-purple-400 hover:underline font-semibold"
+              >
+                Voltar a ver todos os agendamentos
+              </button>
+            )}
+          </div>
         ) : (
           <div className="space-y-2.5">
-            {appointments.map((appointment) => (
+            {displayedAppointments.map((appointment) => (
               <AppointmentCard
                 key={appointment.id}
                 appointment={appointment}
@@ -313,6 +404,7 @@ export default function AgendaPage() {
                 onChangeStatus={handleChangeStatus}
                 onOpenPayment={setPaymentTarget}
                 onDelete={handleDeleteAppointment}
+                onOpenPreSchedule={setPreScheduleTarget}
               />
             ))}
           </div>
@@ -323,6 +415,16 @@ export default function AgendaPage() {
         open={Boolean(paymentTarget)}
         onClose={handleClosePayment}
         appointment={paymentTarget}
+      />
+
+      <PreScheduleSheet
+        open={Boolean(preScheduleTarget)}
+        onClose={() => setPreScheduleTarget(null)}
+        appointment={preScheduleTarget}
+        team={team}
+        onConfirm={handleConfirmPreScheduled}
+        onReschedule={handleReschedulePreScheduled}
+        onCancel={handleCancelPreScheduled}
       />
 
       {isToday && (

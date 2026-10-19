@@ -11,16 +11,23 @@ import {
   MessageSquare,
   Crown,
   Clock,
+  RefreshCw,
+  Sparkles,
+  CalendarClock,
 } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import {
   buildAppointmentReminderWhatsAppMessage,
   getWhatsAppClickToChatUrl,
 } from '@/lib/whatsapp';
+import { isPreScheduledAppointment } from '@/lib/pre-scheduled';
 
 const STATUS_STYLES = {
   pendente: { label: 'Pendente', className: 'bg-zinc-800 text-zinc-300' },
   pending: { label: 'Pendente', className: 'bg-zinc-800 text-zinc-300' },
+  pre_scheduled: { label: 'Pré-agendado', className: 'bg-purple-500/20 text-purple-300 border border-purple-500/30' },
+  pre_agendado: { label: 'Pré-agendado', className: 'bg-purple-500/20 text-purple-300 border border-purple-500/30' },
+  'pre-agendado': { label: 'Pré-agendado', className: 'bg-purple-500/20 text-purple-300 border border-purple-500/30' },
   confirmado: { label: 'Confirmado', className: 'bg-emerald-500/15 text-emerald-400' },
   confirmed: { label: 'Confirmado', className: 'bg-emerald-500/15 text-emerald-400' },
   concluido: { label: 'Concluído', className: 'bg-blue-500/15 text-blue-400' },
@@ -34,12 +41,19 @@ export default function AppointmentCard({
   onChangeStatus,
   onOpenPayment,
   onDelete,
+  onOpenPreSchedule,
   busy = false,
 }) {
+  const isPreScheduled = isPreScheduledAppointment(appointment);
   const status = STATUS_STYLES[appointment.status] || STATUS_STYLES.confirmado;
   const paid = appointment.payment_status === 'pago';
   const isCancelled = appointment.status === 'cancelado' || appointment.status === 'cancelled';
-  const isPending = appointment.status === 'pendente' || appointment.status === 'pending';
+  const isPending =
+    appointment.status === 'pendente' ||
+    appointment.status === 'pending' ||
+    appointment.status === 'pre_scheduled' ||
+    appointment.status === 'pre_agendado' ||
+    appointment.status === 'pre-agendado';
 
   // Extração rigorosa do horário local (elimina o desvio de UTC que jogava tudo para 21:00)
   const time = appointment.appointment_time
@@ -93,7 +107,18 @@ export default function AppointmentCard({
   const durationMin = appointment.duration_minutes || appointment.services?.default_duration_minutes;
 
   return (
-    <div className="bg-[#0f0f0f] border border-zinc-800/80 rounded-2xl p-4 shadow-sm hover:border-zinc-700/80 transition-colors">
+    <div
+      onClick={() => {
+        if (isPreScheduled && onOpenPreSchedule) {
+          onOpenPreSchedule(appointment);
+        }
+      }}
+      className={`rounded-2xl p-4 shadow-sm transition-all ${
+        isPreScheduled
+          ? 'bg-gradient-to-b from-[#181226] via-[#120f1c] to-[#0d0b14] border-2 border-purple-500/50 shadow-purple-950/30 hover:border-purple-400/70 cursor-pointer ring-1 ring-purple-500/20'
+          : 'bg-[#0f0f0f] border border-zinc-800/80 hover:border-zinc-700/80'
+      }`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           {/* Header com Horário, Status e Badges */}
@@ -105,6 +130,13 @@ export default function AppointmentCard({
             >
               {status.label}
             </span>
+
+            {isPreScheduled && (
+              <span className="flex items-center gap-1 text-[10px] font-bold rounded-full px-2.5 py-0.5 bg-purple-500/25 text-purple-200 border border-purple-400/40 shadow-sm">
+                <RefreshCw size={10} className="text-purple-300" />
+                <span>🔄 Pré-agendado</span>
+              </span>
+            )}
 
             {appointment.is_walk_in && (
               <span className="flex items-center gap-0.5 text-[10px] font-medium rounded-full px-2 py-0.5 bg-amber-500/15 text-amber-400 border border-amber-500/20">
@@ -131,6 +163,14 @@ export default function AppointmentCard({
             {appointment.barbers?.name ? ` · ${appointment.barbers.name}` : ''}
           </p>
 
+          {/* Tag especial de pré-agendamento futuro / chatbot */}
+          {isPreScheduled && (
+            <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-purple-300 font-medium">
+              <Sparkles size={12} className="text-purple-400 shrink-0" />
+              <span>Recorrência garantida via chatbot</span>
+            </div>
+          )}
+
           {/* Duração estimada do atendimento */}
           {durationMin ? (
             <div className="flex items-center gap-1.5 mt-1 text-[11px] text-zinc-500">
@@ -145,6 +185,7 @@ export default function AppointmentCard({
               href={appointment.reference_photo.image_url}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
               className="mt-2.5 inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/90 p-1.5 pr-3 active:opacity-80"
             >
               <img
@@ -179,11 +220,30 @@ export default function AppointmentCard({
 
       {/* Botões de Ação */}
       <div className="flex flex-wrap items-center gap-2 mt-3.5 pt-2 border-t border-zinc-800/60">
+        {/* Botão de Gestão de Pré-Agendamento */}
+        {isPreScheduled && onOpenPreSchedule && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenPreSchedule(appointment);
+            }}
+            className="flex-1 min-w-[130px] flex items-center justify-center gap-1.5 h-9 rounded-xl bg-purple-600/30 hover:bg-purple-600/40 border border-purple-500/50 text-xs font-bold text-purple-200 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+          >
+            <CalendarClock size={14} className="text-purple-300" />
+            <span>Gerenciar</span>
+          </button>
+        )}
+
         {isPending && (
           <button
             type="button"
             disabled={busy}
-            onClick={() => onChangeStatus(appointment.id, 'confirmado')}
+            onClick={(e) => {
+              e.stopPropagation();
+              onChangeStatus(appointment.id, 'confirmado');
+            }}
             className="flex-1 min-w-[110px] flex items-center justify-center gap-1.5 h-9 rounded-xl bg-zinc-900 border border-zinc-700/80 text-xs font-semibold text-white active:scale-95 active:bg-zinc-800 transition-all touch-manipulation disabled:opacity-50"
           >
             <CheckCircle2 size={14} className="text-emerald-400" /> Confirmar
@@ -194,7 +254,10 @@ export default function AppointmentCard({
           <button
             type="button"
             disabled={busy}
-            onClick={() => onChangeStatus(appointment.id, 'cancelado')}
+            onClick={(e) => {
+              e.stopPropagation();
+              onChangeStatus(appointment.id, 'cancelado');
+            }}
             className="flex-1 min-w-[90px] flex items-center justify-center gap-1.5 h-9 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-medium text-zinc-400 active:scale-95 active:bg-zinc-800 transition-all touch-manipulation disabled:opacity-50"
           >
             <XCircle size={14} /> Cancelar
@@ -205,7 +268,10 @@ export default function AppointmentCard({
           <button
             type="button"
             disabled={busy}
-            onClick={() => onOpenPayment(appointment)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenPayment(appointment);
+            }}
             className="flex-1 min-w-[110px] flex items-center justify-center gap-1.5 h-9 rounded-xl bg-red-600 hover:bg-red-500 text-xs font-bold text-white shadow-sm active:scale-95 active:bg-red-700 transition-all touch-manipulation disabled:opacity-50"
           >
             <Wallet size={14} /> Cobrar
@@ -215,7 +281,10 @@ export default function AppointmentCard({
         {hasPhone && (
           <button
             type="button"
-            onClick={handleSendWhatsAppReminder}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleSendWhatsAppReminder(e);
+            }}
             title={`Enviar lembrete deste agendamento (${time}) via WhatsApp`}
             className="h-9 px-3 rounded-xl bg-zinc-900/90 border border-zinc-800 hover:border-emerald-500/40 text-zinc-300 hover:text-white text-xs font-medium flex items-center gap-1.5 active:scale-95 active:bg-zinc-800 transition-all touch-manipulation"
           >
@@ -228,7 +297,10 @@ export default function AppointmentCard({
           <button
             type="button"
             disabled={busy}
-            onClick={() => onDelete(appointment.id)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(appointment.id);
+            }}
             className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-xl bg-red-950/30 border border-red-900/50 text-xs font-medium text-red-400 active:scale-95 active:bg-red-900/50 transition-all touch-manipulation disabled:opacity-50"
           >
             <Trash2 size={14} /> Excluir registro

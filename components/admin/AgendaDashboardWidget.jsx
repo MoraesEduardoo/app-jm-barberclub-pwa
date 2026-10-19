@@ -10,6 +10,7 @@ import {
   Clock,
   Sparkles,
 } from 'lucide-react';
+import { isPreScheduledAppointment } from '@/lib/pre-scheduled';
 
 /**
  * AgendaDashboardWidget:
@@ -25,6 +26,7 @@ export default function AgendaDashboardWidget({ appointments = [], isToday = tru
     const confirmed = appointments.filter((a) => a.status === 'confirmado');
     const pending = appointments.filter((a) => a.status === 'pendente');
     const cancelled = appointments.filter((a) => a.status === 'cancelado');
+    const preScheduledCount = appointments.filter(isPreScheduledAppointment).length;
 
     // Faturamento previsto e realizado
     const totalEstimated = active.reduce((acc, a) => {
@@ -86,6 +88,7 @@ export default function AgendaDashboardWidget({ appointments = [], isToday = tru
       totalPaid,
       occupancyPercent,
       ticketMedio,
+      preScheduledCount,
       periods: {
         morning: { count: morningCount, pct: Math.round((morningCount / maxPeriod) * 100) },
         afternoon: { count: afternoonCount, pct: Math.round((afternoonCount / maxPeriod) * 100) },
@@ -109,13 +112,18 @@ export default function AgendaDashboardWidget({ appointments = [], isToday = tru
             <TrendingUp size={18} />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-white text-xs font-bold tracking-tight">
                 {isToday ? 'Performance de Hoje' : 'Resumo da Data'}
               </span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-950/60 border border-red-800/50 text-red-400 font-semibold">
                 {metrics.occupancyPercent}% ocupado
               </span>
+              {metrics.preScheduledCount > 0 && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-950/60 border border-purple-800/50 text-purple-300 font-semibold">
+                  🔄 {metrics.preScheduledCount} pré-agendado{metrics.preScheduledCount > 1 ? 's' : ''}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2 text-zinc-400 text-[11px] mt-0.5">
               <span>{formatCurrency(metrics.totalEstimated)} previsto</span>
