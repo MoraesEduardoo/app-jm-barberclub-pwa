@@ -8,6 +8,7 @@ import { listTeam } from "@/lib/actions/team";
 import { WEEKDAYS } from "@/lib/constants/schedule";
 import {
   listSchedule,
+  saveScheduleBatch,
   upsertScheduleDay,
   listExceptions,
   createException,
@@ -107,19 +108,10 @@ export default function ExpedientePage() {
   async function handleSaveChanges() {
     setIsSaving(true);
     try {
-      // Salva todos os dias da agenda em lote
-      const promises = schedule.map((s) =>
-        upsertScheduleDay(targetBarberId, s.day_of_week, {
-          active: s.active,
-          start_time: s.start_time,
-          end_time: s.end_time,
-          has_lunch_break: s.has_lunch_break,
-          lunch_start: s.lunch_start,
-          lunch_end: s.lunch_end,
-        }),
-      );
-
-      await Promise.all(promises);
+      const res = await saveScheduleBatch(targetBarberId, schedule);
+      if (res?.error) {
+        throw new Error(res.error);
+      }
       setHasChanges(false);
       await loadData(targetBarberId);
     } catch (error) {

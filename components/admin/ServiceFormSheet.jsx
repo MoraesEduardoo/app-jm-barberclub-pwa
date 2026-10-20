@@ -10,8 +10,9 @@ import {
   uploadServicePhoto,
   removeServicePhoto,
 } from '@/lib/actions/services';
+import { listTeam } from '@/lib/actions/team';
 import { compressImage } from '@/lib/image-compress';
-import { Upload, X, Scissors, Loader2, Sparkles } from 'lucide-react';
+import { Upload, X, Scissors, Loader2, Sparkles, UserCheck, Users } from 'lucide-react';
 import { toast } from '@/lib/toast';
 
 const CATEGORIES = [
@@ -37,6 +38,10 @@ export default function ServiceFormSheet({ open, onClose, service }) {
       : ''
   );
 
+  // Atribuição de Barbeiro (Todos ou Barbeiro Específico)
+  const [barberId, setBarberId] = useState(service?.barber_id || service?.assigned_barber_id || 'all');
+  const [teamMembers, setTeamMembers] = useState([]);
+
   // Estados de Imagem Ilustrativa
   const [currentImageUrl, setCurrentImageUrl] = useState(service?.image_url || null);
   const [previewUrl, setPreviewUrl] = useState(service?.image_url || null);
@@ -46,6 +51,17 @@ export default function ServiceFormSheet({ open, onClose, service }) {
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  // Carrega barbeiros ativos da equipe ao abrir a folha
+  useEffect(() => {
+    if (open) {
+      listTeam()
+        .then((members) => {
+          setTeamMembers((members || []).filter((m) => m.active !== false));
+        })
+        .catch(() => {});
+    }
+  }, [open]);
 
   useEffect(() => {
     if (open) {
@@ -63,6 +79,7 @@ export default function ServiceFormSheet({ open, onClose, service }) {
             ? String(service.default_duration_minutes)
             : ''
         );
+        setBarberId(service.barber_id || service.assigned_barber_id || 'all');
         setCurrentImageUrl(service.image_url || null);
         setPreviewUrl(service.image_url || null);
       } else {
@@ -70,6 +87,7 @@ export default function ServiceFormSheet({ open, onClose, service }) {
         setCategory('cabelo');
         setPrice('');
         setDuration('');
+        setBarberId('all');
         setCurrentImageUrl(null);
         setPreviewUrl(null);
       }
@@ -159,6 +177,7 @@ export default function ServiceFormSheet({ open, onClose, service }) {
         category,
         price: Number(price),
         default_duration_minutes: Number(duration),
+        barber_id: barberId === 'all' ? null : barberId,
       };
 
       let targetServiceId = service?.id;
@@ -283,6 +302,47 @@ export default function ServiceFormSheet({ open, onClose, service }) {
             required
           />
         </FormField>
+
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1.5 flex items-center gap-1.5">
+            <Users size={13} className="text-accent" />
+            Quem realiza este serviço?
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => setBarberId('all')}
+              className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border text-xs font-medium transition-all ${
+                barberId === 'all'
+                  ? 'bg-accent/20 border-accent text-white ring-1 ring-accent'
+                  : 'bg-surface border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700'
+              }`}
+            >
+              <Users size={13} className={barberId === 'all' ? 'text-accent' : 'text-zinc-500'} />
+              <span>Toda a equipe</span>
+            </button>
+            {teamMembers.map((member) => (
+              <button
+                key={member.id}
+                type="button"
+                onClick={() => setBarberId(member.id)}
+                className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border text-xs font-medium transition-all ${
+                  barberId === member.id
+                    ? 'bg-accent/20 border-accent text-white ring-1 ring-accent'
+                    : 'bg-surface border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700'
+                }`}
+              >
+                <UserCheck size={13} className={barberId === member.id ? 'text-accent' : 'text-zinc-500'} />
+                <span>{member.name}</span>
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-zinc-500 mt-1">
+            {barberId === 'all'
+              ? 'Disponível na agenda de todos os barbeiros.'
+              : `Exclusivo para os agendamentos de ${teamMembers.find((m) => m.id === barberId)?.name || 'este profissional'}.`}
+          </p>
+        </div>
 
         <div>
           <label className="block text-xs font-medium text-zinc-400 mb-1.5">Categoria</label>

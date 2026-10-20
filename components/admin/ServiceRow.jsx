@@ -77,6 +77,17 @@ export default function ServiceRow({ service, onClick, dragControls, isDragging 
                 {service.category}
               </span>
             )}
+            <span
+              className={`text-[11px] rounded px-1.5 py-0.5 border flex items-center gap-1 ${
+                !service.is_all_barbers && service.assigned_barber_name
+                  ? 'text-accent-light bg-accent/15 border-accent/40 font-medium'
+                  : 'text-zinc-500 bg-zinc-900/90 border-zinc-800/80'
+              }`}
+            >
+              {!service.is_all_barbers && service.assigned_barber_name
+                ? `👤 ${service.assigned_barber_name}`
+                : '👥 Toda equipe'}
+            </span>
           </div>
         </div>
 
