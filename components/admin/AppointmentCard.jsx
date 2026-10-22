@@ -44,18 +44,21 @@ export default function AppointmentCard({
   onOpenPreSchedule,
   busy = false,
 }) {
-  const isPreScheduled = isPreScheduledAppointment(appointment);
-  const status = STATUS_STYLES[appointment.status] || STATUS_STYLES.confirmado;
-  const paid = appointment.payment_status === 'pago';
-  const isCancelled = appointment.status === 'cancelado' || appointment.status === 'cancelled';
-  const isPending =
-    appointment.status === 'pendente' ||
-    appointment.status === 'pending' ||
-    appointment.status === 'pre_scheduled' ||
-    appointment.status === 'pre_agendado' ||
-    appointment.status === 'pre-agendado';
+  if (!appointment) return null;
 
-  // Extração rigorosa do horário local (elimina o desvio de UTC que jogava tudo para 21:00)
+  const isPreScheduled = isPreScheduledAppointment(appointment);
+  const statusKey = (appointment.status || 'confirmado').toLowerCase();
+  const status = STATUS_STYLES[statusKey] || STATUS_STYLES.confirmado;
+  const paid = appointment.payment_status === 'pago';
+  const isCancelled = statusKey === 'cancelado' || statusKey === 'cancelled';
+  const isPending =
+    statusKey === 'pendente' ||
+    statusKey === 'pending' ||
+    statusKey === 'pre_scheduled' ||
+    statusKey === 'pre_agendado' ||
+    statusKey === 'pre-agendado';
+
+  // Extração rigorosa do horário local de início (elimina desvios de UTC)
   const time = appointment.appointment_time
     ? String(appointment.appointment_time).slice(0, 5)
     : appointment.appointment_date &&
@@ -68,8 +71,18 @@ export default function AppointmentCard({
       })
     : '';
 
-  const firstName = appointment.client_name?.trim().split(' ')[0] || 'Cliente';
-  const hasPhone = Boolean(appointment.client_phone && appointment.client_phone.length >= 8);
+  // Horário de término (end_time real ou fallback de appointment_end_time)
+  const endTime = appointment.end_time || appointment.appointment_end_time
+    ? String(appointment.end_time || appointment.appointment_end_time).slice(0, 5)
+    : '';
+
+  const displayTime = time
+    ? (endTime && endTime !== time ? `${time} - ${endTime}` : time)
+    : 'Horário a definir';
+
+  const clientName = appointment.client_name?.trim() || 'Cliente';
+  const firstName = clientName.split(' ')[0] || 'Cliente';
+  const hasPhone = Boolean(appointment.client_phone && String(appointment.client_phone).replace(/\D/g, '').length >= 8);
 
   // Heurística de cliente recorrente (quando possui telefone e dados completos)
   const isFrequentClient = Boolean(hasPhone && appointment.client_name);
@@ -123,7 +136,7 @@ export default function AppointmentCard({
         <div className="min-w-0 flex-1">
           {/* Header com Horário, Status e Badges */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-white font-bold text-sm tracking-tight">{time || 'Horário'}</span>
+            <span className="text-white font-bold text-sm tracking-tight">{displayTime}</span>
 
             <span
               className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${status.className}`}
@@ -154,7 +167,7 @@ export default function AppointmentCard({
           {/* Nome do Cliente */}
           <div className="flex items-center gap-1.5 mt-2 text-zinc-200 text-sm font-semibold">
             <User size={14} className="text-zinc-500 shrink-0" />
-            <span className="truncate">{appointment.client_name}</span>
+            <span className="truncate">{clientName}</span>
           </div>
 
           {/* Serviço e Barbeiro */}

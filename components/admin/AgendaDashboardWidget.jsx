@@ -30,13 +30,13 @@ export default function AgendaDashboardWidget({ appointments = [], isToday = tru
 
     // Faturamento previsto e realizado
     const totalEstimated = active.reduce((acc, a) => {
-      const price = Number(a.services?.price) || 0;
+      const price = Number(a.price ?? a.total_price ?? a.services?.price ?? 0);
       return acc + price;
     }, 0);
 
     const totalPaid = appointments.reduce((acc, a) => {
       if (a.payment_status === 'pago') {
-        const price = Number(a.services?.price) || 0;
+        const price = Number(a.price ?? a.total_price ?? a.services?.price ?? 0);
         return acc + price;
       }
       return acc;
