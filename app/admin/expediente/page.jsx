@@ -21,6 +21,7 @@ import {
   TextInput,
   PrimaryButton,
 } from "@/components/admin/FormField";
+import { toast } from "@/lib/toast";
 
 export default function ExpedientePage() {
   const { barber, can, isChefe, selectedBarberId, selectBarber, setSelectionGuard } = useBarber();
@@ -37,6 +38,7 @@ export default function ExpedientePage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [blockDate, setBlockDate] = useState("");
   const [blockNote, setBlockNote] = useState("");
+  const [isBlocking, setIsBlocking] = useState(false);
 
   // Novos estados para o controlo de salvamento manual
   const [hasChanges, setHasChanges] = useState(false);
@@ -124,21 +126,48 @@ export default function ExpedientePage() {
 
   async function handleAddBlock(e) {
     e.preventDefault();
-    if (!blockDate) return;
-    await createException(targetBarberId, {
-      date: blockDate,
-      reason: blockNote,
-    });
-    setBlockDate("");
-    setBlockNote("");
-    setSheetOpen(false);
-    loadData(targetBarberId);
+    if (!blockDate) {
+      toast.warning("Selecione uma data para o bloqueio.");
+      return;
+    }
+    const effectiveId = targetBarberId || barber?.id;
+    if (!effectiveId) {
+      toast.error("Barbeiro não identificado para o bloqueio.");
+      return;
+    }
+
+    setIsBlocking(true);
+    try {
+      await createException(effectiveId, {
+        date: blockDate,
+        reason: blockNote,
+      });
+      setBlockDate("");
+      setBlockNote("");
+      setSheetOpen(false);
+      await loadData(effectiveId);
+      toast.success("Data bloqueada com sucesso!");
+    } catch (err) {
+      console.error("Erro ao bloquear data:", err);
+      toast.error(err.message || "Não foi possível bloquear essa data.");
+    } finally {
+      setIsBlocking(false);
+    }
   }
 
   async function handleRemoveBlock(id) {
-    setExceptions((prev) => prev.filter((exc) => exc.id !== id));
-    await deleteException(id);
-    loadData(targetBarberId);
+    if (!window.confirm("Deseja desbloquear esta data no expediente?")) return;
+    const effectiveId = targetBarberId || barber?.id;
+    try {
+      setExceptions((prev) => prev.filter((exc) => exc.id !== id));
+      await deleteException(id);
+      await loadData(effectiveId);
+      toast.success("Data liberada com sucesso!");
+    } catch (err) {
+      console.error("Erro ao remover bloqueio:", err);
+      toast.error(err.message || "Erro ao desbloquear data.");
+      await loadData(effectiveId);
+    }
   }
 
   const scheduleByDay = Object.fromEntries(
@@ -250,7 +279,9 @@ export default function ExpedientePage() {
               placeholder="Ex.: Feriado, viagem, consulta"
             />
           </FormField>
-          <PrimaryButton type="submit">Bloquear data</PrimaryButton>
+          <PrimaryButton type="submit" disabled={isBlocking}>
+            {isBlocking ? "Bloqueando data..." : "Bloquear data"}
+          </PrimaryButton>
         </form>
       </BottomSheet>
 
