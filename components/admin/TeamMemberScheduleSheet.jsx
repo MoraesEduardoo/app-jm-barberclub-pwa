@@ -6,6 +6,7 @@ import BottomSheet from './BottomSheet';
 import { WEEKDAYS } from '@/lib/constants/schedule';
 import { listSchedule, upsertScheduleDay } from '@/lib/actions/schedule';
 import ScheduleDayRow from './ScheduleDayRow';
+import { toast } from '@/lib/toast';
 
 /**
  * TeamMemberScheduleSheet:
@@ -82,7 +83,7 @@ export default function TeamMemberScheduleSheet({ open, onClose, member }) {
       setTimeout(() => setSuccessNotice(false), 3000);
     } catch (err) {
       console.error('Erro ao salvar expediente:', err);
-      alert('Não foi possível salvar o expediente. Tente novamente.');
+      toast.error('Não foi possível salvar o expediente. Tente novamente.');
     } finally {
       setSaving(false);
     }

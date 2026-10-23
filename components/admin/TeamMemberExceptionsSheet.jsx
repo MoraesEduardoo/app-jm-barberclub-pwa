@@ -5,6 +5,8 @@ import { CalendarOff, Plus, Trash2, Loader2, Calendar } from 'lucide-react';
 import BottomSheet from './BottomSheet';
 import { listExceptions, createException, deleteException } from '@/lib/actions/schedule';
 import { FormField, TextInput, PrimaryButton } from './FormField';
+import ConfirmDialog from './ConfirmDialog';
+import { toast } from '@/lib/toast';
 
 function formatDate(dateStr) {
   try {
@@ -79,13 +81,24 @@ export default function TeamMemberExceptionsSheet({ open, onClose, member }) {
     }
   }
 
-  async function handleRemove(id) {
-    if (!confirm('Deseja liberar esta data na agenda do colaborador?')) return;
+  const [blockToDelete, setBlockToDelete] = useState(null);
+
+  function handleRemove(exc) {
+    setBlockToDelete(exc);
+  }
+
+  async function confirmRemoveBlock() {
+    if (!blockToDelete) return;
+    const id = blockToDelete.id;
     try {
       setExceptions((prev) => prev.filter((exc) => exc.id !== id));
       await deleteException(id);
+      toast.success('Data liberada na agenda!');
     } catch (err) {
       console.error('Erro ao remover bloqueio:', err);
+      toast.error('Erro ao liberar data.');
+    } finally {
+      setBlockToDelete(null);
     }
   }
 
@@ -193,7 +206,7 @@ export default function TeamMemberExceptionsSheet({ open, onClose, member }) {
 
                 <button
                   type="button"
-                  onClick={() => handleRemove(exc.id)}
+                  onClick={() => handleRemove(exc)}
                   aria-label="Remover bloqueio"
                   className="h-8 w-8 rounded-full flex items-center justify-center text-zinc-500 active:text-accent-light active:bg-zinc-800 touch-manipulation transition-colors shrink-0"
                 >
@@ -204,6 +217,21 @@ export default function TeamMemberExceptionsSheet({ open, onClose, member }) {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(blockToDelete)}
+        title="Liberar data na agenda?"
+        description={
+          blockToDelete
+            ? `Deseja remover a folga/bloqueio do dia ${formatDate(blockToDelete.exception_date)} para ${member.name}?`
+            : ''
+        }
+        confirmLabel="Liberar Data"
+        cancelLabel="Cancelar"
+        variant="warning"
+        onConfirm={confirmRemoveBlock}
+        onCancel={() => setBlockToDelete(null)}
+      />
     </BottomSheet>
   );
 }

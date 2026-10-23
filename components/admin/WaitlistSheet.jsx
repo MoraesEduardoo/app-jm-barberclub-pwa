@@ -21,6 +21,7 @@ import {
 } from "@/lib/actions/waitlist";
 import { listServices } from "@/lib/actions/services";
 import { toast } from "@/lib/toast";
+import ConfirmDialog from "./ConfirmDialog";
 
 export default function WaitlistSheet({
   open,
@@ -120,14 +121,23 @@ export default function WaitlistSheet({
     }
   }
 
-  async function handleDelete(id) {
-    if (!window.confirm("Remover este cliente da lista de espera?")) return;
+  const [itemToDelete, setItemToDelete] = useState(null);
+
+  function handleDelete(item) {
+    setItemToDelete(item);
+  }
+
+  async function confirmDeleteItem() {
+    if (!itemToDelete) return;
+    const id = itemToDelete.id;
     try {
       await deleteWaitlistEntry(id);
       toast.success("Removido da lista de espera.");
       setItems((prev) => prev.filter((item) => item.id !== id));
     } catch {
       toast.error("Erro ao remover registro.");
+    } finally {
+      setItemToDelete(null);
     }
   }
 
@@ -368,7 +378,7 @@ export default function WaitlistSheet({
 
                       <button
                         type="button"
-                        onClick={() => handleDelete(item.id)}
+                        onClick={() => handleDelete(item)}
                         title="Remover da fila"
                         className="p-1.5 rounded-lg border border-zinc-700 text-zinc-500 hover:text-red-400 active:bg-zinc-800"
                       >
@@ -382,6 +392,21 @@ export default function WaitlistSheet({
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(itemToDelete)}
+        title="Remover da lista de espera?"
+        description={
+          itemToDelete
+            ? `Deseja remover ${itemToDelete.client_name || "este cliente"} da fila de espera de hoje?`
+            : ""
+        }
+        confirmLabel="Remover da Fila"
+        cancelLabel="Cancelar"
+        variant="danger"
+        onConfirm={confirmDeleteItem}
+        onCancel={() => setItemToDelete(null)}
+      />
     </BottomSheet>
   );
 }

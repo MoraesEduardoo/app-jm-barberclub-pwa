@@ -22,6 +22,7 @@ import {
   PrimaryButton,
 } from "@/components/admin/FormField";
 import { toast } from "@/lib/toast";
+import ConfirmDialog from "@/components/admin/ConfirmDialog";
 
 export default function ExpedientePage() {
   const { barber, can, isChefe, selectedBarberId, selectBarber, setSelectionGuard } = useBarber();
@@ -72,22 +73,22 @@ export default function ExpedientePage() {
     }
   }, [targetBarberId, loadData]);
 
-  // Bloqueia a troca de profissional (inclusive pelo perfil) se houver alterações por salvar.
+  const [blockToDelete, setBlockToDelete] = useState(null);
+  const [pendingBarberSwitch, setPendingBarberSwitch] = useState(null);
+
+  // Bloqueia a troca de profissional se houver alterações por salvar
   useEffect(() => {
-    setSelectionGuard(() =>
-      hasChanges
-        ? window.confirm("Existem alterações não salvas. Deseja descartá-las?")
-        : true,
-    );
+    setSelectionGuard(() => !hasChanges);
     return () => setSelectionGuard(null);
   }, [hasChanges, setSelectionGuard]);
 
   function handleSelectBarber(memberId) {
-    if (isChefe) {
-      selectBarber(memberId); // o guard acima já pergunta se há alterações por salvar
+    if (hasChanges) {
+      setPendingBarberSwitch(memberId);
       return;
     }
-    if (hasChanges && !window.confirm("Existem alterações não salvas. Deseja descartá-las?")) {
+    if (isChefe) {
+      selectBarber(memberId);
       return;
     }
     startTransition(() => setLocalTargetId(memberId));
@@ -116,9 +117,10 @@ export default function ExpedientePage() {
       }
       setHasChanges(false);
       await loadData(targetBarberId);
+      toast.success("Expediente salvo com sucesso!");
     } catch (error) {
       console.error("Erro ao salvar horários:", error);
-      alert(error?.message || "Ocorreu um erro ao salvar as mudanças. Tente novamente.");
+      toast.error(error?.message || "Ocorreu um erro ao salvar as mudanças. Tente novamente.");
     } finally {
       setIsSaving(false);
     }
@@ -155,8 +157,13 @@ export default function ExpedientePage() {
     }
   }
 
-  async function handleRemoveBlock(id) {
-    if (!window.confirm("Deseja desbloquear esta data no expediente?")) return;
+  function handleRemoveBlock(exc) {
+    setBlockToDelete(exc);
+  }
+
+  async function confirmRemoveBlock() {
+    if (!blockToDelete) return;
+    const id = blockToDelete.id;
     const effectiveId = targetBarberId || barber?.id;
     try {
       setExceptions((prev) => prev.filter((exc) => exc.id !== id));
@@ -167,6 +174,8 @@ export default function ExpedientePage() {
       console.error("Erro ao remover bloqueio:", err);
       toast.error(err.message || "Erro ao desbloquear data.");
       await loadData(effectiveId);
+    } finally {
+      setBlockToDelete(null);
     }
   }
 
@@ -175,7 +184,7 @@ export default function ExpedientePage() {
   );
 
   return (
-    <div className={`px-4 pt-4 pb-10 ${hasChanges ? "mb-[calc(env(safe-area-inset-bottom,0px)+88px)]" : ""}`}>
+    <div className={`px-4 pt-4 pb-36 sm:pb-32 ${hasChanges ? "mb-[calc(env(safe-area-inset-bottom,0px)+88px)]" : ""}`}>
       {canManageOthers && team.length > 0 && (
         <div className="mb-4 -mx-1 flex gap-2 overflow-x-auto pb-1 scroll-touch no-scrollbar">
           {team.map((member) => (
@@ -247,7 +256,7 @@ export default function ExpedientePage() {
                 )}
               </div>
               <button
-                onClick={() => handleRemoveBlock(exc.id)}
+                onClick={() => handleRemoveBlock(exc)}
                 className="text-zinc-600 active:text-accent-light"
                 aria-label="Remover bloqueio"
               >
@@ -302,6 +311,45 @@ export default function ExpedientePage() {
           </button>
         </div>
       )}
+
+      {/* Modal In-App: Confirmação de Remoção de Bloqueio de Data */}
+      <ConfirmDialog
+        open={Boolean(blockToDelete)}
+        title="Liberar data na agenda?"
+        description={
+          blockToDelete
+            ? `Deseja remover o bloqueio do dia ${new Date(
+                (blockToDelete.exception_date || blockToDelete.date) + "T12:00:00"
+              ).toLocaleDateString("pt-BR", { day: "2-digit", month: "long" })} e permitir novos agendamentos?`
+            : ""
+        }
+        confirmLabel="Liberar Data"
+        cancelLabel="Cancelar"
+        variant="warning"
+        onConfirm={confirmRemoveBlock}
+        onCancel={() => setBlockToDelete(null)}
+      />
+
+      {/* Modal In-App: Descartar Alterações ao Trocar de Profissional */}
+      <ConfirmDialog
+        open={Boolean(pendingBarberSwitch)}
+        title="Descartar alterações?"
+        description="Existem alterações no expediente deste colaborador que ainda não foram salvas. Se continuar, as mudanças serão perdidas."
+        confirmLabel="Descartar e Trocar"
+        cancelLabel="Voltar e Salvar"
+        variant="warning"
+        onConfirm={() => {
+          const nextId = pendingBarberSwitch;
+          setPendingBarberSwitch(null);
+          setHasChanges(false);
+          if (isChefe) {
+            selectBarber(nextId);
+          } else {
+            startTransition(() => setLocalTargetId(nextId));
+          }
+        }}
+        onCancel={() => setPendingBarberSwitch(null)}
+      />
     </div>
   );
 }

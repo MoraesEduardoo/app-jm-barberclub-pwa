@@ -7,6 +7,8 @@ import { FormField, TextInput, PrimaryButton, GhostButton } from "./FormField";
 import { CategoryChips } from "./GalleryUploadSheet";
 import { deleteGalleryItem, updateGalleryItem } from "@/lib/actions/gallery";
 import { categoryLabel, MAX_TITLE_LENGTH } from "@/lib/constants/gallery";
+import ConfirmDialog from "./ConfirmDialog";
+import { toast } from "@/lib/toast";
 
 /** Detalhe da foto. Quem pode editar (dono ou chefe) também vê título, categoria, visibilidade e excluir. */
 export default function GalleryItemSheet({ item, onClose, onChanged, onRemoved }) {
@@ -15,6 +17,7 @@ export default function GalleryItemSheet({ item, onClose, onChanged, onRemoved }
   const [visible, setVisible] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const lockRef = useRef(false);
 
   useEffect(() => {
@@ -52,12 +55,21 @@ export default function GalleryItemSheet({ item, onClose, onChanged, onRemoved }
     }
   }
 
-  async function handleDelete() {
-    if (!confirm(`Remover a foto "${item.title}"? Essa ação não pode ser desfeita.`)) return;
+  function handleDelete() {
+    setConfirmDeleteOpen(true);
+  }
+
+  async function confirmDeletePhoto() {
+    if (!item?.id) return;
     const res = await run(() => deleteGalleryItem(item.id));
     if (res?.ok) {
+      toast.success("Foto removida da galeria.");
+      setConfirmDeleteOpen(false);
       onRemoved?.(item.id);
       onClose();
+    } else {
+      toast.error("Não foi possível remover a foto.");
+      setConfirmDeleteOpen(false);
     }
   }
 
@@ -132,6 +144,22 @@ export default function GalleryItemSheet({ item, onClose, onChanged, onRemoved }
           </div>
         </form>
       )}
+
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title="Remover foto da galeria?"
+        description={
+          item
+            ? `Tem certeza que deseja remover a foto "${item.title || 'Selecionada'}"? Essa ação não pode ser desfeita.`
+            : ''
+        }
+        confirmLabel="Remover Foto"
+        cancelLabel="Cancelar"
+        variant="danger"
+        loading={busy}
+        onConfirm={confirmDeletePhoto}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
     </BottomSheet>
   );
 }

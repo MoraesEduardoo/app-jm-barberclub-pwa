@@ -5,6 +5,7 @@ import { Scissors, Check, Save, Loader2, CheckSquare, Square } from 'lucide-reac
 import BottomSheet from './BottomSheet';
 import { listServices } from '@/lib/actions/services';
 import { getBarberSpecialties, updateBarberSpecialties } from '@/lib/actions/team';
+import { toast } from '@/lib/toast';
 
 function formatBRL(value) {
   return `R$ ${Number(value || 0)
@@ -88,7 +89,7 @@ export default function TeamMemberSpecialtiesSheet({ open, onClose, member }) {
       setTimeout(() => setSuccessNotice(false), 3000);
     } catch (err) {
       console.error('Erro ao salvar especialidades:', err);
-      alert('Não foi possível salvar as especialidades do colaborador.');
+      toast.error('Não foi possível salvar as especialidades do colaborador.');
     } finally {
       setSaving(false);
     }

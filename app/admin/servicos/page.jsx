@@ -165,7 +165,7 @@ export default function ServicosPage() {
           axis="y"
           values={services}
           onReorder={handleReorder}
-          className="space-y-2.5 touch-pan-y"
+          className="space-y-3 touch-pan-y"
           style={{ touchAction: 'pan-y' }}
         >
           {services.map((service) => (

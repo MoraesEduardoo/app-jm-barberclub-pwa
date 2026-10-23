@@ -14,6 +14,7 @@ import { listTeam } from '@/lib/actions/team';
 import { compressImage } from '@/lib/image-compress';
 import { Upload, X, Scissors, Loader2, Sparkles, UserCheck, Users } from 'lucide-react';
 import { toast } from '@/lib/toast';
+import ConfirmDialog from './ConfirmDialog';
 
 const CATEGORIES = [
   { value: 'cabelo', label: 'Cabelo' },
@@ -51,6 +52,7 @@ export default function ServiceFormSheet({ open, onClose, service }) {
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   // Carrega barbeiros ativos da equipe ao abrir a folha
   useEffect(() => {
@@ -209,16 +211,23 @@ export default function ServiceFormSheet({ open, onClose, service }) {
     }
   }
 
-  async function handleDelete() {
-    if (!service || !confirm(`Remover o serviço "${service.name}"?`)) return;
+  function handleDelete() {
+    if (!service) return;
+    setConfirmDeleteOpen(true);
+  }
+
+  async function confirmDeleteService() {
+    if (!service) return;
     setSaving(true);
     try {
       await deleteService(service.id);
       toast.success('Serviço removido.');
+      setConfirmDeleteOpen(false);
       onClose();
     } catch (err) {
       setError(err.message || 'Erro ao remover o serviço.');
       setSaving(false);
+      setConfirmDeleteOpen(false);
     }
   }
 
@@ -404,6 +413,20 @@ export default function ServiceFormSheet({ open, onClose, service }) {
           )}
         </div>
       </form>
+
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title={`Remover serviço?`}
+        description={
+          service ? `Tem certeza que deseja remover "${service.name}"? Esta ação removerá o serviço do catálogo.` : ''
+        }
+        confirmLabel="Remover Serviço"
+        cancelLabel="Cancelar"
+        variant="danger"
+        loading={saving}
+        onConfirm={confirmDeleteService}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
     </BottomSheet>
   );
 }

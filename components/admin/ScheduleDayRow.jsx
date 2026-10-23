@@ -3,6 +3,12 @@
 import { useState, useEffect } from "react";
 import { Coffee } from "lucide-react";
 
+/**
+ * ScheduleDayRow:
+ * Linha de expediente diário 100% responsiva para mobile e desktop.
+ * Evita overflow de seletores de horário e botões nativos em telas menores,
+ * agrupando os inputs de início e término em um container compacto e fluido.
+ */
 export default function ScheduleDayRow({ day, entry, onChange }) {
   const active = entry?.active ?? false;
   const hasLunch = entry?.has_lunch_break ?? false;
@@ -38,91 +44,104 @@ export default function ScheduleDayRow({ day, entry, onChange }) {
   }
 
   return (
-    <div className="bg-surface border border-zinc-800 rounded-xl px-4 py-3.5">
-      <div className="flex items-center gap-3">
-        <button
-          role="switch"
-          aria-checked={active}
-          onClick={() => emit({ active: !active })}
-          className={`relative shrink-0 w-11 h-6 rounded-full transition-all touch-manipulation active:scale-95 ${
-            active ? "bg-accent" : "bg-zinc-700"
-          }`}
-        >
-          <span
-            className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
-              active ? "translate-x-5" : "translate-x-0"
-            }`}
-          />
-        </button>
-
-        <div className="flex-1 min-w-0">
-          <p
-            className={`text-sm font-medium ${active ? "text-white" : "text-zinc-500"}`}
-          >
-            {day.label}
-          </p>
-          {!active && <p className="text-zinc-600 text-xs">Fechado</p>}
-        </div>
-
-        {active && (
-          <div className="flex items-center gap-1.5 shrink-0">
-            <input
-              type="time"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-              onBlur={() => emit({ start_time: start })}
-              className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-base text-white w-[86px] focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation"
-            />
-            <span className="text-zinc-600 text-xs">–</span>
-            <input
-              type="time"
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-              onBlur={() => emit({ end_time: end })}
-              className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-base text-white w-[86px] focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation"
-            />
-          </div>
-        )}
-      </div>
-
-      {active && (
-        <div className="mt-3 pt-3 border-t border-zinc-800/80 flex items-center gap-3">
+    <div className="bg-surface border border-zinc-800/90 rounded-2xl p-3.5 sm:p-4 transition-all shadow-sm">
+      {/* Linha Principal: Dia + Switch + Horários */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        {/* Switch do dia e nome */}
+        <div className="flex items-center gap-3">
           <button
+            type="button"
             role="switch"
-            aria-checked={hasLunch}
-            onClick={() => emit({ has_lunch_break: !hasLunch })}
-            className={`relative shrink-0 w-9 h-5 rounded-full transition-all touch-manipulation active:scale-95 ${
-              hasLunch ? "bg-accent" : "bg-zinc-700"
+            aria-checked={active}
+            onClick={() => emit({ active: !active })}
+            className={`relative shrink-0 w-11 h-6 rounded-full transition-all touch-manipulation active:scale-95 ${
+              active ? "bg-accent" : "bg-zinc-700"
             }`}
           >
             <span
-              className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-                hasLunch ? "translate-x-4" : "translate-x-0"
+              className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                active ? "translate-x-5" : "translate-x-0"
               }`}
             />
           </button>
 
-          <div className="flex-1 flex items-center gap-1.5 text-zinc-400 text-xs">
-            <Coffee size={13} className={hasLunch ? "text-accent-light" : ""} />
-            Almoço
+          <div className="min-w-0">
+            <p className={`text-sm font-semibold tracking-tight ${active ? "text-white" : "text-zinc-500"}`}>
+              {day.label}
+            </p>
+            {!active && <p className="text-zinc-500 text-[11px] font-medium">Fechado</p>}
+          </div>
+        </div>
+
+        {/* Inputs de Horário com visual compacto, responsivo e sem transbordo */}
+        {active && (
+          <div className="flex items-center gap-1.5 self-end sm:self-auto w-full sm:w-auto justify-end">
+            <div className="flex items-center gap-1.5 bg-zinc-900/90 border border-zinc-800 rounded-xl px-2.5 py-1.5 shadow-inner">
+              <input
+                type="time"
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+                onBlur={() => emit({ start_time: start })}
+                aria-label={`Abertura ${day.label}`}
+                className="bg-transparent text-white text-xs sm:text-sm font-bold w-[70px] sm:w-[76px] text-center focus:outline-none focus:ring-1 focus:ring-accent rounded touch-manipulation"
+              />
+              <span className="text-zinc-500 text-xs font-semibold select-none">–</span>
+              <input
+                type="time"
+                value={end}
+                onChange={(e) => setEnd(e.target.value)}
+                onBlur={() => emit({ end_time: end })}
+                aria-label={`Fechamento ${day.label}`}
+                className="bg-transparent text-white text-xs sm:text-sm font-bold w-[70px] sm:w-[76px] text-center focus:outline-none focus:ring-1 focus:ring-accent rounded touch-manipulation"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Linha de Intervalo de Almoço */}
+      {active && (
+        <div className="mt-3 pt-2.5 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={hasLunch}
+              onClick={() => emit({ has_lunch_break: !hasLunch })}
+              className={`relative shrink-0 w-8 h-4.5 rounded-full transition-all touch-manipulation active:scale-95 ${
+                hasLunch ? "bg-accent" : "bg-zinc-700"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                  hasLunch ? "translate-x-3.5" : "translate-x-0"
+                }`}
+              />
+            </button>
+            <div className="flex items-center gap-1.5 text-zinc-400 text-xs font-medium">
+              <Coffee size={13} className={hasLunch ? "text-accent-light" : "text-zinc-500"} />
+              <span>Intervalo de almoço</span>
+            </div>
           </div>
 
           {hasLunch && (
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center gap-1.5 bg-zinc-900/90 border border-zinc-800 rounded-xl px-2.5 py-1.5 self-end sm:self-auto shadow-inner">
               <input
                 type="time"
                 value={lunchStart}
                 onChange={(e) => setLunchStart(e.target.value)}
                 onBlur={() => emit({ lunch_start: lunchStart })}
-                className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-base text-white w-[86px] focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation"
+                aria-label={`Início do almoço ${day.label}`}
+                className="bg-transparent text-white text-xs sm:text-sm font-bold w-[70px] sm:w-[76px] text-center focus:outline-none focus:ring-1 focus:ring-accent rounded touch-manipulation"
               />
-              <span className="text-zinc-600 text-xs">–</span>
+              <span className="text-zinc-500 text-xs font-semibold select-none">–</span>
               <input
                 type="time"
                 value={lunchEnd}
                 onChange={(e) => setLunchEnd(e.target.value)}
                 onBlur={() => emit({ lunch_end: lunchEnd })}
-                className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-base text-white w-[86px] focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation"
+                aria-label={`Fim do almoço ${day.label}`}
+                className="bg-transparent text-white text-xs sm:text-sm font-bold w-[70px] sm:w-[76px] text-center focus:outline-none focus:ring-1 focus:ring-accent rounded touch-manipulation"
               />
             </div>
           )}

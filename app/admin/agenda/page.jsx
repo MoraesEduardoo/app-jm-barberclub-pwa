@@ -25,6 +25,7 @@ import PreScheduleSheet from "@/components/admin/PreScheduleSheet";
 import AgendaDashboardWidget from "@/components/admin/AgendaDashboardWidget";
 import { isPreScheduledAppointment } from "@/lib/pre-scheduled";
 import { toast } from "@/lib/toast";
+import ConfirmDialog from "@/components/admin/ConfirmDialog";
 
 export default function AgendaPage() {
   const { can, scopeBarberId, selectedBarberId, selectBarber, isLeadership, viewedBarber } = useBarber();
@@ -113,12 +114,10 @@ export default function AgendaPage() {
     if (latestNotificationId) loadRef.current({ silent: true });
   }, [latestNotificationId]);
 
-  async function handleChangeStatus(id, status) {
-    if (busyId) return;
-    if (status === "cancelado" && !window.confirm("Cancelar este agendamento?")) {
-      return;
-    }
+  const [confirmCancelId, setConfirmCancelId] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
+  async function executeStatusChange(id, status) {
     setBusyId(id);
     setActionError("");
 
@@ -154,12 +153,16 @@ export default function AgendaPage() {
     }
   }
 
-  async function handleDeleteAppointment(id) {
+  function handleChangeStatus(id, status) {
     if (busyId) return;
-    if (!window.confirm("Excluir este agendamento definitivamente do histórico?")) {
+    if (status === "cancelado") {
+      setConfirmCancelId(id);
       return;
     }
+    executeStatusChange(id, status);
+  }
 
+  async function executeDeleteAppointment(id) {
     setBusyId(id);
     setActionError("");
 
@@ -187,6 +190,11 @@ export default function AgendaPage() {
     } finally {
       setBusyId(null);
     }
+  }
+
+  function handleDeleteAppointment(id) {
+    if (busyId) return;
+    setConfirmDeleteId(id);
   }
 
   function handleClosePayment() {
@@ -463,6 +471,40 @@ export default function AgendaPage() {
         open={cyclesOpen}
         onClose={() => setCyclesOpen(false)}
         scopeBarberId={scopeBarberId}
+      />
+
+      {/* Modal In-App: Confirmação de Cancelamento de Agendamento */}
+      <ConfirmDialog
+        open={Boolean(confirmCancelId)}
+        title="Cancelar agendamento?"
+        description="Tem certeza que deseja cancelar este agendamento? O horário ficará imediatamente livre na agenda para novos clientes."
+        confirmLabel="Cancelar Agendamento"
+        cancelLabel="Voltar"
+        variant="warning"
+        loading={Boolean(busyId)}
+        onConfirm={async () => {
+          const id = confirmCancelId;
+          setConfirmCancelId(null);
+          await executeStatusChange(id, "cancelado");
+        }}
+        onCancel={() => setConfirmCancelId(null)}
+      />
+
+      {/* Modal In-App: Confirmação de Exclusão Definitiva */}
+      <ConfirmDialog
+        open={Boolean(confirmDeleteId)}
+        title="Excluir agendamento?"
+        description="Esta ação removerá este agendamento definitivamente do histórico da barbearia. Não será possível recuperá-lo."
+        confirmLabel="Excluir Definitivamente"
+        cancelLabel="Cancelar"
+        variant="danger"
+        loading={Boolean(busyId)}
+        onConfirm={async () => {
+          const id = confirmDeleteId;
+          setConfirmDeleteId(null);
+          await executeDeleteAppointment(id);
+        }}
+        onCancel={() => setConfirmDeleteId(null)}
       />
     </div>
   );

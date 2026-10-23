@@ -6,6 +6,8 @@ import { todayInShop } from '@/lib/dates';
 import { FormField, TextInput, PrimaryButton, GhostButton } from './FormField';
 import { createExpense, updateExpense, deleteExpense } from '@/lib/actions/finance';
 import { EXPENSE_CATEGORIES } from '@/lib/constants/finance';
+import ConfirmDialog from './ConfirmDialog';
+import { toast } from '@/lib/toast';
 
 function todayISO() {
   return todayInShop();
@@ -22,6 +24,7 @@ export default function ExpenseFormSheet({ open, onClose, expense, chefeId }) {
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   // Sincroniza o estado interno sempre que o modal abre ou a despesa selecionada é alterada
   useEffect(() => {
@@ -71,15 +74,22 @@ export default function ExpenseFormSheet({ open, onClose, expense, chefeId }) {
     }
   }
 
-  async function handleDelete() {
-    if (!confirm('Remover essa despesa do financeiro?')) return;
+  function handleDelete() {
+    setConfirmDeleteOpen(true);
+  }
+
+  async function confirmDeleteExpense() {
+    if (!expense?.id) return;
     setSaving(true);
     try {
       await deleteExpense(expense.id);
+      toast.success('Despesa removida do financeiro.');
+      setConfirmDeleteOpen(false);
       onClose();
     } catch (err) {
       setError(err.message || 'Erro ao remover a despesa.');
       setSaving(false);
+      setConfirmDeleteOpen(false);
     }
   }
 
@@ -143,6 +153,22 @@ export default function ExpenseFormSheet({ open, onClose, expense, chefeId }) {
           )}
         </div>
       </form>
+
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title="Remover despesa?"
+        description={
+          expense
+            ? `Tem certeza que deseja remover a despesa "${expense.description || 'Selecionada'}" no valor de R$ ${Number(expense.amount || 0).toFixed(2).replace('.', ',')}?`
+            : ''
+        }
+        confirmLabel="Remover Despesa"
+        cancelLabel="Cancelar"
+        variant="danger"
+        loading={saving}
+        onConfirm={confirmDeleteExpense}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
     </BottomSheet>
   );
 }

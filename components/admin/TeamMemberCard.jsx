@@ -28,15 +28,12 @@ import {
 } from "@/lib/actions/team";
 import { createRecoveryLink } from "@/lib/actions/recovery";
 import { toast } from "@/lib/toast";
+import ConfirmDialog from "./ConfirmDialog";
+import { formatWhatsAppPhone, formatPhoneBR } from "@/lib/whatsapp";
 import TeamMemberCashSheet from "./TeamMemberCashSheet";
 import TeamMemberScheduleSheet from "./TeamMemberScheduleSheet";
 import TeamMemberSpecialtiesSheet from "./TeamMemberSpecialtiesSheet";
 import TeamMemberExceptionsSheet from "./TeamMemberExceptionsSheet";
-
-function whatsappNumber(phone) {
-  const digits = (phone || "").replace(/\D/g, "");
-  return digits.length <= 11 ? `55${digits}` : digits;
-}
 
 /**
  * TeamMemberCard:
@@ -188,14 +185,26 @@ export default function TeamMemberCard({ member, onChanged }) {
     }
   }
 
-  async function handleRemove() {
-    if (!confirm(`Remover ${member.name} da equipe?`)) return;
+  const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
+  const [isRemoving, setIsRemoving] = useState(false);
+
+  async function handleConfirmRemove() {
+    setIsRemoving(true);
     try {
       await removeTeamMember(member.id);
+      toast.success(`${member.name} removido da equipe com sucesso.`);
       if (onChanged) onChanged(member.id);
     } catch (error) {
       console.error(error);
+      toast.error(error?.message || "Não foi possível remover o colaborador.");
+    } finally {
+      setIsRemoving(false);
+      setConfirmRemoveOpen(false);
     }
+  }
+
+  function handleRemove() {
+    setConfirmRemoveOpen(true);
   }
 
   return (
@@ -465,27 +474,48 @@ export default function TeamMemberCard({ member, onChanged }) {
               </p>
             )}
 
-            {recovery.link && (
-              <div className="mt-2.5 flex items-center gap-2">
-                <a
-                  href={`https://wa.me/${whatsappNumber(recovery.link.phone)}?text=${encodeURIComponent(
-                    `Olá, ${recovery.link.name}! Use este link para definir sua nova senha do painel da barbearia: ${recovery.link.url}`
-                  )}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[11px] font-semibold text-white active:bg-accent-dark"
-                >
-                  <MessageCircle size={13} /> Enviar no WhatsApp
-                </a>
-                <button
-                  type="button"
-                  onClick={handleCopyLink}
-                  className="flex items-center gap-1.5 rounded-full border border-zinc-700 px-3 py-1.5 text-[11px] font-medium text-zinc-300 hover:text-white"
-                >
-                  <Copy size={13} /> {recovery.copied ? "Copiado" : "Copiar"}
-                </button>
-              </div>
-            )}
+            {recovery.link && (() => {
+              const targetPhone = recovery.link.phone || memberState.phone || member.phone;
+              const waPhone = formatWhatsAppPhone(targetPhone);
+              const displayPhone = formatPhoneBR(targetPhone);
+              const waText = encodeURIComponent(
+                `Olá, ${recovery.link.name || member.name}! Use este link seguro para definir sua nova senha no painel da JM BarberClub: ${recovery.link.url}`
+              );
+              const waUrl = waPhone ? `https://api.whatsapp.com/send?phone=${waPhone}&text=${waText}` : null;
+
+              return (
+                <div className="mt-2.5 space-y-2">
+                  {displayPhone && (
+                    <p className="text-[11px] text-zinc-400">
+                      Telefone cadastrado: <strong className="text-zinc-200">{displayPhone}</strong>
+                    </p>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {waUrl ? (
+                      <a
+                        href={waUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[11px] font-semibold text-white active:bg-accent-dark shadow-sm hover:bg-accent-dark transition-all"
+                      >
+                        <MessageCircle size={13} /> Enviar no WhatsApp {displayPhone ? `(${displayPhone})` : ""}
+                      </a>
+                    ) : (
+                      <span className="text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2 py-1">
+                        Telefone não cadastrado. Copie o link abaixo para enviar:
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleCopyLink}
+                      className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-surface px-3 py-1.5 text-[11px] font-medium text-zinc-300 hover:text-white active:scale-95 transition-all"
+                    >
+                      <Copy size={13} /> {recovery.copied ? "Link Copiado!" : "Copiar Link"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Remover da equipe */}
@@ -524,6 +554,19 @@ export default function TeamMemberCard({ member, onChanged }) {
         open={exceptionsSheetOpen}
         onClose={() => setExceptionsSheetOpen(false)}
         member={memberState}
+      />
+
+      {/* Modal de Confirmação In-App para Remover Colaborador */}
+      <ConfirmDialog
+        open={confirmRemoveOpen}
+        title={`Remover ${member.name}?`}
+        description="Tem certeza que deseja remover este colaborador da equipe? Essa ação não pode ser desfeita."
+        confirmLabel="Remover Colaborador"
+        cancelLabel="Cancelar"
+        variant="danger"
+        loading={isRemoving}
+        onConfirm={handleConfirmRemove}
+        onCancel={() => setConfirmRemoveOpen(false)}
       />
     </div>
   );
