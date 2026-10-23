@@ -236,6 +236,30 @@ export default function HamburgerDrawer({ open, onClose, onOpenRecorrencias }) {
                 <ChevronRight size={14} className="text-zinc-600" />
               </button>
 
+              {/* Equipe (Liderança: Chefe e Gerente) */}
+              {isLeadership && (
+                <Link
+                  href="/admin/equipe"
+                  onClick={onClose}
+                  className={`flex items-center justify-between p-2.5 rounded-xl transition-all ${
+                    pathname === '/admin/equipe'
+                      ? 'bg-accent/15 text-white font-medium border border-accent/30'
+                      : 'text-zinc-300 hover:bg-zinc-900 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-lg bg-zinc-800/80 flex items-center justify-center text-accent">
+                      <Users size={16} />
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold block leading-tight">Equipe & Colaboradores</span>
+                      <span className="text-[10px] text-zinc-500">Expedientes, especialidades e acessos</span>
+                    </div>
+                  </div>
+                  <ChevronRight size={14} className="text-zinc-600" />
+                </Link>
+              )}
+
               {/* Faturamento */}
               <Link
                 href="/admin/financeiro"
@@ -252,40 +276,46 @@ export default function HamburgerDrawer({ open, onClose, onOpenRecorrencias }) {
                   </div>
                   <div>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-semibold block leading-tight">Faturamento</span>
+                      <span className="text-xs font-semibold block leading-tight">
+                        {isChefe ? 'Faturamento & Caixa' : 'Meu Caixa & Comissões'}
+                      </span>
                       <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded font-bold uppercase">
                         Caixa
                       </span>
                     </div>
-                    <span className="text-[10px] text-zinc-500">Entradas, comissões e fechamento</span>
-                  </div>
-                </div>
-                <ChevronRight size={14} className="text-zinc-600" />
-              </Link>
-
-              {/* Despesas */}
-              <Link
-                href={isChefe ? '/admin/financeiro/completo' : '/admin/financeiro'}
-                onClick={onClose}
-                className={`flex items-center justify-between p-2.5 rounded-xl transition-all ${
-                  pathname === '/admin/financeiro/completo'
-                    ? 'bg-rose-500/15 text-white font-medium border border-rose-500/30'
-                    : 'text-zinc-300 hover:bg-zinc-900 hover:text-white'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
-                    <Receipt size={16} />
-                  </div>
-                  <div>
-                    <span className="text-xs font-semibold block leading-tight">Despesas</span>
                     <span className="text-[10px] text-zinc-500">
-                      {isChefe ? 'Custos fixos, compras e saldo líquido' : 'Lançamentos e custos'}
+                      {isChefe ? 'Entradas, comissões e fechamento' : 'Meus cortes realizados e comissão'}
                     </span>
                   </div>
                 </div>
                 <ChevronRight size={14} className="text-zinc-600" />
               </Link>
+
+              {/* Despesas - Restrito estritamente ao Chefe (Gerente não tem acesso) */}
+              {isChefe && (
+                <Link
+                  href="/admin/financeiro/completo"
+                  onClick={onClose}
+                  className={`flex items-center justify-between p-2.5 rounded-xl transition-all ${
+                    pathname === '/admin/financeiro/completo'
+                      ? 'bg-rose-500/15 text-white font-medium border border-rose-500/30'
+                      : 'text-zinc-300 hover:bg-zinc-900 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
+                      <Receipt size={16} />
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold block leading-tight">Despesas</span>
+                      <span className="text-[10px] text-zinc-500">
+                        Custos fixos, compras e saldo líquido
+                      </span>
+                    </div>
+                  </div>
+                  <ChevronRight size={14} className="text-zinc-600" />
+                </Link>
+              )}
             </div>
 
             {/* Suporte & Ajuda */}

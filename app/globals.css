@@ -92,6 +92,18 @@ textarea {
   box-shadow: 0 0 8px 1px rgba(220, 38, 38, 0.7);
 }
 
+/* Otimização para seletores de horário mobile (previne auto-zoom do iOS/Android que corta botões Definir/Cancelar) */
+input[type="time"] {
+  font-size: 16px;
+  min-height: 36px;
+}
+@media (min-width: 640px) {
+  input[type="time"] {
+    font-size: 14px;
+    min-height: 32px;
+  }
+}
+
 /* Customização do ícone de relógio nos campos de horário (azul) */
 input[type="time"]::-webkit-calendar-picker-indicator {
   background: transparent;

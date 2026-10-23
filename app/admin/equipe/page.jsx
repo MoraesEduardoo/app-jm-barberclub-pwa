@@ -8,7 +8,7 @@ import TeamMemberCard from '@/components/admin/TeamMemberCard';
 import AddMemberSheet from '@/components/admin/AddMemberSheet';
 
 export default function EquipePage() {
-  const { isChefe } = useBarber();
+  const { isChefe, isLeadership } = useBarber();
   const [team, setTeam] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -25,32 +25,34 @@ export default function EquipePage() {
   }, []);
 
   useEffect(() => {
-    if (isChefe) load();
-  }, [isChefe, load]);
+    if (isLeadership) load();
+  }, [isLeadership, load]);
 
-  if (!isChefe) {
+  if (!isLeadership) {
     return (
       <div className="flex flex-col items-center justify-center px-8 pt-24 text-center gap-3">
         <Lock className="text-zinc-600" size={28} />
         <p className="text-zinc-500 text-sm">
-          Somente o barbeiro chefe pode gerenciar a equipe e as permissões de acesso.
+          Somente a liderança da barbearia pode gerenciar a equipe e os expedientes.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="px-4 pt-4">
+    <div className="px-4 pt-4 pb-20">
       <div className="flex items-center justify-between mb-4">
         <p className="text-zinc-500 text-xs">
           {team.length} pessoa{team.length !== 1 ? 's' : ''} na equipe
         </p>
-        <button
-          onClick={() => setSheetOpen(true)}
-          className="flex items-center gap-1.5 bg-accent text-white text-xs font-semibold rounded-full pl-2.5 pr-3 py-1.5 active:scale-95 active:bg-accent-dark transition-all touch-manipulation select-none"
-        >
-          <Plus size={14} /> Adicionar
-        </button>
+        {isChefe && (
+          <button
+            onClick={() => setSheetOpen(true)}
+            className="flex items-center gap-1.5 bg-accent text-white text-xs font-semibold rounded-full pl-2.5 pr-3 py-1.5 active:scale-95 active:bg-accent-dark transition-all touch-manipulation select-none"
+          >
+            <Plus size={14} /> Adicionar
+          </button>
+        )}
       </div>
 
       {loading ? (

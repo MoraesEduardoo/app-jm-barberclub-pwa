@@ -20,9 +20,9 @@ const CHEFE_TAB = { href: '/admin/equipe', label: 'Equipe', icon: Users2 };
 
 export default function BottomNav() {
   const pathname = usePathname();
-  const { isChefe } = useBarber();
+  const { isLeadership } = useBarber();
 
-  const tabs = isChefe ? [...BASE_TABS, CHEFE_TAB] : BASE_TABS;
+  const tabs = isLeadership ? [...BASE_TABS, CHEFE_TAB] : BASE_TABS;
 
   return (
     <nav

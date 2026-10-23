@@ -28,6 +28,7 @@ import {
 } from "@/lib/actions/team";
 import { createRecoveryLink } from "@/lib/actions/recovery";
 import { toast } from "@/lib/toast";
+import { useBarber } from "@/lib/barber-context";
 import ConfirmDialog from "./ConfirmDialog";
 import { formatWhatsAppPhone, formatPhoneBR } from "@/lib/whatsapp";
 import TeamMemberCashSheet from "./TeamMemberCashSheet";
@@ -48,6 +49,7 @@ import TeamMemberExceptionsSheet from "./TeamMemberExceptionsSheet";
  * 7. Bloqueios de agenda e folgas pontuais
  */
 export default function TeamMemberCard({ member, onChanged }) {
+  const { isChefe: userIsChefe } = useBarber();
   const isChief = member.role === "admin";
   const [isPending, startTransition] = useTransition();
   const recoveryLock = useRef(false);
@@ -239,7 +241,7 @@ export default function TeamMemberCard({ member, onChanged }) {
           <span className="flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-400 shrink-0">
             <ShieldCheck size={12} /> Gerente
           </span>
-        ) : (
+        ) : userIsChefe ? (
           <button
             type="button"
             onClick={handleToggleActive}
@@ -253,6 +255,17 @@ export default function TeamMemberCard({ member, onChanged }) {
             {memberState.active ? <UserCheck size={12} /> : <UserX size={12} />}
             {memberState.active ? "Ativo" : "Inativo"}
           </button>
+        ) : (
+          <span
+            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shrink-0 ${
+              memberState.active
+                ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                : "bg-zinc-800 text-zinc-500 border border-zinc-700/60"
+            }`}
+          >
+            {memberState.active ? <UserCheck size={12} /> : <UserX size={12} />}
+            {memberState.active ? "Ativo" : "Inativo"}
+          </span>
         )}
       </div>
 
@@ -314,7 +327,8 @@ export default function TeamMemberCard({ member, onChanged }) {
         </button>
       </div>
 
-      {!isChief && (
+      {/* Seção de Comissões e Cargos: Exclusivo do Chefe */}
+      {userIsChefe && !isChief && (
         <>
           {/* Seção de Comissões Avançadas (Número Inteiro) */}
           <div className="bg-elevated/50 border border-zinc-800/80 rounded-xl p-3 space-y-2.5">
@@ -449,86 +463,90 @@ export default function TeamMemberCard({ member, onChanged }) {
               </button>
             </div>
           </div>
-
-          {/* Link de Recuperação de Senha */}
-          <div className="border-t border-zinc-800/80 pt-2.5">
-            <button
-              type="button"
-              onClick={handleRecoveryLink}
-              disabled={recovery.loading}
-              className="flex items-center gap-1.5 text-zinc-400 text-xs font-medium hover:text-white transition-colors disabled:opacity-50"
-            >
-              {recovery.loading ? (
-                <Loader2 size={13} className="animate-spin text-accent" />
-              ) : (
-                <KeyRound size={13} className="text-zinc-500" />
-              )}
-              {recovery.loading
-                ? "Gerando link de acesso…"
-                : "Gerar link de recuperação de senha"}
-            </button>
-
-            {recovery.error && (
-              <p role="alert" className="text-accent-light text-[11px] mt-2">
-                {recovery.error}
-              </p>
-            )}
-
-            {recovery.link && (() => {
-              const targetPhone = recovery.link.phone || memberState.phone || member.phone;
-              const waPhone = formatWhatsAppPhone(targetPhone);
-              const displayPhone = formatPhoneBR(targetPhone);
-              const waText = encodeURIComponent(
-                `Olá, ${recovery.link.name || member.name}! Use este link seguro para definir sua nova senha no painel da JM BarberClub: ${recovery.link.url}`
-              );
-              const waUrl = waPhone ? `https://api.whatsapp.com/send?phone=${waPhone}&text=${waText}` : null;
-
-              return (
-                <div className="mt-2.5 space-y-2">
-                  {displayPhone && (
-                    <p className="text-[11px] text-zinc-400">
-                      Telefone cadastrado: <strong className="text-zinc-200">{displayPhone}</strong>
-                    </p>
-                  )}
-                  <div className="flex flex-wrap items-center gap-2">
-                    {waUrl ? (
-                      <a
-                        href={waUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[11px] font-semibold text-white active:bg-accent-dark shadow-sm hover:bg-accent-dark transition-all"
-                      >
-                        <MessageCircle size={13} /> Enviar no WhatsApp {displayPhone ? `(${displayPhone})` : ""}
-                      </a>
-                    ) : (
-                      <span className="text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2 py-1">
-                        Telefone não cadastrado. Copie o link abaixo para enviar:
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={handleCopyLink}
-                      className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-surface px-3 py-1.5 text-[11px] font-medium text-zinc-300 hover:text-white active:scale-95 transition-all"
-                    >
-                      <Copy size={13} /> {recovery.copied ? "Link Copiado!" : "Copiar Link"}
-                    </button>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-
-          {/* Remover da equipe */}
-          <div className="border-t border-zinc-800/80 pt-2 flex justify-end">
-            <button
-              type="button"
-              onClick={handleRemove}
-              className="flex items-center gap-1.5 text-red-400 text-xs font-medium hover:opacity-80 transition-opacity"
-            >
-              <Trash2 size={13} /> Remover da equipe
-            </button>
-          </div>
         </>
+      )}
+
+      {/* Link de Recuperação de Senha (Visível para Chefe e Gerente) */}
+      {!isChief && (
+        <div className="border-t border-zinc-800/80 pt-2.5">
+          <button
+            type="button"
+            onClick={handleRecoveryLink}
+            disabled={recovery.loading}
+            className="flex items-center gap-1.5 text-zinc-400 text-xs font-medium hover:text-white transition-colors disabled:opacity-50"
+          >
+            {recovery.loading ? (
+              <Loader2 size={13} className="animate-spin text-accent" />
+            ) : (
+              <KeyRound size={13} className="text-zinc-500" />
+            )}
+            {recovery.loading
+              ? "Gerando link de acesso…"
+              : "Gerar link de recuperação de senha"}
+          </button>
+
+          {recovery.error && (
+            <p role="alert" className="text-accent-light text-[11px] mt-2">
+              {recovery.error}
+            </p>
+          )}
+
+          {recovery.link && (() => {
+            const targetPhone = recovery.link.phone || memberState.phone || member.phone;
+            const waPhone = formatWhatsAppPhone(targetPhone);
+            const displayPhone = formatPhoneBR(targetPhone);
+            const waText = encodeURIComponent(
+              `Olá, ${recovery.link.name || member.name}! Use este link seguro para definir sua nova senha no painel da JM BarberClub: ${recovery.link.url}`
+            );
+            const waUrl = waPhone ? `https://api.whatsapp.com/send?phone=${waPhone}&text=${waText}` : null;
+
+            return (
+              <div className="mt-2.5 space-y-2">
+                {displayPhone && (
+                  <p className="text-[11px] text-zinc-400">
+                    Telefone cadastrado: <strong className="text-zinc-200">{displayPhone}</strong>
+                  </p>
+                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  {waUrl ? (
+                    <a
+                      href={waUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[11px] font-semibold text-white active:bg-accent-dark shadow-sm hover:bg-accent-dark transition-all"
+                    >
+                      <MessageCircle size={13} /> Enviar no WhatsApp {displayPhone ? `(${displayPhone})` : ""}
+                    </a>
+                  ) : (
+                    <span className="text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2 py-1">
+                      Telefone não cadastrado. Copie o link abaixo para enviar:
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-surface px-3 py-1.5 text-[11px] font-medium text-zinc-300 hover:text-white active:scale-95 transition-all"
+                  >
+                    <Copy size={13} /> {recovery.copied ? "Link Copiado!" : "Copiar Link"}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* Remover da equipe - Restrito exclusivamente ao Chefe */}
+      {userIsChefe && !isChief && (
+        <div className="border-t border-zinc-800/80 pt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={handleRemove}
+            className="flex items-center gap-1.5 text-red-400 text-xs font-medium hover:opacity-80 transition-opacity"
+          >
+            <Trash2 size={13} /> Remover da equipe
+          </button>
+        </div>
       )}
 
       {/* Modais Integrados */}
