@@ -21,16 +21,17 @@ import {
   TextInput,
   PrimaryButton,
 } from "@/components/admin/FormField";
+import { toast } from "@/lib/toast";
 
 export default function ExpedientePage() {
-  const { barber, can, isChefe, selectedBarberId, selectBarber, setSelectionGuard } = useBarber();
+  const { barber, can, isChefe, isLeadership, selectedBarberId, selectBarber, setSelectionGuard } = useBarber();
   const canManageOthers = can(PERMISSION_KEYS.MANAGE_SCHEDULE_OTHERS);
 
   const [team, setTeam] = useState([]);
-  // Chefe: segue o profissional selecionado no contexto global.
+  // Liderança (Chefe/Gerente): segue o profissional selecionado no contexto global.
   // Barbeiro com MANAGE_SCHEDULE_OTHERS: escolha local, só desta tela.
   const [localTargetId, setLocalTargetId] = useState(barber?.id);
-  const targetBarberId = isChefe ? (selectedBarberId ?? barber?.id) : localTargetId;
+  const targetBarberId = isLeadership ? (selectedBarberId ?? barber?.id) : localTargetId;
   const [schedule, setSchedule] = useState([]);
   const [exceptions, setExceptions] = useState([]);
   const [isPending, startTransition] = useTransition();
@@ -72,20 +73,17 @@ export default function ExpedientePage() {
 
   // Bloqueia a troca de profissional (inclusive pelo perfil) se houver alterações por salvar.
   useEffect(() => {
-    setSelectionGuard(() =>
-      hasChanges
-        ? window.confirm("Existem alterações não salvas. Deseja descartá-las?")
-        : true,
-    );
+    setSelectionGuard(() => !hasChanges);
     return () => setSelectionGuard(null);
   }, [hasChanges, setSelectionGuard]);
 
   function handleSelectBarber(memberId) {
-    if (isChefe) {
-      selectBarber(memberId); // o guard acima já pergunta se há alterações por salvar
+    if (hasChanges) {
+      toast.warning("Salve as alterações atuais antes de trocar de profissional.");
       return;
     }
-    if (hasChanges && !window.confirm("Existem alterações não salvas. Deseja descartá-las?")) {
+    if (isLeadership) {
+      selectBarber(memberId);
       return;
     }
     startTransition(() => setLocalTargetId(memberId));
@@ -114,9 +112,10 @@ export default function ExpedientePage() {
       }
       setHasChanges(false);
       await loadData(targetBarberId);
+      toast.success("Escala de expediente salva com sucesso!");
     } catch (error) {
       console.error("Erro ao salvar horários:", error);
-      alert(error?.message || "Ocorreu um erro ao salvar as mudanças. Tente novamente.");
+      toast.error(error?.message || "Ocorreu um erro ao salvar as mudanças. Tente novamente.");
     } finally {
       setIsSaving(false);
     }

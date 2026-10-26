@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { UserPlus, AlertCircle, RefreshCcw, Clock, Sparkles } from "lucide-react";
+import { UserPlus, AlertCircle, RefreshCcw, Sparkles, CheckCircle2, XCircle, Clock3 } from "lucide-react";
 import { useBarber } from "@/lib/barber-context";
 import { useNotifications } from "@/lib/notifications";
 import { endSession } from "@/lib/session";
@@ -19,15 +19,23 @@ import DateStepper from "@/components/admin/DateStepper";
 import AppointmentCard from "@/components/admin/AppointmentCard";
 import PaymentSheet from "@/components/admin/PaymentSheet";
 import WalkInSheet from "@/components/admin/WalkInSheet";
-import WaitlistSheet from "@/components/admin/WaitlistSheet";
 import ClientCyclesSheet from "@/components/admin/ClientCyclesSheet";
 import PreScheduleSheet from "@/components/admin/PreScheduleSheet";
 import AgendaDashboardWidget from "@/components/admin/AgendaDashboardWidget";
+import SystemBootstrapCard from "@/components/admin/SystemBootstrapCard";
+import BottomSheet from "@/components/admin/BottomSheet";
 import { isPreScheduledAppointment } from "@/lib/pre-scheduled";
 import { toast } from "@/lib/toast";
 
+const STATUS_FILTERS = [
+  { key: "all", label: "Todos" },
+  { key: "confirmado", label: "Confirmados" },
+  { key: "concluido", label: "Concluídos" },
+  { key: "cancelado", label: "Cancelados" },
+];
+
 export default function AgendaPage() {
-  const { can, scopeBarberId, selectedBarberId, selectBarber, isLeadership, viewedBarber } = useBarber();
+  const { can, scopeBarberId, selectedBarberId, selectBarber, viewedBarber } = useBarber();
   const { notifications } = useNotifications();
   const canViewAll = can(PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS);
 
@@ -36,17 +44,17 @@ export default function AgendaPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [actionError, setActionError] = useState("");
-  const [busyId, setBusyId] = useState(null); // agendamento com ação em andamento
+  const [busyId, setBusyId] = useState(null);
   const [paymentTarget, setPaymentTarget] = useState(null);
   const [preScheduleTarget, setPreScheduleTarget] = useState(null);
-  const [filterMode, setFilterMode] = useState("all"); // 'all' | 'pre_scheduled'
+  const [filterMode, setFilterMode] = useState("all"); // 'all' | 'confirmado' | 'concluido' | 'cancelado' | 'pre_scheduled'
   const [walkInOpen, setWalkInOpen] = useState(false);
-  const [waitlistOpen, setWaitlistOpen] = useState(false);
   const [cyclesOpen, setCyclesOpen] = useState(false);
+  const [confirmModal, setConfirmModal] = useState(null); // { type: 'cancel' | 'delete', id: string }
   const [team, setTeam] = useState([]);
   const requestIdRef = useRef(0);
 
-  useEffect(() => {
+  const refreshTeamList = useCallback(() => {
     if (canViewAll) {
       listTeam()
         .then(setTeam)
@@ -54,10 +62,13 @@ export default function AgendaPage() {
     }
   }, [canViewAll]);
 
+  useEffect(() => {
+    refreshTeamList();
+  }, [refreshTeamList]);
+
   /**
    * Busca os agendamentos do dia selecionado.
    * silent = true recarrega sem piscar o skeleton (usado após ações e eventos realtime).
-   * O servidor decide o escopo real; scopeBarberId: null = todos (Chefe), id = um profissional.
    */
   const load = useCallback(
     async ({ silent = false } = {}) => {
@@ -70,7 +81,6 @@ export default function AgendaPage() {
       try {
         const response = await listAppointmentsByDate(date, scopeBarberId);
 
-        // Descarta resposta velha (troca rápida de dia ou de profissional).
         if (requestId !== requestIdRef.current) return;
 
         if (response?.error === "AUTH_EXPIRED") {
@@ -97,15 +107,13 @@ export default function AgendaPage() {
         if (requestId === requestIdRef.current) setLoading(false);
       }
     },
-    [date, scopeBarberId],
+    [date, scopeBarberId]
   );
 
-  // Clicou em outro dia (ou semana/profissional mudou) -> busca imediata.
   useEffect(() => {
     load();
   }, [load]);
 
-  // Evento realtime (novo agendamento, confirmação, cancelamento) -> atualiza o dia aberto.
   const loadRef = useRef(load);
   loadRef.current = load;
   const latestNotificationId = notifications[0]?.id;
@@ -113,12 +121,8 @@ export default function AgendaPage() {
     if (latestNotificationId) loadRef.current({ silent: true });
   }, [latestNotificationId]);
 
-  async function handleChangeStatus(id, status) {
+  async function executeStatusChange(id, status) {
     if (busyId) return;
-    if (status === "cancelado" && !window.confirm("Cancelar este agendamento?")) {
-      return;
-    }
-
     setBusyId(id);
     setActionError("");
 
@@ -138,7 +142,7 @@ export default function AgendaPage() {
       }
 
       setAppointments((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, status } : a)),
+        prev.map((a) => (a.id === id ? { ...a, status } : a))
       );
       toast.success(
         status === "confirmado"
@@ -154,12 +158,22 @@ export default function AgendaPage() {
     }
   }
 
-  async function handleDeleteAppointment(id) {
+  function handleChangeStatus(id, status) {
     if (busyId) return;
-    if (!window.confirm("Excluir este agendamento definitivamente do histórico?")) {
+    if (status === "cancelado") {
+      setConfirmModal({ type: "cancel", id });
       return;
     }
+    executeStatusChange(id, status);
+  }
 
+  function handleDeleteAppointment(id) {
+    if (busyId) return;
+    setConfirmModal({ type: "delete", id });
+  }
+
+  async function executeDeleteAppointment(id) {
+    if (busyId) return;
     setBusyId(id);
     setActionError("");
 
@@ -234,13 +248,33 @@ export default function AgendaPage() {
 
   const isToday = date === todayInShop();
   const preScheduledCount = appointments.filter(isPreScheduledAppointment).length;
-  const displayedAppointments =
-    filterMode === "pre_scheduled"
-      ? appointments.filter(isPreScheduledAppointment)
-      : appointments;
+
+  const displayedAppointments = appointments.filter((a) => {
+    if (filterMode === "all") return true;
+    if (filterMode === "pre_scheduled") return isPreScheduledAppointment(a);
+    const st = (a.status || "confirmado").toLowerCase();
+    if (filterMode === "confirmado") {
+      return st === "confirmado" || st === "confirmed" || st === "pendente" || st === "pending";
+    }
+    if (filterMode === "concluido") {
+      return st === "concluido" || st === "completed" || a.payment_status === "pago";
+    }
+    if (filterMode === "cancelado") {
+      return st === "cancelado" || st === "cancelled";
+    }
+    return true;
+  });
 
   return (
     <div className="px-4 pt-4 relative">
+      {/* Assistente de Primeiro Acesso / Bootstrap quando o banco está limpo */}
+      <SystemBootstrapCard
+        onBootstrapChange={() => {
+          refreshTeamList();
+          load({ silent: true });
+        }}
+      />
+
       {/* Seletor Rápido de Equipe para Liderança (Chefe e Gerente) */}
       {canViewAll && team.length > 0 && (
         <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-1 no-scrollbar select-none">
@@ -249,8 +283,8 @@ export default function AgendaPage() {
             onClick={() => selectBarber(null)}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all touch-manipulation ${
               !selectedBarberId
-                ? 'bg-accent text-black shadow-sm ring-1 ring-accent'
-                : 'bg-surface border border-zinc-800 text-zinc-400 hover:text-white'
+                ? "bg-accent text-black shadow-sm ring-1 ring-accent"
+                : "bg-surface border border-zinc-800 text-zinc-400 hover:text-white"
             }`}
           >
             👥 Toda a equipe
@@ -264,13 +298,13 @@ export default function AgendaPage() {
                 onClick={() => selectBarber(m.id)}
                 className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all touch-manipulation flex items-center gap-1.5 ${
                   isSelected
-                    ? 'bg-accent text-black shadow-sm ring-1 ring-accent'
-                    : 'bg-surface border border-zinc-800 text-zinc-400 hover:text-white'
+                    ? "bg-accent text-black shadow-sm ring-1 ring-accent"
+                    : "bg-surface border border-zinc-800 text-zinc-400 hover:text-white"
                 }`}
               >
-                <span>{m.name.split(' ')[0]}</span>
-                {m.role === 'admin' && <span className="text-[10px]">👑</span>}
-                {m.role === 'manager' && <span className="text-[10px]">👔</span>}
+                <span>{m.name.split(" ")[0]}</span>
+                {m.role === "admin" && <span className="text-[10px]">👑</span>}
+                {m.role === "manager" && <span className="text-[10px]">👔</span>}
               </button>
             );
           })}
@@ -284,24 +318,35 @@ export default function AgendaPage() {
         <AgendaDashboardWidget appointments={appointments} isToday={isToday} />
       </div>
 
-      {/* Ações de Gestão de Fluxo: Lista de Espera & Ciclos de Retorno */}
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => setWaitlistOpen(true)}
-          className="flex items-center justify-center gap-1.5 h-10 px-3 rounded-xl bg-surface border border-zinc-800 text-xs font-semibold text-white active:scale-95 active:bg-elevated transition-all touch-manipulation select-none"
-        >
-          <Clock size={14} className="text-accent" />
-          Fila de espera
-        </button>
+      {/* Filtros de Status da Agenda + Atalho de Lembretes de Retorno */}
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar select-none">
+          {STATUS_FILTERS.map((f) => {
+            const active = filterMode === f.key;
+            return (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => setFilterMode(f.key)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all touch-manipulation ${
+                  active
+                    ? "bg-white text-black shadow-sm"
+                    : "bg-surface border border-zinc-800 text-zinc-400 hover:text-white"
+                }`}
+              >
+                {f.label}
+              </button>
+            );
+          })}
+        </div>
 
         <button
           type="button"
           onClick={() => setCyclesOpen(true)}
-          className="flex items-center justify-center gap-1.5 h-10 px-3 rounded-xl bg-surface border border-zinc-800 text-xs font-semibold text-white active:scale-95 active:bg-elevated transition-all touch-manipulation select-none"
+          className="shrink-0 flex items-center justify-center gap-1.5 h-8 px-3 rounded-xl bg-surface border border-zinc-800 text-xs font-semibold text-white active:scale-95 active:bg-elevated transition-all touch-manipulation select-none"
         >
-          <Sparkles size={14} className="text-emerald-400" />
-          Lembretes (Retorno)
+          <Sparkles size={13} className="text-emerald-400" />
+          Retorno
         </button>
       </div>
 
@@ -378,19 +423,19 @@ export default function AgendaPage() {
             </button>
           </div>
         ) : displayedAppointments.length === 0 ? (
-          <div className="text-center py-16 space-y-2">
+          <div className="text-center py-14 space-y-2">
             <p className="text-zinc-500 text-sm">
-              {filterMode === "pre_scheduled"
-                ? "Nenhum pré-agendamento para esta data."
-                : "Nenhum agendamento para essa data."}
+              {filterMode === "all"
+                ? "Nenhum agendamento para essa data."
+                : "Nenhum agendamento encontrado neste filtro."}
             </p>
-            {filterMode === "pre_scheduled" && (
+            {filterMode !== "all" && (
               <button
                 type="button"
                 onClick={() => setFilterMode("all")}
-                className="text-xs text-purple-400 hover:underline font-semibold"
+                className="text-xs text-accent-light hover:underline font-semibold"
               >
-                Voltar a ver todos os agendamentos
+                Mostrar todos os horários do dia
               </button>
             )}
           </div>
@@ -447,23 +492,54 @@ export default function AgendaPage() {
         existingAppointments={appointments}
       />
 
-      <WaitlistSheet
-        open={waitlistOpen}
-        onClose={() => {
-          setWaitlistOpen(false);
-          load({ silent: true });
-        }}
-        date={date}
-        barber={viewedBarber}
-        team={team}
-        canPickBarber={canViewAll}
-      />
-
       <ClientCyclesSheet
         open={cyclesOpen}
         onClose={() => setCyclesOpen(false)}
         scopeBarberId={scopeBarberId}
       />
+
+      {/* Modal Interno de Confirmação (Substitui window.confirm nativo) */}
+      <BottomSheet
+        open={Boolean(confirmModal)}
+        onClose={() => setConfirmModal(null)}
+        title={
+          confirmModal?.type === "delete"
+            ? "Excluir agendamento"
+            : "Cancelar agendamento"
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-zinc-300 text-sm leading-relaxed">
+            {confirmModal?.type === "delete"
+              ? "Deseja realmente excluir este registo definitivamente do histórico?"
+              : "Deseja cancelar este agendamento? O horário ficará imediatamente livre na agenda."}
+          </p>
+          <div className="grid grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={() => setConfirmModal(null)}
+              className="h-11 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold transition-all"
+            >
+              Voltar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const target = confirmModal;
+                setConfirmModal(null);
+                if (target?.type === "delete") {
+                  executeDeleteAppointment(target.id);
+                } else if (target?.type === "cancel") {
+                  executeStatusChange(target.id, "cancelado");
+                }
+              }}
+              className="h-11 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all"
+            >
+              {confirmModal?.type === "delete" ? "Sim, excluir" : "Sim, cancelar"}
+            </button>
+          </div>
+        </div>
+      </BottomSheet>
     </div>
   );
 }

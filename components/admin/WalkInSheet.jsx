@@ -7,7 +7,7 @@ import { todayInShop } from "@/lib/dates";
 import { FormField, TextInput, PrimaryButton } from "./FormField";
 import { listServices } from "@/lib/actions/services";
 import { listSchedule } from "@/lib/actions/schedule";
-import { createWalkInAppointment } from "@/lib/actions/appointments";
+import { createWalkInAppointment, getAvailableSlotsForBarber } from "@/lib/actions/appointments";
 import { dayOfWeekFromDate } from "@/lib/constants/schedule";
 import { generateAvailableSlots, roundUpToNextSlot, extractBusyRangesFromAppointments } from "@/lib/slots";
 
@@ -27,17 +27,19 @@ export default function WalkInSheet({
   const [clientPhone, setClientPhone] = useState("");
   const [useNow, setUseNow] = useState(true);
   const [manualTime, setManualTime] = useState("");
+  const [rpcSlots, setRpcSlots] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (open) {
-      listServices().then((data) => setServices(data.filter((s) => s.active)));
+      listServices().then((data) => setServices(data.filter((s) => s.active !== false && s.is_active !== false)));
       setBarberId(barber.id);
       setClientName("");
       setClientPhone("");
       setUseNow(true);
       setManualTime("");
+      setRpcSlots(null);
       setError("");
     }
   }, [open, barber.id]);
@@ -54,17 +56,40 @@ export default function WalkInSheet({
     }
   }, [useNow, barberId]);
 
+  useEffect(() => {
+    if (!useNow && barberId && serviceId) {
+      getAvailableSlotsForBarber({
+        barberId,
+        date: todayInShop(),
+        serviceId,
+      }).then((res) => {
+        if (res?.slots && res.slots.length > 0) {
+          setRpcSlots(res.slots);
+        } else {
+          setRpcSlots(null);
+        }
+      });
+    } else {
+      setRpcSlots(null);
+    }
+  }, [useNow, barberId, serviceId]);
+
   const availableSlots = useMemo(() => {
-    if (useNow || !daySchedule || !selectedService) return [];
+    if (useNow || !selectedService) return [];
+    if (Array.isArray(rpcSlots) && rpcSlots.length > 0) {
+      return rpcSlots;
+    }
+    if (!daySchedule) return [];
     const busyRanges = extractBusyRangesFromAppointments(existingAppointments, barberId);
+    const serviceDur = selectedService.duration_minutes ?? selectedService.default_duration_minutes ?? 30;
 
     return generateAvailableSlots(
       daySchedule,
       busyRanges,
-      selectedService.default_duration_minutes,
+      serviceDur,
       { nowTime: roundUpToNextSlot() },
     );
-  }, [useNow, daySchedule, selectedService, existingAppointments, barberId]);
+  }, [useNow, rpcSlots, daySchedule, selectedService, existingAppointments, barberId]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -127,19 +152,31 @@ export default function WalkInSheet({
         )}
 
         <FormField label="Serviço">
-          <select
-            value={serviceId}
-            onChange={(e) => setServiceId(e.target.value)}
-            required
-            className="w-full h-12 rounded-lg bg-elevated border border-zinc-700 px-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-accent touch-manipulation"
-          >
-            <option value="">Selecione…</option>
-            {services.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} — {s.default_duration_minutes} min (+ {CLEANING_BUFFER_MINUTES} min higienização)
-              </option>
-            ))}
-          </select>
+          {services.length === 0 ? (
+            <div className="rounded-xl bg-amber-950/30 border border-amber-500/30 p-3 text-xs text-amber-200 space-y-2">
+              <p>Nenhum serviço cadastrado no catálogo ainda.</p>
+              <a
+                href="/admin/servicos"
+                className="inline-flex items-center gap-1 text-accent-light font-semibold underline"
+              >
+                Ir para Catálogo de Serviços →
+              </a>
+            </div>
+          ) : (
+            <select
+              value={serviceId}
+              onChange={(e) => setServiceId(e.target.value)}
+              required
+              className="w-full h-12 rounded-lg bg-elevated border border-zinc-700 px-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-accent touch-manipulation"
+            >
+              <option value="">Selecione…</option>
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} — R$ {Number(s.price || 0).toFixed(2).replace(".", ",")} ({s.default_duration_minutes} min)
+                </option>
+              ))}
+            </select>
+          )}
         </FormField>
 
         <FormField label="Nome do cliente (opcional)">

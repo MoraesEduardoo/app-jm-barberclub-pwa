@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Plus, Lock, ArrowUpDown, Check, Loader2 } from 'lucide-react';
+import { Plus, Lock, ArrowUpDown, Check, Loader2, Sparkles, Scissors } from 'lucide-react';
 import { Reorder, useDragControls } from 'framer-motion';
 import { listServices, reorderServices } from '@/lib/actions/services';
+import { bootstrapInitialServicesCatalogAction } from '@/lib/actions/bootstrap';
 import ServiceRow from '@/components/admin/ServiceRow';
 import ServiceFormSheet from '@/components/admin/ServiceFormSheet';
 import { useBarber } from '@/lib/barber-context';
 import { PERMISSION_KEYS } from '@/lib/auth';
+import { toast } from '@/lib/toast';
 
 function ReorderableServiceRow({ service, onEdit }) {
   const dragControls = useDragControls();
@@ -46,6 +48,7 @@ export default function ServicosPage() {
 
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [bootstrapping, setBootstrapping] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [saveStatus, setSaveStatus] = useState(null); // 'saving' | 'saved' | null
@@ -71,6 +74,23 @@ export default function ServicosPage() {
     setSheetOpen(false);
     setEditing(null);
     load();
+  }
+
+  async function handleSeedCatalog() {
+    setBootstrapping(true);
+    try {
+      const res = await bootstrapInitialServicesCatalogAction();
+      if (res?.error) {
+        toast.error(res.error);
+      } else {
+        toast.success('Catálogo base do JM BarberClub carregado com sucesso!');
+        await load();
+      }
+    } catch {
+      toast.error('Erro ao carregar catálogo inicial.');
+    } finally {
+      setBootstrapping(false);
+    }
   }
 
   // Tratamento da reordenação flutuante com persistência atômica no Supabase
@@ -155,10 +175,44 @@ export default function ServicosPage() {
           ))}
         </div>
       ) : services.length === 0 ? (
-        <div className="flex flex-col items-center justify-center pt-16 text-center gap-2">
-          <p className="text-zinc-500 text-sm">
-            Nenhum serviço cadastrado ainda. Toque em “Novo” para começar.
-          </p>
+        <div className="mt-8 rounded-2xl border border-zinc-800 bg-surface/60 p-6 flex flex-col items-center justify-center text-center gap-4">
+          <div className="h-12 w-12 rounded-2xl bg-accent/15 border border-accent/30 flex items-center justify-center text-accent">
+            <Scissors size={22} />
+          </div>
+          <div className="space-y-1 max-w-xs">
+            <h3 className="text-white font-bold text-sm">Catálogo de Serviços Vazio</h3>
+            <p className="text-zinc-400 text-xs leading-relaxed">
+              O banco de dados está limpo. Você pode cadastrar seus serviços um por um manualmente ou carregar o catálogo oficial do JM BarberClub.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full max-w-xs">
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(null);
+                setSheetOpen(true);
+              }}
+              className="w-full flex items-center justify-center gap-1.5 h-10 rounded-xl bg-accent hover:bg-accent-light text-white text-xs font-semibold shadow-sm active:scale-95 transition-all"
+            >
+              <Plus size={14} /> Cadastrar Manualmente
+            </button>
+            <button
+              type="button"
+              disabled={bootstrapping}
+              onClick={handleSeedCatalog}
+              className="w-full flex items-center justify-center gap-1.5 h-10 rounded-xl bg-elevated border border-zinc-700 hover:border-zinc-600 text-zinc-200 text-xs font-semibold active:scale-95 transition-all disabled:opacity-50"
+            >
+              {bootstrapping ? (
+                <>
+                  <Loader2 size={14} className="animate-spin text-accent" /> Carregando…
+                </>
+              ) : (
+                <>
+                  <Sparkles size={14} className="text-amber-400" /> Catálogo Padrão (13)
+                </>
+              )}
+            </button>
+          </div>
         </div>
       ) : (
         <Reorder.Group

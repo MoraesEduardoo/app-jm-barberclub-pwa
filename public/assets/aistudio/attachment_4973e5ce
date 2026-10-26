@@ -1,0 +1,1007 @@
+﻿-- ==============================================================================
+-- JM BARBERCLUB - SCRIPT DEFINITIVO DE REESTRUTURAÇÃO E BLINDAGEM DO BANCO DE DADOS
+-- Versão: 2.2 (Reset Completo, Limpeza Total e Núcleo Essencial de Agendamentos)
+-- Executar no Supabase SQL Editor (Dashboard > SQL Editor)
+-- ==============================================================================
+
+
+-- ==============================================================================
+-- PARTE 1: LIMPEZA TOTAL (DROP SEGURO DE FUNÇÕES, TRIGGERS E TABELAS OBSOLETAS)
+-- ==============================================================================
+
+
+SET client_min_messages TO warning;
+
+
+-- 1.1 Remover Triggers anteriores
+DROP TRIGGER IF EXISTS trg_update_clients_timestamp ON public.clients CASCADE;
+DROP TRIGGER IF EXISTS trg_update_chat_sessions_timestamp ON public.chat_sessions CASCADE;
+DROP TRIGGER IF EXISTS trg_update_appointments_timestamp ON public.appointments CASCADE;
+
+
+-- 1.2 Remover Funções RPC antigas e conflitantes (todas as assinaturas anteriores)
+DROP FUNCTION IF EXISTS public.chatbot_get_available_slots(uuid, date, uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.chatbot_get_available_slots(uuid, uuid, date) CASCADE;
+DROP FUNCTION IF EXISTS public.chatbot_get_available_slots(uuid, date) CASCADE;
+DROP FUNCTION IF EXISTS public.chatbot_get_available_slots(text, text, text) CASCADE;
+DROP FUNCTION IF EXISTS public.chatbot_create_appointment(text, text, uuid, uuid, uuid[], date, time, integer, integer, text) CASCADE;
+DROP FUNCTION IF EXISTS public.chatbot_create_appointment(text, text, uuid, uuid, date, time, integer, integer, text) CASCADE;
+DROP FUNCTION IF EXISTS public.chatbot_create_appointments(timestamptz, uuid, text, text, uuid[]) CASCADE;
+DROP FUNCTION IF EXISTS public.chatbot_create_appointments(uuid, uuid[], text, text, date, time, text) CASCADE;
+DROP FUNCTION IF EXISTS public.chatbot_create_appointments(text, text, uuid, uuid[], date, time, text) CASCADE;
+DROP FUNCTION IF EXISTS public.chatbot_booked_times(uuid, date) CASCADE;
+DROP FUNCTION IF EXISTS public.chatbot_list_appointments(text) CASCADE;
+DROP FUNCTION IF EXISTS public.chatbot_cancel_appointments(uuid[], text) CASCADE;
+DROP FUNCTION IF EXISTS public.chatbot_reschedule_appointments(uuid[], text, timestamptz) CASCADE;
+DROP FUNCTION IF EXISTS public.set_updated_at_column() CASCADE;
+
+
+-- 1.3 Limpar tabelas de estado do chatbot e suporte a folgas
+DROP TABLE IF EXISTS public.chat_messages CASCADE;
+DROP TABLE IF EXISTS public.chat_sessions CASCADE;
+DROP TABLE IF EXISTS public.barber_exceptions CASCADE;
+DROP TABLE IF EXISTS public.barber_schedule_overrides CASCADE;
+DROP TABLE IF EXISTS public.barber_leaves CASCADE;
+DROP TABLE IF EXISTS public.blocked_dates CASCADE;
+
+
+-- ==============================================================================
+-- PARTE 2: EXTENSÕES ESSENCIAIS
+-- ==============================================================================
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+
+-- ==============================================================================
+-- PARTE 3: ESTRUTURAÇÃO DO BANCO (NÚCLEO ESSENCIAL: BARBEIROS, SERVIÇOS, AGENDAS)
+-- ==============================================================================
+
+
+-- 3.1 Tabela de Barbeiros (Profissionais)
+CREATE TABLE IF NOT EXISTS public.barbers (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    phone text,
+    email text,
+    role text DEFAULT 'barbeiro',
+    avatar_url text,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamptz DEFAULT now() NOT NULL
+);
+
+
+-- 3.2 Tabela de Serviços
+CREATE TABLE IF NOT EXISTS public.services (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    description text,
+    price numeric(10,2) NOT NULL DEFAULT 0.00,
+    duration_minutes integer NOT NULL DEFAULT 30 CHECK (duration_minutes >= 10),
+    category text DEFAULT 'cabelo',
+    image_url text,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamptz DEFAULT now() NOT NULL
+);
+
+
+-- 3.3 Tabela de Vínculo e Especialidades Barbeiro-Serviço
+CREATE TABLE IF NOT EXISTS public.barber_services (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    barber_id uuid NOT NULL REFERENCES public.barbers(id) ON DELETE CASCADE,
+    service_id uuid NOT NULL REFERENCES public.services(id) ON DELETE CASCADE,
+    custom_duration_minutes integer CHECK (custom_duration_minutes >= 10),
+    custom_price numeric(10,2),
+    UNIQUE (barber_id, service_id)
+);
+
+
+-- 3.4 Escala Semanal de Trabalho dos Barbeiros
+CREATE TABLE IF NOT EXISTS public.barber_schedules (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    barber_id uuid NOT NULL REFERENCES public.barbers(id) ON DELETE CASCADE,
+    day_of_week integer NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+    start_time time NOT NULL,
+    end_time time NOT NULL,
+    break_start_time time,
+    break_end_time time,
+    lunch_start time,
+    lunch_end time,
+    is_working boolean DEFAULT true NOT NULL,
+    created_at timestamptz DEFAULT now() NOT NULL,
+    UNIQUE (barber_id, day_of_week)
+);
+
+
+-- 3.5 Tabela de Bloqueios e Folgas
+CREATE TABLE public.blocked_dates (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    barber_id uuid REFERENCES public.barbers(id) ON DELETE CASCADE,
+    date date NOT NULL,
+    reason text DEFAULT 'Bloqueio administrativo',
+    created_at timestamptz DEFAULT now() NOT NULL
+);
+
+
+CREATE TABLE public.barber_leaves (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    barber_id uuid REFERENCES public.barbers(id) ON DELETE CASCADE,
+    date date,
+    start_date date,
+    end_date date,
+    reason text DEFAULT 'Folga / Férias',
+    created_at timestamptz DEFAULT now() NOT NULL
+);
+
+
+CREATE TABLE public.barber_exceptions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    barber_id uuid REFERENCES public.barbers(id) ON DELETE CASCADE,
+    exception_date date NOT NULL,
+    start_time time,
+    end_time time,
+    is_available boolean DEFAULT false NOT NULL,
+    reason text DEFAULT 'Exceção de expediente',
+    created_at timestamptz DEFAULT now() NOT NULL
+);
+
+
+-- 3.6 Tabela de Clientes
+CREATE TABLE IF NOT EXISTS public.clients (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    phone text NOT NULL UNIQUE,
+    email text,
+    notes text,
+    created_at timestamptz DEFAULT now() NOT NULL,
+    updated_at timestamptz DEFAULT now() NOT NULL
+);
+
+
+-- 3.7 Tabela Principal de Agendamentos (Appointments)
+CREATE TABLE IF NOT EXISTS public.appointments (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    barber_id uuid NOT NULL REFERENCES public.barbers(id) ON DELETE RESTRICT,
+    service_id uuid REFERENCES public.services(id) ON DELETE SET NULL,
+    client_id uuid REFERENCES public.clients(id) ON DELETE SET NULL,
+    client_name text NOT NULL,
+    client_phone text NOT NULL,
+    appointment_date date NOT NULL,
+    appointment_time time NOT NULL,
+    duration_minutes integer NOT NULL DEFAULT 30 CHECK (duration_minutes >= 10),
+    buffer_minutes integer NOT NULL DEFAULT 10 CHECK (buffer_minutes >= 0),
+    status text NOT NULL DEFAULT 'confirmado' CHECK (
+        status IN ('pendente', 'confirmado', 'cancelado', 'concluido', 'concluído', 'bloqueado', 'pending', 'confirmed', 'cancelled', 'completed', 'blocked')
+    ),
+    payment_status text DEFAULT 'pendente',
+    price numeric(10,2) DEFAULT 0.00,
+    notes text,
+    source text DEFAULT 'chatbot',
+    created_at timestamptz DEFAULT now() NOT NULL,
+    updated_at timestamptz DEFAULT now() NOT NULL
+);
+
+
+-- Adicionar a coluna gerada appointment_end_time se não existir
+DO $$ BEGIN
+    ALTER TABLE public.appointments 
+    ADD COLUMN appointment_end_time time 
+    GENERATED ALWAYS AS ((appointment_time + (duration_minutes || ' minutes')::interval)::time) STORED;
+EXCEPTION 
+    WHEN duplicate_column THEN NULL;
+END $$;
+
+
+-- 3.8 Gestão de Sessões e Mensagens do Chatbot (WhatsApp / Web)
+CREATE TABLE public.chat_sessions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_token text UNIQUE NOT NULL,
+    phone text NOT NULL,
+    client_id uuid REFERENCES public.clients(id) ON DELETE SET NULL,
+    current_step text DEFAULT 'welcome' NOT NULL,
+    state_data jsonb DEFAULT '{}'::jsonb NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    last_active_at timestamptz DEFAULT now() NOT NULL,
+    created_at timestamptz DEFAULT now() NOT NULL,
+    updated_at timestamptz DEFAULT now() NOT NULL
+);
+
+
+CREATE TABLE public.chat_messages (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id uuid NOT NULL REFERENCES public.chat_sessions(id) ON DELETE CASCADE,
+    phone text NOT NULL,
+    sender text NOT NULL CHECK (sender IN ('user', 'assistant', 'bot', 'system')),
+    message text NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamptz DEFAULT now() NOT NULL
+);
+
+
+-- ==============================================================================
+-- PARTE 4: ÍNDICES DE ALTA PERFORMANCE (RESPOSTA INSTANTÂNEA < 5MS)
+-- ==============================================================================
+CREATE INDEX IF NOT EXISTS idx_appointments_lookup_active 
+ON public.appointments (barber_id, appointment_date, status, appointment_time);
+
+
+CREATE INDEX IF NOT EXISTS idx_appointments_phone 
+ON public.appointments (client_phone, status);
+
+
+CREATE INDEX IF NOT EXISTS idx_barber_schedules_day 
+ON public.barber_schedules (barber_id, day_of_week);
+
+
+CREATE INDEX IF NOT EXISTS idx_blocked_dates_date 
+ON public.blocked_dates (barber_id, date);
+
+
+CREATE INDEX IF NOT EXISTS idx_barber_leaves_range 
+ON public.barber_leaves (barber_id, date, start_date, end_date);
+
+
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_phone 
+ON public.chat_sessions (phone, last_active_at DESC);
+
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session 
+ON public.chat_messages (session_id, created_at ASC);
+
+
+-- ==============================================================================
+-- PARTE 5: TRIGGER DE ATUALIZAÇÃO AUTOMÁTICA DE TIMESTAMP
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.set_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE TRIGGER trg_update_clients_timestamp
+BEFORE UPDATE ON public.clients
+FOR EACH ROW EXECUTE FUNCTION public.set_updated_at_column();
+
+
+CREATE TRIGGER trg_update_chat_sessions_timestamp
+BEFORE UPDATE ON public.chat_sessions
+FOR EACH ROW EXECUTE FUNCTION public.set_updated_at_column();
+
+
+CREATE TRIGGER trg_update_appointments_timestamp
+BEFORE UPDATE ON public.appointments
+FOR EACH ROW EXECUTE FUNCTION public.set_updated_at_column();
+
+
+-- ==============================================================================
+-- PARTE 6: FUNÇÃO RPC 1 - chatbot_get_available_slots
+-- Assinatura única, canônica e blindada contra ambiguidades.
+-- Grade rígida de 10 em 10 minutos com ocupação exata pela duração do serviço.
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.chatbot_get_available_slots(
+    p_barber_id uuid,
+    p_date date,
+    p_service_id uuid DEFAULT NULL
+)
+RETURNS TABLE (slot_time text)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_dow integer;
+    v_start_time time;
+    v_end_time time;
+    v_lunch_start time;
+    v_lunch_end time;
+    v_is_working boolean := true;
+    v_service_duration integer := 30;
+    v_current_slot time;
+    v_slot_end time;
+    v_is_conflict boolean;
+    v_now_fortaleza timestamptz;
+    v_today_fortaleza date;
+    v_time_now_fortaleza time;
+BEGIN
+    v_now_fortaleza := timezone('America/Fortaleza', now());
+    v_today_fortaleza := v_now_fortaleza::date;
+    v_time_now_fortaleza := v_now_fortaleza::time;
+
+
+    IF p_date < v_today_fortaleza THEN
+        RETURN;
+    END IF;
+
+
+    -- 1. Verificar bloqueios da barbearia ou folgas do profissional
+    IF EXISTS (
+        SELECT 1 FROM public.blocked_dates
+        WHERE (barber_id = p_barber_id OR barber_id IS NULL)
+          AND date = p_date
+    ) OR EXISTS (
+        SELECT 1 FROM public.barber_leaves
+        WHERE (barber_id = p_barber_id OR barber_id IS NULL)
+          AND (date = p_date OR (start_date <= p_date AND end_date >= p_date))
+    ) THEN
+        RETURN;
+    END IF;
+
+
+    -- 2. Identificar dia da semana (0=Domingo, 1=Segunda, ..., 6=Sábado)
+    v_dow := EXTRACT(DOW FROM p_date)::integer;
+
+
+    -- Buscar expediente configurado para o profissional
+    SELECT 
+        start_time, 
+        end_time, 
+        COALESCE(break_start_time, lunch_start),
+        COALESCE(break_end_time, lunch_end),
+        is_working
+    INTO 
+        v_start_time, 
+        v_end_time, 
+        v_lunch_start, 
+        v_lunch_end, 
+        v_is_working
+    FROM public.barber_schedules
+    WHERE barber_id = p_barber_id AND day_of_week = v_dow;
+
+
+    -- Padrão JM BarberClub caso não haja escala individual cadastrada
+    IF v_start_time IS NULL THEN
+        IF v_dow = 0 THEN -- Domingo: 09:00 - 12:30
+            v_start_time := '09:00'::time;
+            v_end_time := '12:30'::time;
+            v_is_working := true;
+        ELSIF v_dow = 1 THEN -- Segunda-feira: 14:30 - 19:00
+            v_start_time := '14:30'::time;
+            v_end_time := '19:00'::time;
+            v_is_working := true;
+        ELSE -- Terça a Sábado: 09:00 - 19:00
+            v_start_time := '09:00'::time;
+            v_end_time := '19:00'::time;
+            v_is_working := true;
+        END IF;
+    END IF;
+
+
+    IF v_is_working = false OR v_start_time IS NULL OR v_end_time IS NULL THEN
+        RETURN;
+    END IF;
+
+
+    -- 3. Calcular a duração do serviço solicitado
+    IF p_service_id IS NOT NULL THEN
+        SELECT COALESCE(bs.custom_duration_minutes, s.duration_minutes, 30)
+        INTO v_service_duration
+        FROM public.services s
+        LEFT JOIN public.barber_services bs ON bs.service_id = s.id AND bs.barber_id = p_barber_id
+        WHERE s.id = p_service_id;
+    END IF;
+
+
+    IF v_service_duration IS NULL OR v_service_duration < 10 THEN
+        v_service_duration := 30;
+    END IF;
+
+
+    -- 4. Iteração em grade pura de 10 em 10 minutos
+    v_current_slot := v_start_time;
+
+
+    WHILE v_current_slot + (v_service_duration || ' minutes')::interval <= v_end_time LOOP
+        v_slot_end := (v_current_slot + (v_service_duration || ' minutes')::interval)::time;
+        v_is_conflict := false;
+
+
+        -- Regra de antecedência mínima para hoje (mínimo 30 minutos à frente)
+        IF p_date = v_today_fortaleza THEN
+            IF v_current_slot < (v_time_now_fortaleza + '30 minutes'::interval)::time THEN
+                v_is_conflict := true;
+            END IF;
+        END IF;
+
+
+        -- Regra de Almoço / Pausa
+        IF NOT v_is_conflict AND v_lunch_start IS NOT NULL AND v_lunch_end IS NOT NULL THEN
+            IF (v_current_slot < v_lunch_end AND v_slot_end > v_lunch_start) THEN
+                v_is_conflict := true;
+            END IF;
+        END IF;
+
+
+        -- Regra de Exceções de Horário (barber_exceptions)
+        IF NOT v_is_conflict THEN
+            IF EXISTS (
+                SELECT 1 FROM public.barber_exceptions
+                WHERE barber_id = p_barber_id
+                  AND exception_date = p_date
+                  AND is_available = false
+                  AND (
+                      (start_time IS NULL AND end_time IS NULL)
+                      OR (v_current_slot < end_time AND v_slot_end > start_time)
+                  )
+            ) THEN
+                v_is_conflict := true;
+            END IF;
+        END IF;
+
+
+        -- Regra de Colisão com Agendamentos Existentes (+ buffer de respiro de 10 min)
+        IF NOT v_is_conflict THEN
+            IF EXISTS (
+                SELECT 1 FROM public.appointments a
+                WHERE a.barber_id = p_barber_id
+                  AND a.appointment_date = p_date
+                  AND a.status IN ('confirmed', 'confirmado', 'pending', 'pendente', 'completed', 'concluido', 'concluído', 'bloqueado', 'blocked')
+                  AND (
+                      a.appointment_time < v_slot_end
+                      AND (a.appointment_time + ((COALESCE(a.duration_minutes, 30) + COALESCE(a.buffer_minutes, 0)) || ' minutes')::interval)::time > v_current_slot
+                  )
+            ) THEN
+                v_is_conflict := true;
+            END IF;
+        END IF;
+
+
+        -- Emitir horário livre
+        IF NOT v_is_conflict THEN
+            slot_time := to_char(v_current_slot, 'HH24:MI');
+            RETURN NEXT;
+        END IF;
+
+
+        -- Avançar estritamente 10 minutos
+        v_current_slot := (v_current_slot + '10 minutes'::interval)::time;
+    END LOOP;
+
+
+    RETURN;
+END;
+$$;
+
+
+-- ==============================================================================
+-- PARTE 7: FUNÇÃO RPC 2 - chatbot_create_appointment (TRANSAÇÃO ATÔMICA E SEGURA)
+-- Assinatura completa, compatível com as chamadas de Client & Server Action.
+-- Concorrência protegida com detecção antecipada de duplicidade/overlap.
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.chatbot_create_appointment(
+    p_client_name text,
+    p_client_phone text,
+    p_barber_id uuid,
+    p_service_id uuid DEFAULT NULL,
+    p_service_ids uuid[] DEFAULT NULL,
+    p_date date DEFAULT NULL,
+    p_time time DEFAULT NULL,
+    p_duration_minutes integer DEFAULT 30,
+    p_buffer_minutes integer DEFAULT 10,
+    p_notes text DEFAULT 'Agendamento via Chatbot'
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_clean_phone text;
+    v_client_id uuid;
+    v_primary_service_id uuid;
+    v_target_service_ids uuid[] := '{}';
+    v_service_elem uuid;
+    v_created_ids uuid[] := '{}';
+    v_new_id uuid;
+    v_total_duration integer := 0;
+    v_item_duration integer;
+    v_item_price numeric(10,2);
+    v_total_price numeric(10,2) := 0.00;
+    v_current_start time;
+    v_estimated_end time;
+    v_has_conflict boolean;
+BEGIN
+    -- 1. Higienização do telefone do cliente (apenas dígitos)
+    v_clean_phone := regexp_replace(p_client_phone, '\D', '', 'g');
+    IF length(v_clean_phone) < 8 THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Número de telefone inválido.',
+            'code', 'INVALID_PHONE'
+        );
+    END IF;
+
+
+    -- 2. Montar lista de serviços
+    IF p_service_ids IS NOT NULL AND array_length(p_service_ids, 1) > 0 THEN
+        v_target_service_ids := p_service_ids;
+    ELSIF p_service_id IS NOT NULL THEN
+        v_target_service_ids := ARRAY[p_service_id];
+    ELSE
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Nenhum serviço foi informado para o agendamento.',
+            'code', 'MISSING_SERVICE'
+        );
+    END IF;
+
+
+    v_primary_service_id := v_target_service_ids[1];
+
+
+    -- 3. Calcular duração total acumulada e valor total
+    FOREACH v_service_elem IN ARRAY v_target_service_ids LOOP
+        SELECT 
+            COALESCE(bs.custom_duration_minutes, s.duration_minutes, 30),
+            COALESCE(bs.custom_price, s.price, 0.00)
+        INTO 
+            v_item_duration, 
+            v_item_price
+        FROM public.services s
+        LEFT JOIN public.barber_services bs ON bs.service_id = s.id AND bs.barber_id = p_barber_id
+        WHERE s.id = v_service_elem;
+
+
+        v_total_duration := v_total_duration + COALESCE(v_item_duration, 30);
+        v_total_price := v_total_price + COALESCE(v_item_price, 0.00);
+    END LOOP;
+
+
+    IF v_total_duration = 0 THEN
+        v_total_duration := COALESCE(p_duration_minutes, 30);
+    END IF;
+
+
+    v_estimated_end := (p_time + (v_total_duration || ' minutes')::interval)::time;
+
+
+    -- 4. Trava de concorrência: Verificar se o horário solicitado ainda está livre
+    SELECT EXISTS (
+        SELECT 1 FROM public.appointments a
+        WHERE a.barber_id = p_barber_id
+          AND a.appointment_date = p_date
+          AND a.status IN ('confirmed', 'confirmado', 'pending', 'pendente', 'completed', 'concluido', 'concluído', 'bloqueado', 'blocked')
+          AND (
+              a.appointment_time < v_estimated_end
+              AND (a.appointment_time + ((COALESCE(a.duration_minutes, 30) + COALESCE(a.buffer_minutes, 0)) || ' minutes')::interval)::time > p_time
+          )
+    ) INTO v_has_conflict;
+
+
+    IF v_has_conflict THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'O horário selecionado acabou de ser ocupado. Por favor, escolha outro horário.',
+            'code', 'SLOT_OCCUPIED'
+        );
+    END IF;
+
+
+    -- 5. Upsert atômico do Cliente
+    INSERT INTO public.clients (name, phone, updated_at)
+    VALUES (trim(p_client_name), v_clean_phone, now())
+    ON CONFLICT (phone) DO UPDATE 
+    SET name = EXCLUDED.name, updated_at = now()
+    RETURNING id INTO v_client_id;
+
+
+    -- 6. Inserir agendamentos por serviço de forma sequencial
+    v_current_start := p_time;
+
+
+    FOREACH v_service_elem IN ARRAY v_target_service_ids LOOP
+        SELECT 
+            COALESCE(bs.custom_duration_minutes, s.duration_minutes, 30),
+            COALESCE(bs.custom_price, s.price, 0.00)
+        INTO 
+            v_item_duration, 
+            v_item_price
+        FROM public.services s
+        LEFT JOIN public.barber_services bs ON bs.service_id = s.id AND bs.barber_id = p_barber_id
+        WHERE s.id = v_service_elem;
+
+
+        INSERT INTO public.appointments (
+            barber_id,
+            service_id,
+            client_id,
+            client_name,
+            client_phone,
+            appointment_date,
+            appointment_time,
+            duration_minutes,
+            buffer_minutes,
+            status,
+            payment_status,
+            price,
+            notes,
+            source,
+            created_at,
+            updated_at
+        ) VALUES (
+            p_barber_id,
+            v_service_elem,
+            v_client_id,
+            trim(p_client_name),
+            v_clean_phone,
+            p_date,
+            v_current_start,
+            COALESCE(v_item_duration, 30),
+            COALESCE(p_buffer_minutes, 10),
+            'confirmado',
+            'pendente',
+            COALESCE(v_item_price, 0.00),
+            COALESCE(p_notes, 'Agendamento via WhatsApp Chatbot'),
+            'chatbot',
+            now(),
+            now()
+        ) RETURNING id INTO v_new_id;
+
+
+        v_created_ids := array_append(v_created_ids, v_new_id);
+
+
+        v_current_start := (v_current_start + (COALESCE(v_item_duration, 30) || ' minutes')::interval)::time;
+    END LOOP;
+
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'appointment_id', v_created_ids[1],
+        'appointment_ids', v_created_ids,
+        'client_id', v_client_id,
+        'date', p_date,
+        'start_time', to_char(p_time, 'HH24:MI'),
+        'end_time', to_char(v_estimated_end, 'HH24:MI'),
+        'total_duration', v_total_duration,
+        'total_price', v_total_price
+    );
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'error', SQLERRM,
+        'code', SQLSTATE
+    );
+END;
+$$;
+
+
+-- ==============================================================================
+-- PARTE 8: SOBRECARGAS RETROCOMPATÍVEIS (CHATBOT_CREATE_APPOINTMENTS)
+-- Previne erros caso chamadas legadas com 'appointments' no plural ocorram
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.chatbot_create_appointments(
+    p_appointment_at timestamptz,
+    p_barber_id uuid,
+    p_client_name text,
+    p_client_phone text,
+    p_service_ids uuid[]
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+    RETURN public.chatbot_create_appointment(
+        p_client_name => p_client_name,
+        p_client_phone => p_client_phone,
+        p_barber_id => p_barber_id,
+        p_service_id => NULL,
+        p_service_ids => p_service_ids,
+        p_date => (p_appointment_at AT TIME ZONE 'America/Fortaleza')::date,
+        p_time => (p_appointment_at AT TIME ZONE 'America/Fortaleza')::time,
+        p_duration_minutes => 30,
+        p_buffer_minutes => 10,
+        p_notes => 'Agendamento via Chatbot'
+    );
+END;
+$$;
+
+
+CREATE OR REPLACE FUNCTION public.chatbot_create_appointments(
+    p_barber_id uuid,
+    p_service_ids uuid[],
+    p_client_name text,
+    p_client_phone text,
+    p_date date,
+    p_time time,
+    p_notes text DEFAULT 'Agendamento via Chatbot'
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+    RETURN public.chatbot_create_appointment(
+        p_client_name => p_client_name,
+        p_client_phone => p_client_phone,
+        p_barber_id => p_barber_id,
+        p_service_id => NULL,
+        p_service_ids => p_service_ids,
+        p_date => p_date,
+        p_time => p_time,
+        p_duration_minutes => 30,
+        p_buffer_minutes => 10,
+        p_notes => p_notes
+    );
+END;
+$$;
+
+
+-- ==============================================================================
+-- PARTE 9: RPCs AUXILIARES PARA GESTÃO E CANCELAMENTO NO CHAT
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.chatbot_booked_times(
+    p_barber_id uuid,
+    p_date date
+)
+RETURNS TABLE (booked_time text)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT to_char(appointment_time, 'HH24:MI') as booked_time
+    FROM public.appointments
+    WHERE barber_id = p_barber_id
+      AND appointment_date = p_date
+      AND status IN ('confirmed', 'confirmado', 'pending', 'pendente', 'completed', 'concluido', 'concluído', 'bloqueado', 'blocked')
+    ORDER BY appointment_time ASC;
+END;
+$$;
+
+
+CREATE OR REPLACE FUNCTION public.chatbot_list_appointments(
+    p_phone text
+)
+RETURNS TABLE (
+    id uuid,
+    barber_id uuid,
+    barber_name text,
+    service_id uuid,
+    service_name text,
+    appointment_date date,
+    appointment_time time,
+    status text,
+    notes text
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_clean text := regexp_replace(p_phone, '\D', '', 'g');
+BEGIN
+    RETURN QUERY
+    SELECT 
+        a.id,
+        a.barber_id,
+        b.name AS barber_name,
+        a.service_id,
+        COALESCE(s.name, 'Serviço Personalizado') AS service_name,
+        a.appointment_date,
+        a.appointment_time,
+        a.status,
+        a.notes
+    FROM public.appointments a
+    LEFT JOIN public.barbers b ON b.id = a.barber_id
+    LEFT JOIN public.services s ON s.id = a.service_id
+    WHERE a.client_phone = v_clean
+      AND a.status IN ('confirmed', 'confirmado', 'pending', 'pendente')
+      AND a.appointment_date >= (timezone('America/Fortaleza', now()))::date
+    ORDER BY a.appointment_date ASC, a.appointment_time ASC;
+END;
+$$;
+
+
+CREATE OR REPLACE FUNCTION public.chatbot_cancel_appointments(
+    p_ids uuid[],
+    p_phone text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_clean text := regexp_replace(p_phone, '\D', '', 'g');
+    v_affected integer;
+BEGIN
+    UPDATE public.appointments
+    SET status = 'cancelado', updated_at = now()
+    WHERE id = ANY(p_ids)
+      AND client_phone = v_clean
+      AND status IN ('confirmed', 'confirmado', 'pending', 'pendente');
+
+
+    GET DIAGNOSTICS v_affected = ROW_COUNT;
+
+
+    RETURN jsonb_build_object(
+        'success', (v_affected > 0),
+        'affected_rows', v_affected
+    );
+END;
+$$;
+
+
+-- ==============================================================================
+-- PARTE 10: DADOS INICIAIS (SEED SEGURO COM IDs OFICIAIS DO JM BARBERCLUB)
+-- ==============================================================================
+INSERT INTO public.barbers (id, name, phone, email, role, is_active)
+VALUES 
+    ('b949db29-efb1-4131-8234-873195068328', 'Matheus', '83996646306', 'matheus@jmbarberclub.com', 'admin', true),
+    ('9ebcd15c-b747-4d0b-b12f-5de9465363f9', 'William', '83991751875', 'william@jmbarberclub.com', 'manager', true)
+ON CONFLICT (id) DO UPDATE 
+SET name = EXCLUDED.name, phone = EXCLUDED.phone, is_active = true;
+
+
+INSERT INTO public.barber_schedules (barber_id, day_of_week, start_time, end_time, is_working)
+VALUES
+    -- Matheus
+    ('b949db29-efb1-4131-8234-873195068328', 0, '09:00', '12:30', true),
+    ('b949db29-efb1-4131-8234-873195068328', 1, '14:30', '19:00', true),
+    ('b949db29-efb1-4131-8234-873195068328', 2, '09:00', '19:00', true),
+    ('b949db29-efb1-4131-8234-873195068328', 3, '09:00', '19:00', true),
+    ('b949db29-efb1-4131-8234-873195068328', 4, '09:00', '19:00', true),
+    ('b949db29-efb1-4131-8234-873195068328', 5, '09:00', '19:00', true),
+    ('b949db29-efb1-4131-8234-873195068328', 6, '09:00', '19:00', true),
+    -- William
+    ('9ebcd15c-b747-4d0b-b12f-5de9465363f9', 0, '09:00', '12:30', true),
+    ('9ebcd15c-b747-4d0b-b12f-5de9465363f9', 1, '14:30', '19:00', true),
+    ('9ebcd15c-b747-4d0b-b12f-5de9465363f9', 2, '09:00', '19:00', true),
+    ('9ebcd15c-b747-4d0b-b12f-5de9465363f9', 3, '09:00', '19:00', true),
+    ('9ebcd15c-b747-4d0b-b12f-5de9465363f9', 4, '09:00', '19:00', true),
+    ('9ebcd15c-b747-4d0b-b12f-5de9465363f9', 5, '09:00', '19:00', true),
+    ('9ebcd15c-b747-4d0b-b12f-5de9465363f9', 6, '09:00', '19:00', true)
+ON CONFLICT (barber_id, day_of_week) DO UPDATE 
+SET start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time, is_working = true;
+
+
+INSERT INTO public.services (name, description, price, duration_minutes, category, is_active)
+SELECT 'Degradê', 'Corte degradê navalhado ou disfarçado moderno', 25.00, 30, 'cabelo', true
+WHERE NOT EXISTS (SELECT 1 FROM public.services WHERE name ILIKE '%Degradê%');
+
+
+INSERT INTO public.services (name, description, price, duration_minutes, category, is_active)
+SELECT 'Corte SÓ Tesoura', 'Corte clássico 100% tesoura com acabamento preciso', 25.00, 40, 'cabelo', true
+WHERE NOT EXISTS (SELECT 1 FROM public.services WHERE name ILIKE '%Tesoura%');
+
+
+INSERT INTO public.services (name, description, price, duration_minutes, category, is_active)
+SELECT 'Lowfade ou Americano', 'Corte moderno com fade baixo ou afunilado americano', 25.00, 30, 'cabelo', true
+WHERE NOT EXISTS (SELECT 1 FROM public.services WHERE name ILIKE '%Lowfade%');
+
+
+INSERT INTO public.services (name, description, price, duration_minutes, category, is_active)
+SELECT 'Barboterapia', 'Tratamento completo com toalha quente, óleos e navalha', 20.00, 30, 'barba', true
+WHERE NOT EXISTS (SELECT 1 FROM public.services WHERE name ILIKE '%Barboterapia%');
+
+
+INSERT INTO public.services (name, description, price, duration_minutes, category, is_active)
+SELECT 'Corte e Barboterapia', 'Combo completo corte de cabelo + barba com toalha quente', 40.00, 60, 'combo', true
+WHERE NOT EXISTS (SELECT 1 FROM public.services WHERE name ILIKE '%Corte e Barboterapia%');
+
+
+INSERT INTO public.services (name, description, price, duration_minutes, category, is_active)
+SELECT 'Corte + Barba Simples', 'Corte alinhado acompanhado de barba e contorno simples', 35.00, 50, 'combo', true
+WHERE NOT EXISTS (SELECT 1 FROM public.services WHERE name ILIKE '%Corte + Barba%');
+
+
+INSERT INTO public.services (name, description, price, duration_minutes, category, is_active)
+SELECT 'Barba (Design Simples)', 'Alinhamento e contorno de barba ou cavanhaque', 15.00, 20, 'barba', true
+WHERE NOT EXISTS (SELECT 1 FROM public.services WHERE name ILIKE '%Barba (Design Simples)%');
+
+
+-- ==============================================================================
+-- PARTE 11: SEGURANÇA (ROW LEVEL SECURITY - RLS)
+-- ==============================================================================
+ALTER TABLE public.barbers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.services ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.barber_services ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.barber_schedules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.blocked_dates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.barber_leaves ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.barber_exceptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.appointments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chat_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
+
+
+DO $$ BEGIN
+    CREATE POLICY "Allow public read barbers" ON public.barbers FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+
+DO $$ BEGIN
+    CREATE POLICY "Allow public read services" ON public.services FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+
+DO $$ BEGIN
+    CREATE POLICY "Allow public read barber_services" ON public.barber_services FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+
+DO $$ BEGIN
+    CREATE POLICY "Allow public read barber_schedules" ON public.barber_schedules FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+
+DO $$ BEGIN
+    CREATE POLICY "Allow public read blocked_dates" ON public.blocked_dates FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+
+DO $$ BEGIN
+    CREATE POLICY "Allow public read barber_leaves" ON public.barber_leaves FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+
+DO $$ BEGIN
+    CREATE POLICY "Allow public read barber_exceptions" ON public.barber_exceptions FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+
+DO $$ BEGIN
+    CREATE POLICY "Allow all read chat_sessions" ON public.chat_sessions FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+
+DO $$ BEGIN
+    CREATE POLICY "Allow all write chat_sessions" ON public.chat_sessions FOR ALL USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+
+DO $$ BEGIN
+    CREATE POLICY "Allow all read chat_messages" ON public.chat_messages FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+
+DO $$ BEGIN
+    CREATE POLICY "Allow all write chat_messages" ON public.chat_messages FOR ALL USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+
+-- ==============================================================================
+-- PARTE 12: CONCESSÃO DE PRIVILÉGIOS (GRANTS PARA ANON, AUTH E SERVICE_ROLE)
+-- ==============================================================================
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+
+
+GRANT SELECT ON public.barbers TO anon, authenticated, service_role;
+GRANT SELECT ON public.services TO anon, authenticated, service_role;
+GRANT SELECT ON public.barber_services TO anon, authenticated, service_role;
+GRANT SELECT ON public.barber_schedules TO anon, authenticated, service_role;
+GRANT SELECT ON public.blocked_dates TO anon, authenticated, service_role;
+GRANT SELECT ON public.barber_leaves TO anon, authenticated, service_role;
+GRANT SELECT ON public.barber_exceptions TO anon, authenticated, service_role;
+
+
+GRANT ALL ON public.chat_sessions TO anon, authenticated, service_role;
+GRANT ALL ON public.chat_messages TO anon, authenticated, service_role;
+
+
+GRANT SELECT ON public.appointments TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE ON public.clients TO anon, authenticated, service_role;
+
+
+-- Grants de Execução nas Funções RPC
+GRANT EXECUTE ON FUNCTION public.chatbot_get_available_slots(uuid, date, uuid) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.chatbot_create_appointment(text, text, uuid, uuid, uuid[], date, time, integer, integer, text) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.chatbot_create_appointments(timestamptz, uuid, text, text, uuid[]) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.chatbot_create_appointments(uuid, uuid[], text, text, date, time, text) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.chatbot_booked_times(uuid, date) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.chatbot_list_appointments(text) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.chatbot_cancel_appointments(uuid[], text) TO anon, authenticated, service_role;
+
+
+-- ==============================================================================
+-- PARTE 13: RECARGA IMEDIATA DO SCHEMA CACHE DO POSTGREST
+-- ==============================================================================
+NOTIFY pgrst, 'reload schema';
