@@ -1,5 +1,5 @@
 -- ==============================================================================
--- ARQUIVO 2: 002_indexes_and_rls.sql
+-- ARQUIVO 10: 010_indexes_and_rls.sql
 -- Sistema: JM Barberclub (Chatbot + Painel do Barbeiro)
 -- Descrição: Índices de alta performance para cálculo dinâmico de horários
 --            e políticas de segurança de linha (Row Level Security - RLS).
@@ -18,6 +18,9 @@ CREATE INDEX IF NOT EXISTS idx_appointments_client_phone
 
 CREATE INDEX IF NOT EXISTS idx_appointments_time_range 
     ON public.appointments(appointment_date, appointment_time, end_time);
+
+CREATE INDEX IF NOT EXISTS idx_appointments_end_time_compat 
+    ON public.appointments(appointment_date, appointment_time, appointment_end_time);
 
 CREATE INDEX IF NOT EXISTS idx_appointments_pre_scheduled 
     ON public.appointments(appointment_date, is_pre_scheduled);

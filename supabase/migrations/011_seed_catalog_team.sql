@@ -1,5 +1,5 @@
 -- ==============================================================================
--- ARQUIVO 3: 003_seed_catalog_team.sql
+-- ARQUIVO 11: 011_seed_catalog_team.sql
 -- Sistema: JM Barberclub (Chatbot + Painel do Barbeiro)
 -- Descrição: Inserção dos dados iniciais da equipe (Matheus e William),
 --            catálogo oficial de serviços, especialidades e expedientes semanais.
@@ -14,7 +14,7 @@ VALUES
         '401fe8ff-d8c9-4ef2-9a36-7e7d23d10cea',
         'Matheus',
         'matheus@jmbarberclub.com',
-        '11999990001',
+        '(83) 99664-6306',
         'admin',
         TRUE,
         50.00,
@@ -24,11 +24,11 @@ VALUES
         '3fc4c3b7-e20b-41c7-b5b0-059005594ed8',
         'William',
         'william@jmbarberclub.com',
-        '11999990002',
+        '(83) 99175-1875',
         'manager',
         TRUE,
         50.00,
-        '{"can_manage_team": false, "can_manage_services": true, "can_manage_finances": true, "can_manage_schedules": true}'::jsonb
+        '{"can_manage_team": false, "can_manage_services": true, "can_manage_finances": false, "can_manage_schedules": true, "can_view_global_finances": false, "can_register_expenses": false}'::jsonb
     )
 ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,

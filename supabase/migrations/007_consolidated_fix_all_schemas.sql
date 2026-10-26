@@ -359,6 +359,7 @@ INSERT INTO public.barbers (
     phone,
     role,
     active,
+    permissions,
     commission_percent,
     commission_rate,
     password_hash
@@ -371,6 +372,7 @@ VALUES
         '(83) 99664-6306',
         'admin',
         TRUE,
+        '{"can_manage_team": true, "can_manage_services": true, "can_manage_finances": true, "can_manage_schedules": true, "can_manage_all": true}'::jsonb,
         50.00,
         50.00,
         '$2b$10$wE9sVb6727d29cZz4a7YkOHV9w6kUk9v5gYj1wKxP8oBqP.21GzS2' -- Matheus123
@@ -382,12 +384,15 @@ VALUES
         '(83) 99175-1875',
         'manager',
         TRUE,
+        '{"can_manage_team": false, "can_manage_services": true, "can_manage_finances": false, "can_manage_schedules": true, "can_view_global_finances": false, "can_register_expenses": false}'::jsonb,
         50.00,
         50.00,
         '$2b$10$wE9sVb6727d29cZz4a7YkOHV9w6kUk9v5gYj1wKxP8oBqP.21GzS2' -- William123
     )
 ON CONFLICT (id) DO UPDATE SET
     phone = EXCLUDED.phone,
+    role = EXCLUDED.role,
+    permissions = EXCLUDED.permissions,
     commission_percent = EXCLUDED.commission_percent,
     commission_rate = EXCLUDED.commission_rate,
     active = TRUE;

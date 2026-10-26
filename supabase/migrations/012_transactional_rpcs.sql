@@ -1,15 +1,17 @@
 -- ==============================================================================
--- ARQUIVO 4: 004_transactional_rpcs.sql
+-- ARQUIVO 12: 012_transactional_rpcs.sql
 -- Sistema: JM Barberclub (Chatbot + Painel do Barbeiro)
 -- Descrição: Stored Procedures / RPCs com isolamento transacional e locking
---            para cálculo dinâmico de slots e agendamento atômico anti-concorrência.
+--            para cálculo dinâmico de slots em grade de 10 em 10 minutos,
+--            duração exata do serviço e agendamento atômico anti-concorrência.
 -- ==============================================================================
 
 -- ------------------------------------------------------------------------------
 -- 1. RPC: chatbot_get_available_slots
--- Calcula em tempo real e de forma atômica todos os horários livres de um barbeiro
--- para uma determinada data e serviço, já subtraindo folgas, almoço e agendamentos.
+-- Limpeza de sobrecargas anteriores para evitar conflitos de assinatura
 -- ------------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.chatbot_get_available_slots(UUID, UUID, DATE);
+
 CREATE OR REPLACE FUNCTION public.chatbot_get_available_slots(
     p_barber_id UUID,
     p_service_id UUID,
@@ -35,7 +37,7 @@ BEGIN
     -- 1. Determina o dia da semana (0=Domingo, 6=Sábado)
     v_dow := EXTRACT(DOW FROM p_date)::SMALLINT;
 
-    -- 2. Busca duração do serviço (padrão ou customizada do barbeiro)
+    -- 2. Busca duração exata do serviço (customizada do barbeiro ou padrão da tabela services)
     SELECT COALESCE(bs.custom_duration_minutes, s.default_duration_minutes, 30)
     INTO v_duration
     FROM public.services s
@@ -43,20 +45,24 @@ BEGIN
         ON bs.service_id = s.id AND bs.barber_id = p_barber_id AND bs.is_active = TRUE
     WHERE s.id = p_service_id;
 
-    IF v_duration IS NULL THEN
+    IF v_duration IS NULL OR v_duration <= 0 THEN
         v_duration := 30;
     END IF;
 
-    -- 3. Verifica jornada semanal padrão do barbeiro
+    -- 3. Verifica jornada semanal padrão do barbeiro com suporte a ambos os esquemas de colunas
     SELECT 
-        start_time, end_time, break_start_time, break_end_time, is_working_day
+        start_time, 
+        end_time, 
+        COALESCE(break_start_time, lunch_start), 
+        COALESCE(break_end_time, lunch_end), 
+        COALESCE(is_working_day, active, TRUE)
     INTO 
         v_work_start, v_work_end, v_lunch_start, v_lunch_end, v_is_working
     FROM public.barber_schedules
     WHERE barber_id = p_barber_id AND day_of_week = v_dow;
 
-    -- Se não trabalha no dia da semana, retorna vazio
-    IF v_is_working IS NOT TRUE OR v_work_start IS NULL THEN
+    -- Se não trabalha no dia da semana ou expediente não cadastrado, retorna vazio
+    IF v_is_working IS NOT TRUE OR v_work_start IS NULL OR v_work_end IS NULL THEN
         RETURN;
     END IF;
 
@@ -66,12 +72,12 @@ BEGIN
         WHERE barber_id = p_barber_id 
           AND exception_date = p_date 
           AND is_available = FALSE
-          AND start_time IS NULL
+          AND (start_time IS NULL OR (start_time <= v_work_start AND end_time >= v_work_end))
     ) THEN
         RETURN;
     END IF;
 
-    -- 5. Itera de slot em slot desde a abertura até o fechamento
+    -- 5. Itera em grade de 10 em 10 minutos desde a abertura até o fechamento
     v_curr_slot := v_work_start;
 
     WHILE (v_curr_slot + (v_duration || ' minutes')::INTERVAL)::TIME <= v_work_end LOOP
@@ -100,13 +106,14 @@ BEGIN
         END IF;
 
         -- Checa conflito com agendamentos já confirmados/ativos
+        -- Considera tanto end_time quanto appointment_end_time para retrocompatibilidade
         IF NOT v_has_conflict AND EXISTS (
             SELECT 1 FROM public.appointments
             WHERE barber_id = p_barber_id 
               AND appointment_date = p_date 
               AND status NOT IN ('cancelado')
               AND appointment_time < v_curr_end 
-              AND end_time > v_curr_slot
+              AND COALESCE(end_time, appointment_end_time, (appointment_time + (duration_minutes || ' minutes')::INTERVAL)::TIME) > v_curr_slot
         ) THEN
             v_has_conflict := TRUE;
         END IF;
@@ -119,8 +126,8 @@ BEGIN
             RETURN NEXT;
         END IF;
 
-        -- Avança 30 minutos ou intervalo de slots padrão
-        v_curr_slot := (v_curr_slot + INTERVAL '30 minutes')::TIME;
+        -- Passo rigoroso de 10 em 10 minutos (regra de negócio JM BarberClub)
+        v_curr_slot := (v_curr_slot + INTERVAL '10 minutes')::TIME;
     END LOOP;
 
     RETURN;
@@ -129,9 +136,12 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ------------------------------------------------------------------------------
 -- 2. RPC: chatbot_create_appointment
--- Criação atômica de agendamento via Chatbot com bloqueio de concorrência (FOR UPDATE),
--- validação de horários de trabalho, ausência de colisão e sincronia automática de clientes.
+-- Criação atômica com FOR UPDATE lock, preenchimento de end_time e appointment_end_time,
+-- sincronização de cliente e integridade com a equipe.
 -- ------------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.chatbot_create_appointment(UUID, UUID, TEXT, TEXT, DATE, TIME, TEXT, TEXT, BOOLEAN);
+DROP FUNCTION IF EXISTS public.chatbot_create_appointments(UUID, UUID, TEXT, TEXT, DATE, TIME, TEXT, TEXT, BOOLEAN);
+
 CREATE OR REPLACE FUNCTION public.chatbot_create_appointment(
     p_barber_id UUID,
     p_service_id UUID,
@@ -195,6 +205,10 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Serviço selecionado não está disponível.');
     END IF;
 
+    IF v_duration IS NULL OR v_duration <= 0 THEN
+        v_duration := 30;
+    END IF;
+
     -- 4. Cálculo do horário de término
     v_end_time := (p_appointment_time + (v_duration || ' minutes')::INTERVAL)::TIME;
 
@@ -202,13 +216,17 @@ BEGIN
     v_dow := EXTRACT(DOW FROM p_appointment_date)::SMALLINT;
 
     SELECT 
-        start_time, end_time, break_start_time, break_end_time, is_working_day
+        start_time, 
+        end_time, 
+        COALESCE(break_start_time, lunch_start), 
+        COALESCE(break_end_time, lunch_end), 
+        COALESCE(is_working_day, active, TRUE)
     INTO 
         v_work_start, v_work_end, v_lunch_start, v_lunch_end, v_is_working
     FROM public.barber_schedules
     WHERE barber_id = p_barber_id AND day_of_week = v_dow;
 
-    IF v_is_working IS NOT TRUE THEN
+    IF v_is_working IS NOT TRUE OR v_work_start IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'O barbeiro não atende nesta data (dia de folga semanal).');
     END IF;
 
@@ -238,7 +256,6 @@ BEGIN
     END IF;
 
     -- 7. BLOQUEIO TRANSACIONAL CONTRA RACE CONDITION (FOR UPDATE LOCK)
-    -- Trava as linhas de agendamentos daquele barbeiro para aquela data até o commit
     PERFORM id 
     FROM public.appointments
     WHERE barber_id = p_barber_id AND appointment_date = p_appointment_date
@@ -251,21 +268,24 @@ BEGIN
           AND appointment_date = p_appointment_date 
           AND status NOT IN ('cancelado')
           AND appointment_time < v_end_time 
-          AND end_time > p_appointment_time
+          AND COALESCE(end_time, appointment_end_time, (appointment_time + (duration_minutes || ' minutes')::INTERVAL)::TIME) > p_appointment_time
     ) THEN
         RETURN jsonb_build_object('success', false, 'error', 'Este horário acabou de ser reservado por outro cliente. Por favor, escolha outro.');
     END IF;
 
     -- 8. Sincronização Automática na Base de Clientes (clients)
-    INSERT INTO public.clients (name, phone, total_appointments, last_appointment_at)
-    VALUES (trim(p_client_name), v_clean_phone, 1, NOW())
+    INSERT INTO public.clients (name, phone, clean_phone, total_appointments, last_appointment_at, last_visit_at, preferred_barber_id)
+    VALUES (trim(p_client_name), v_clean_phone, v_clean_phone, 1, NOW(), NOW(), p_barber_id)
     ON CONFLICT (phone) DO UPDATE SET
         name = EXCLUDED.name,
+        clean_phone = EXCLUDED.clean_phone,
         total_appointments = public.clients.total_appointments + 1,
-        last_appointment_at = NOW()
+        last_appointment_at = NOW(),
+        last_visit_at = NOW(),
+        preferred_barber_id = COALESCE(p_barber_id, public.clients.preferred_barber_id)
     RETURNING id INTO v_client_id;
 
-    -- 9. Inserção Atômica do Agendamento (appointments)
+    -- 9. Inserção Atômica do Agendamento (populando end_time E appointment_end_time)
     INSERT INTO public.appointments (
         barber_id,
         service_id,
@@ -276,6 +296,7 @@ BEGIN
         appointment_date,
         appointment_time,
         end_time,
+        appointment_end_time,
         duration_minutes,
         price,
         total_price,
@@ -295,6 +316,7 @@ BEGIN
         v_clean_phone,
         p_appointment_date,
         p_appointment_time,
+        v_end_time,
         v_end_time,
         v_duration,
         v_price,
@@ -320,6 +342,7 @@ BEGIN
         'appointment_date', p_appointment_date,
         'appointment_time', p_appointment_time,
         'end_time', v_end_time,
+        'appointment_end_time', v_end_time,
         'duration_minutes', v_duration,
         'price', v_price
     );
@@ -331,3 +354,42 @@ EXCEPTION WHEN OTHERS THEN
     );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ------------------------------------------------------------------------------
+-- 3. ALIAS / WRAPPER PADRONIZADO: chatbot_create_appointments
+-- Garante compatibilidade caso o cliente chame no plural ou singular
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.chatbot_create_appointments(
+    p_barber_id UUID,
+    p_service_id UUID,
+    p_client_name TEXT,
+    p_client_phone TEXT,
+    p_appointment_date DATE,
+    p_appointment_time TIME,
+    p_notes TEXT DEFAULT NULL,
+    p_origin TEXT DEFAULT 'chatbot',
+    p_is_pre_scheduled BOOLEAN DEFAULT FALSE
+)
+RETURNS JSONB AS $$
+BEGIN
+    RETURN public.chatbot_create_appointment(
+        p_barber_id,
+        p_service_id,
+        p_client_name,
+        p_client_phone,
+        p_appointment_date,
+        p_appointment_time,
+        p_notes,
+        p_origin,
+        p_is_pre_scheduled
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ------------------------------------------------------------------------------
+-- 4. CONCESSÃO DE PRIVILÉGIOS DE EXECUÇÃO
+-- Permite que a API do Chatbot (anon/service_role) e o Painel executem as funções
+-- ------------------------------------------------------------------------------
+GRANT EXECUTE ON FUNCTION public.chatbot_get_available_slots(UUID, UUID, DATE) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.chatbot_create_appointment(UUID, UUID, TEXT, TEXT, DATE, TIME, TEXT, TEXT, BOOLEAN) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.chatbot_create_appointments(UUID, UUID, TEXT, TEXT, DATE, TIME, TEXT, TEXT, BOOLEAN) TO anon, authenticated, service_role;
