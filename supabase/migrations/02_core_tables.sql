@@ -226,7 +226,7 @@ CREATE TABLE IF NOT EXISTS public.appointments (
 DO $$ BEGIN
     ALTER TABLE public.appointments
     ADD COLUMN appointment_end_time time
-    GENERATED ALWAYS AS ((appointment_time + (duration_minutes || ' minutes')::interval)::time) STORED;
+    GENERATED ALWAYS AS (appointment_time + make_interval(mins => duration_minutes)) STORED;
 EXCEPTION
     WHEN duplicate_column THEN NULL;
 END $$;
