@@ -236,7 +236,9 @@ ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS storage_url TEXT;
 ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS image_path TEXT;
 ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS barber_id UUID REFERENCES public.barbers(id) ON DELETE SET NULL;
 ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS display_order INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS likes_count INT NOT NULL DEFAULT 0;
+ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 -- ------------------------------------------------------------------------------
 -- 13. TABELA: push_subscriptions (Com 'subscription' JSONB e colunas VAPID individuais)

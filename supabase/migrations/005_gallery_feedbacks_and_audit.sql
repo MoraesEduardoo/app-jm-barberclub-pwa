@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS public.haircut_gallery (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title VARCHAR(150) NOT NULL,
     category VARCHAR(50) NOT NULL DEFAULT 'degrade',
-    image_path TEXT NOT NULL,
+    image_path TEXT,
     image_url TEXT,
     storage_url TEXT,
     barber_id UUID REFERENCES public.barbers(id) ON DELETE SET NULL,
@@ -22,6 +22,19 @@ CREATE TABLE IF NOT EXISTS public.haircut_gallery (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Garante que todas as colunas existam caso a tabela haircut_gallery já tenha sido criada em migração anterior
+ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS category VARCHAR(50) NOT NULL DEFAULT 'degrade';
+ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS image_path TEXT;
+ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS image_url TEXT;
+ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS storage_url TEXT;
+ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS barber_id UUID REFERENCES public.barbers(id) ON DELETE SET NULL;
+ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS display_order INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS likes_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
 CREATE INDEX IF NOT EXISTS idx_gallery_active_category 
     ON public.haircut_gallery(is_active, category, display_order);
 
@@ -30,6 +43,9 @@ CREATE TRIGGER trg_gallery_updated_at
     BEFORE UPDATE ON public.haircut_gallery
     FOR EACH ROW
     EXECUTE FUNCTION public.set_updated_at();
+
+-- Garante que a coluna reference_photo_id exista em appointments antes de criar a FK e o índice
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS reference_photo_id UUID;
 
 -- Vincula a foto de referência escolhida pelo cliente em appointments
 DO $$
@@ -66,6 +82,10 @@ CREATE TABLE IF NOT EXISTS public.client_feedbacks (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE public.client_feedbacks ADD COLUMN IF NOT EXISTS appointment_id UUID REFERENCES public.appointments(id) ON DELETE SET NULL;
+ALTER TABLE public.client_feedbacks ADD COLUMN IF NOT EXISTS barber_id UUID REFERENCES public.barbers(id) ON DELETE SET NULL;
+ALTER TABLE public.client_feedbacks ADD COLUMN IF NOT EXISTS rating SMALLINT DEFAULT 5;
+
 CREATE INDEX IF NOT EXISTS idx_feedbacks_barber 
     ON public.client_feedbacks(barber_id, rating);
 
@@ -79,9 +99,17 @@ CREATE TABLE IF NOT EXISTS public.push_subscriptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     barber_id UUID REFERENCES public.barbers(id) ON DELETE CASCADE,
     endpoint TEXT NOT NULL UNIQUE,
-    keys JSONB NOT NULL,
+    keys JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE public.push_subscriptions ADD COLUMN IF NOT EXISTS barber_id UUID REFERENCES public.barbers(id) ON DELETE CASCADE;
+ALTER TABLE public.push_subscriptions ADD COLUMN IF NOT EXISTS keys JSONB;
+ALTER TABLE public.push_subscriptions ADD COLUMN IF NOT EXISTS p256dh TEXT;
+ALTER TABLE public.push_subscriptions ADD COLUMN IF NOT EXISTS auth TEXT;
+ALTER TABLE public.push_subscriptions ADD COLUMN IF NOT EXISTS subscription JSONB;
+ALTER TABLE public.push_subscriptions ADD COLUMN IF NOT EXISTS user_agent TEXT;
+ALTER TABLE public.push_subscriptions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 CREATE INDEX IF NOT EXISTS idx_push_barber ON public.push_subscriptions(barber_id);
 
@@ -121,12 +149,19 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS action VARCHAR(80);
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
 CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON public.audit_logs(action);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON public.audit_logs(created_at DESC);
 
 -- ------------------------------------------------------------------------------
 -- 6. FUNÇÃO RPC ATÔMICA PARA REGISTRO DE PAGAMENTO (register_payment_atomic)
 -- ------------------------------------------------------------------------------
+ALTER TABLE public.barbers ADD COLUMN IF NOT EXISTS commission_rate NUMERIC(5, 2) NOT NULL DEFAULT 50.00;
+ALTER TABLE public.barbers ADD COLUMN IF NOT EXISTS commission_percent NUMERIC(5, 2) NOT NULL DEFAULT 50.00;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS barber_commission_amount NUMERIC(10, 2);
+
 CREATE OR REPLACE FUNCTION public.register_payment_atomic(
     p_appointment_id UUID,
     p_barber_id UUID,

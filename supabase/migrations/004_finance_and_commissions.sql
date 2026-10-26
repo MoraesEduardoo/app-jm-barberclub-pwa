@@ -30,6 +30,11 @@ CREATE TABLE IF NOT EXISTS public.commission_payouts (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE public.commission_payouts ADD COLUMN IF NOT EXISTS barber_id UUID REFERENCES public.barbers(id) ON DELETE CASCADE;
+ALTER TABLE public.commission_payouts ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE public.commission_payouts ADD COLUMN IF NOT EXISTS period_start DATE;
+ALTER TABLE public.commission_payouts ADD COLUMN IF NOT EXISTS period_end DATE;
+
 CREATE INDEX IF NOT EXISTS idx_commission_payouts_barber 
     ON public.commission_payouts(barber_id, paid_at DESC);
 
@@ -41,6 +46,9 @@ CREATE TRIGGER trg_commission_payouts_updated_at
     BEFORE UPDATE ON public.commission_payouts
     FOR EACH ROW
     EXECUTE FUNCTION public.set_updated_at();
+
+-- Garante que a coluna commission_payout_id exista em appointments antes da FK e do índice
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS commission_payout_id UUID;
 
 -- Vincula a foreign key em appointments de forma segura com ON DELETE SET NULL
 DO $$
@@ -69,7 +77,7 @@ COMMENT ON TABLE public.commission_payouts IS 'Lotes de pagamentos de comissões
 CREATE TABLE IF NOT EXISTS public.cash_flow (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     barber_id UUID REFERENCES public.barbers(id) ON DELETE SET NULL, -- Responsável pelo lançamento
-    type VARCHAR(20) NOT NULL CHECK (type IN ('income', 'expense')),
+    type VARCHAR(20) NOT NULL CHECK (type IN ('income', 'expense', 'entrada', 'saida')),
     category VARCHAR(60) NOT NULL DEFAULT 'outros',
     description TEXT NOT NULL,
     amount NUMERIC(10, 2) NOT NULL CHECK (amount > 0),
@@ -78,6 +86,13 @@ CREATE TABLE IF NOT EXISTS public.cash_flow (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE public.cash_flow ADD COLUMN IF NOT EXISTS barber_id UUID REFERENCES public.barbers(id) ON DELETE SET NULL;
+ALTER TABLE public.cash_flow ADD COLUMN IF NOT EXISTS type VARCHAR(20) NOT NULL DEFAULT 'expense';
+ALTER TABLE public.cash_flow ADD COLUMN IF NOT EXISTS category VARCHAR(60) NOT NULL DEFAULT 'outros';
+ALTER TABLE public.cash_flow ADD COLUMN IF NOT EXISTS occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE public.cash_flow ADD COLUMN IF NOT EXISTS payment_method VARCHAR(30) DEFAULT 'pix';
+ALTER TABLE public.cash_flow ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 CREATE INDEX IF NOT EXISTS idx_cash_flow_period 
     ON public.cash_flow(type, occurred_at DESC);

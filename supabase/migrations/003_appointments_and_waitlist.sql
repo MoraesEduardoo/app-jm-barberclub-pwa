@@ -41,6 +41,18 @@ CREATE TABLE IF NOT EXISTS public.appointments (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Garante que todas as colunas existam caso a tabela appointments tenha sido criada anteriormente
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES public.clients(id) ON DELETE SET NULL;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS service_id UUID REFERENCES public.services(id) ON DELETE SET NULL;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS end_time TIME;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS appointment_end_time TIME;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS status VARCHAR(30) NOT NULL DEFAULT 'confirmado';
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS is_pre_scheduled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS pre_scheduled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS reference_photo_id UUID;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS commission_payout_id UUID;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
 -- Índices de Alta Performance para a Agenda
 CREATE INDEX IF NOT EXISTS idx_appointments_date_barber 
     ON public.appointments(appointment_date, barber_id);

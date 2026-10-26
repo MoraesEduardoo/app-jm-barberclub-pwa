@@ -7,6 +7,42 @@
 -- ==============================================================================
 
 -- ------------------------------------------------------------------------------
+-- 0. GARANTIA DEFENSIVA DE COLUNAS DEPENDENTES NAS TABELAS DO ESQUEMA
+-- ------------------------------------------------------------------------------
+ALTER TABLE public.services ADD COLUMN IF NOT EXISTS default_duration_minutes INTEGER NOT NULL DEFAULT 30;
+ALTER TABLE public.services ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE public.barber_services ADD COLUMN IF NOT EXISTS custom_duration_minutes INTEGER;
+ALTER TABLE public.barber_services ADD COLUMN IF NOT EXISTS custom_price NUMERIC(10, 2);
+ALTER TABLE public.barber_services ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE public.barber_schedules ADD COLUMN IF NOT EXISTS break_start_time TIME DEFAULT '12:00:00';
+ALTER TABLE public.barber_schedules ADD COLUMN IF NOT EXISTS break_end_time TIME DEFAULT '13:00:00';
+ALTER TABLE public.barber_schedules ADD COLUMN IF NOT EXISTS lunch_start TIME DEFAULT '12:00:00';
+ALTER TABLE public.barber_schedules ADD COLUMN IF NOT EXISTS lunch_end TIME DEFAULT '13:00:00';
+ALTER TABLE public.barber_schedules ADD COLUMN IF NOT EXISTS is_working_day BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE public.barber_schedules ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE public.barber_exceptions ADD COLUMN IF NOT EXISTS is_available BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.barber_exceptions ADD COLUMN IF NOT EXISTS start_time TIME;
+ALTER TABLE public.barber_exceptions ADD COLUMN IF NOT EXISTS end_time TIME;
+
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS clean_phone VARCHAR(30);
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS total_appointments INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS last_appointment_at TIMESTAMPTZ;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS last_visit_at TIMESTAMPTZ;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS preferred_barber_id UUID REFERENCES public.barbers(id) ON DELETE SET NULL;
+
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS end_time TIME;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS appointment_end_time TIME;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS duration_minutes INTEGER NOT NULL DEFAULT 30;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS total_price NUMERIC(10, 2) NOT NULL DEFAULT 0.00;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS is_pre_scheduled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS pre_scheduled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS origin VARCHAR(50) NOT NULL DEFAULT 'chatbot';
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS notes TEXT;
+
+-- ------------------------------------------------------------------------------
 -- 1. RPC: chatbot_get_available_slots
 -- Limpeza de sobrecargas anteriores para evitar conflitos de assinatura
 -- ------------------------------------------------------------------------------

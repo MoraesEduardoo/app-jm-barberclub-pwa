@@ -6,6 +6,51 @@
 -- ==============================================================================
 
 -- ------------------------------------------------------------------------------
+-- 0. GARANTIA DEFENSIVA DE TABELAS E COLUNAS ANTES DA CRIAÇÃO DE ÍNDICES
+-- ------------------------------------------------------------------------------
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS end_time TIME;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS appointment_end_time TIME;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS status VARCHAR(30) NOT NULL DEFAULT 'confirmado';
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS is_pre_scheduled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES public.clients(id) ON DELETE SET NULL;
+
+ALTER TABLE public.barber_schedules ADD COLUMN IF NOT EXISTS is_working_day BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE public.barber_services ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE public.services ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE public.services ADD COLUMN IF NOT EXISTS display_order INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE public.services ADD COLUMN IF NOT EXISTS barber_id UUID REFERENCES public.barbers(id) ON DELETE SET NULL;
+
+ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS category VARCHAR(50) NOT NULL DEFAULT 'corte';
+ALTER TABLE public.haircut_gallery ADD COLUMN IF NOT EXISTS display_order INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS public.reminder_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    appointment_id UUID NOT NULL REFERENCES public.appointments(id) ON DELETE CASCADE,
+    client_phone VARCHAR(30) NOT NULL,
+    channel VARCHAR(30) NOT NULL DEFAULT 'whatsapp',
+    scheduled_for TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    sent_at TIMESTAMPTZ,
+    status VARCHAR(30) NOT NULL DEFAULT 'pendente',
+    error_message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.followup_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    appointment_id UUID NOT NULL REFERENCES public.appointments(id) ON DELETE CASCADE,
+    client_id UUID REFERENCES public.clients(id) ON DELETE SET NULL,
+    client_phone VARCHAR(30) NOT NULL,
+    scheduled_for DATE NOT NULL DEFAULT CURRENT_DATE,
+    sent_at TIMESTAMPTZ,
+    status VARCHAR(30) NOT NULL DEFAULT 'pendente',
+    rating SMALLINT,
+    feedback_text TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ------------------------------------------------------------------------------
 -- 1. ÍNDICES DE ALTA PERFORMANCE
 -- ------------------------------------------------------------------------------
 

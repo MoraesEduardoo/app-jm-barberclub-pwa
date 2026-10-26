@@ -202,6 +202,8 @@ CREATE TABLE IF NOT EXISTS public.appointments (
     is_pre_scheduled BOOLEAN NOT NULL DEFAULT FALSE,
     pre_scheduled BOOLEAN NOT NULL DEFAULT FALSE,
     origin VARCHAR(50) NOT NULL DEFAULT 'chatbot' CHECK (origin IN ('chatbot', 'painel', 'pre_schedule', 'walk_in')),
+    reference_photo_id UUID,
+    commission_payout_id UUID,
     notes TEXT,
     cancelled_at TIMESTAMPTZ,
     cancelled_by VARCHAR(50),
@@ -249,13 +251,15 @@ CREATE TABLE IF NOT EXISTS public.haircut_gallery (
     title VARCHAR(150) NOT NULL,
     description TEXT,
     category VARCHAR(50) NOT NULL DEFAULT 'corte',
-    image_url TEXT NOT NULL,
+    image_url TEXT,
     storage_url TEXT,
     image_path TEXT,
     barber_id UUID REFERENCES public.barbers(id) ON DELETE SET NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    display_order INT NOT NULL DEFAULT 0,
     likes_count INT NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE public.haircut_gallery IS 'Portfólio visual exibido aos clientes no chatbot e no catálogo online.';
@@ -302,8 +306,10 @@ CREATE TABLE IF NOT EXISTS public.push_subscriptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     barber_id UUID NOT NULL REFERENCES public.barbers(id) ON DELETE CASCADE,
     endpoint TEXT NOT NULL UNIQUE,
-    p256dh TEXT NOT NULL,
-    auth TEXT NOT NULL,
+    p256dh TEXT,
+    auth TEXT,
+    keys JSONB,
+    subscription JSONB,
     user_agent TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
