@@ -247,18 +247,19 @@ export default function ServiceFormSheet({ open, onClose, service }) {
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3.5">
             {/* Thumbnail da foto atual / preview */}
-            <div className="relative h-20 w-20 rounded-xl overflow-hidden bg-zinc-900 border border-zinc-700/80 shrink-0 flex items-center justify-center">
+            <div className="relative h-24 w-24 rounded-xl overflow-hidden bg-zinc-900 border border-zinc-700/80 shrink-0 flex items-center justify-center">
               {previewUrl ? (
                 <img
                   src={previewUrl}
                   alt="Prévia do serviço"
-                  className="h-full w-full object-cover"
+                  referrerPolicy="no-referrer"
+                  className="h-full w-full object-cover object-center rounded-xl"
                 />
               ) : (
                 <div className="flex flex-col items-center justify-center text-zinc-600 gap-1 text-center p-1">
-                  <Scissors size={20} />
+                  <Scissors size={22} />
                   <span className="text-[10px] text-zinc-500">Sem foto</span>
                 </div>
               )}

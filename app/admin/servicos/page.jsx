@@ -169,9 +169,9 @@ export default function ServicosPage() {
       )}
 
       {loading ? (
-        <div className="space-y-2.5">
+        <div className="space-y-3">
           {[...Array(6)].map((_, i) => (
-            <div key={i} className="h-[68px] rounded-xl bg-surface animate-pulse" />
+            <div key={i} className="h-[104px] rounded-2xl bg-surface animate-pulse" />
           ))}
         </div>
       ) : services.length === 0 ? (
@@ -219,7 +219,7 @@ export default function ServicosPage() {
           axis="y"
           values={services}
           onReorder={handleReorder}
-          className="space-y-2.5 touch-pan-y"
+          className="space-y-3 touch-pan-y"
           style={{ touchAction: 'pan-y' }}
         >
           {services.map((service) => (
