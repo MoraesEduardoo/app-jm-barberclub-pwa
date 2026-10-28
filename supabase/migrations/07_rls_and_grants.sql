@@ -9,6 +9,7 @@
 -- ------------------------------------------------------------------------------
 ALTER TABLE public.barbers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.services ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.barber_services ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.barber_schedules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.blocked_dates ENABLE ROW LEVEL SECURITY;
@@ -41,6 +42,14 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
     CREATE POLICY "Allow admin manage services" ON public.services FOR ALL USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "Allow public read products" ON public.products FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "Allow admin manage products" ON public.products FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
@@ -134,6 +143,7 @@ GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 
 GRANT ALL ON public.barbers TO anon, authenticated, service_role;
 GRANT ALL ON public.services TO anon, authenticated, service_role;
+GRANT ALL ON public.products TO anon, authenticated, service_role;
 GRANT ALL ON public.barber_services TO anon, authenticated, service_role;
 GRANT ALL ON public.barber_schedules TO anon, authenticated, service_role;
 GRANT ALL ON public.blocked_dates TO anon, authenticated, service_role;

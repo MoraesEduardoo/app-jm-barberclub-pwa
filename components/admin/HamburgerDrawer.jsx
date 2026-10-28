@@ -145,7 +145,7 @@ export default function HamburgerDrawer({ open, onClose, onOpenRecorrencias }) {
                 <button
                   type="button"
                   onClick={handleCopyChatbotLink}
-                  className="flex items-center justify-center gap-1.5 bg-accent text-black font-semibold text-xs py-2 px-3 rounded-xl hover:bg-accent-hover active:scale-95 transition-all touch-manipulation"
+                  className="flex items-center justify-center gap-1.5 bg-accent text-black font-semibold text-xs py-2 px-3 rounded-xl hover:bg-accent-light active:scale-95 transition-all touch-manipulation"
                 >
                   {copied ? <Check size={13} /> : <Copy size={13} />}
                   <span>{copied ? 'Copiado!' : 'Copiar'}</span>
@@ -242,12 +242,12 @@ export default function HamburgerDrawer({ open, onClose, onOpenRecorrencias }) {
                 onClick={onClose}
                 className={`flex items-center justify-between p-2.5 rounded-xl transition-all ${
                   pathname === '/admin/financeiro'
-                    ? 'bg-amber-500/15 text-white font-medium border border-amber-500/30'
+                    ? 'bg-emerald-500/15 text-white font-medium border border-emerald-500/30'
                     : 'text-zinc-300 hover:bg-zinc-900 hover:text-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                  <div className="h-8 w-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
                     <TrendingUp size={16} />
                   </div>
                   <div>
@@ -255,7 +255,7 @@ export default function HamburgerDrawer({ open, onClose, onOpenRecorrencias }) {
                       <span className="text-xs font-semibold block leading-tight">
                         {isChefe ? 'Faturamento & Caixa' : 'Meus Ganhos'}
                       </span>
-                      <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded font-bold uppercase">
+                      <span className="text-[9px] bg-emerald-500/15 text-emerald-400 px-1.5 py-0.2 rounded font-bold uppercase">
                         {isChefe ? 'Global' : 'Pessoal'}
                       </span>
                     </div>
@@ -329,7 +329,7 @@ export default function HamburgerDrawer({ open, onClose, onOpenRecorrencias }) {
                 className="w-full flex items-center justify-between p-2.5 rounded-xl text-zinc-300 hover:bg-zinc-900 hover:text-white transition-all text-left touch-manipulation"
               >
                 <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-zinc-800/80 flex items-center justify-center text-orange-400">
+                  <div className="h-8 w-8 rounded-lg bg-zinc-800/80 flex items-center justify-center text-amber-400">
                     <AlertTriangle size={16} />
                   </div>
                   <div>

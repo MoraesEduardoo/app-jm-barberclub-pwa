@@ -54,6 +54,23 @@ CREATE TABLE IF NOT EXISTS public.services (
 );
 
 -- ------------------------------------------------------------------------------
+-- 2B. TABELA DE PRODUTOS (public.products)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.products (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    description text,
+    price numeric(10,2) NOT NULL DEFAULT 0.00,
+    stock_quantity integer NOT NULL DEFAULT 0,
+    image_url text,
+    image_path text,
+    is_active boolean NOT NULL DEFAULT true,
+    display_order integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- ------------------------------------------------------------------------------
 -- 3. TABELA DE VÍNCULO E ESPECIALIDADES BARBEIRO-SERVIÇO (public.barber_services)
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.barber_services (

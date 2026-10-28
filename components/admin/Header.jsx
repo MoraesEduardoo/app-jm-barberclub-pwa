@@ -29,14 +29,6 @@ function isScopedPath(pathname) {
 /**
  * Header:
  * Cabeçalho principal mobile-first do painel administrativo.
- *
- * Inclui:
- * - Botão de Menu Hamburguer Lateral (abre gaveta de atalhos e ferramentas)
- * - Título dinâmico por rota
- * - Badge de identificação de cargo (👑 Chefe ou 👔 Gerente)
- * - Sininho de notificações push
- * - Avatar de perfil do usuário
- * - Botão sair
  */
 export default function Header({ pathname, onOpenProfile, onOpenMenu }) {
   const { barber, isChefe, isManager, signOut, isViewingOther, viewedBarber, resetView } = useBarber();

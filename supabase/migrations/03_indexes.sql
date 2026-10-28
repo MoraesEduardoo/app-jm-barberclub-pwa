@@ -34,6 +34,9 @@ ON public.barber_exceptions (barber_id, exception_date);
 CREATE INDEX IF NOT EXISTS idx_services_display_order
 ON public.services (display_order ASC, name ASC);
 
+CREATE INDEX IF NOT EXISTS idx_products_active_order
+ON public.products (is_active, display_order ASC, name ASC);
+
 CREATE INDEX IF NOT EXISTS idx_gallery_active_category
 ON public.haircut_gallery (is_active, category, display_order);
 

@@ -7,8 +7,7 @@ import { useBarber } from '@/lib/barber-context';
 
 /**
  * Abas principais da barra inferior (mobile-first):
- * 'Financeiro' foi retirado da barra de navegação principal e agora fica acessível
- * diretamente dentro do menu de Perfil (ProfileSheet) para simplificar a navegação.
+ * Agenda, Serviços, Expediente e Equipe (para o Chefe).
  */
 const BASE_TABS = [
   { href: '/admin/agenda', label: 'Agenda', icon: CalendarDays },

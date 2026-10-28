@@ -30,6 +30,11 @@ CREATE TRIGGER trg_update_appointments_timestamp
 BEFORE UPDATE ON public.appointments
 FOR EACH ROW EXECUTE FUNCTION public.set_updated_at_column();
 
+DROP TRIGGER IF EXISTS trg_update_products_timestamp ON public.products;
+CREATE TRIGGER trg_update_products_timestamp
+BEFORE UPDATE ON public.products
+FOR EACH ROW EXECUTE FUNCTION public.set_updated_at_column();
+
 -- ------------------------------------------------------------------------------
 -- 2. TRIGGER DE SINCRONIZAÇÃO DA TABELA BARBERS
 -- Mantém `is_active` <-> `active`, `clean_phone` e `commission_percent` <-> `commission_rate`
