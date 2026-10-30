@@ -432,7 +432,12 @@ export default function AgendaPage() {
         onClose={() => setProductTarget(null)}
         appointment={productTarget}
         onAdded={(res) => {
-          toast.success("Produto adicionado e somado ao atendimento!");
+          const count = res?.addedItems?.length || 1;
+          toast.success(
+            count > 1
+              ? `${count} produtos adicionados e somados ao atendimento!`
+              : "Produto adicionado e somado ao atendimento!"
+          );
           if (productTarget?.id && res?.newTotal != null) {
             setAppointments((prev) =>
               prev.map((a) =>
