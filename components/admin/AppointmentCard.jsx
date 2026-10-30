@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import {
   CheckCircle2,
   XCircle,
@@ -7,13 +8,15 @@ import {
   Wallet,
   User,
   Zap,
-  Trash2,
   MessageSquare,
   Crown,
   Clock,
   RefreshCw,
   Sparkles,
   CalendarClock,
+  ShoppingBag,
+  Plus,
+  X,
 } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import {
@@ -21,6 +24,8 @@ import {
   getWhatsAppClickToChatUrl,
 } from '@/lib/whatsapp';
 import { isPreScheduledAppointment } from '@/lib/pre-scheduled';
+import { parseAppointmentNotes } from './AddProductSheet';
+import { removeProductFromAppointment } from '@/lib/actions/appointments';
 
 const STATUS_STYLES = {
   pendente: { label: 'Pendente', className: 'bg-zinc-800 text-zinc-300' },
@@ -40,10 +45,13 @@ export default function AppointmentCard({
   appointment,
   onChangeStatus,
   onOpenPayment,
-  onDelete,
   onOpenPreSchedule,
+  onAddProduct,
+  onProductRemoved,
   busy = false,
 }) {
+  const [removingKey, setRemovingKey] = useState(null);
+
   const isPreScheduled = isPreScheduledAppointment(appointment);
   const status = STATUS_STYLES[appointment.status] || STATUS_STYLES.confirmado;
   const paid = appointment.payment_status === 'pago';
@@ -74,6 +82,12 @@ export default function AppointmentCard({
   // Heurística de cliente recorrente (quando possui telefone e dados completos)
   const isFrequentClient = Boolean(hasPhone && appointment.client_name);
 
+  // Valor total atualizado do atendimento (serviço + eventuais produtos vinculados)
+  const totalAmount = Number(
+    appointment.total_price ?? appointment.price ?? appointment.services?.price ?? 0
+  );
+  const { cleanNotes, products: attachedProducts } = parseAppointmentNotes(appointment.notes);
+
   // Lembrete ESPECÍFICO deste agendamento (100% limpo, sem emojis e com horário correto)
   function handleSendWhatsAppReminder(e) {
     e.stopPropagation();
@@ -102,6 +116,30 @@ export default function AppointmentCard({
 
     window.open(url, '_blank', 'noopener,noreferrer');
     toast.success(`Lembrete de agendamento gerado para ${firstName}!`);
+  }
+
+  async function handleRemoveProduct(e, item) {
+    e.stopPropagation();
+    if (removingKey) return;
+    setRemovingKey(item.key);
+    try {
+      const res = await removeProductFromAppointment({
+        appointmentId: appointment.id,
+        rawLine: item.rawLine,
+      });
+      if (res?.error) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success('Produto removido e devolvido ao estoque.');
+      if (onProductRemoved) {
+        onProductRemoved(res);
+      }
+    } catch {
+      toast.error('Não foi possível remover o produto.');
+    } finally {
+      setRemovingKey(null);
+    }
   }
 
   const durationMin = appointment.duration_minutes || appointment.services?.default_duration_minutes;
@@ -179,6 +217,53 @@ export default function AppointmentCard({
             </div>
           ) : null}
 
+          {/* Observações normais do cliente */}
+          {cleanNotes ? (
+            <p className="text-[11px] text-zinc-400 mt-1.5 italic bg-zinc-900/70 border border-zinc-800/70 rounded-lg px-2.5 py-1">
+              {cleanNotes}
+            </p>
+          ) : null}
+
+          {/* Produtos vinculados ao atendimento */}
+          {attachedProducts.length > 0 && (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="mt-2.5 bg-zinc-900/80 border border-zinc-800 rounded-xl p-2 space-y-1.5"
+            >
+              <div className="flex items-center justify-between text-[10.5px]">
+                <span className="inline-flex items-center gap-1 text-amber-400 font-semibold">
+                  <ShoppingBag size={11} /> Produto(s) adicionado(s)
+                </span>
+                {appointment.services?.price != null && (
+                  <span className="text-zinc-500">
+                    Serviço: R$ {Number(appointment.services.price).toFixed(2).replace('.', ',')}
+                  </span>
+                )}
+              </div>
+              <div className="space-y-1">
+                {attachedProducts.map((item) => (
+                  <div
+                    key={item.key}
+                    className="flex items-center justify-between gap-2 text-[11px] bg-black/60 border border-zinc-800/80 rounded-lg px-2 py-1"
+                  >
+                    <span className="text-zinc-200 font-medium truncate">{item.label}</span>
+                    {!paid && !isCancelled && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleRemoveProduct(e, item)}
+                        disabled={removingKey === item.key}
+                        title="Remover produto e devolver ao estoque"
+                        className="text-zinc-500 hover:text-rose-400 p-0.5 rounded transition-colors shrink-0"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Foto de Referência */}
           {appointment.reference_photo && (
             <a
@@ -204,8 +289,8 @@ export default function AppointmentCard({
           )}
         </div>
 
-        {/* Status de Pagamento */}
-        <div className="text-right shrink-0">
+        {/* Status de Pagamento + Valor Total */}
+        <div className="text-right shrink-0 flex flex-col items-end gap-1.5">
           {paid ? (
             <span className="flex items-center gap-1 text-emerald-400 text-xs font-semibold px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
               <CheckCircle2 size={13} /> Pago
@@ -213,6 +298,11 @@ export default function AppointmentCard({
           ) : (
             <span className="flex items-center gap-1 text-zinc-400 text-xs font-medium px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800">
               <Clock3 size={13} /> Não pago
+            </span>
+          )}
+          {totalAmount > 0 && (
+            <span className="text-white font-bold text-xs px-1">
+              R$ {totalAmount.toFixed(2).replace('.', ',')}
             </span>
           )}
         </div>
@@ -250,6 +340,22 @@ export default function AppointmentCard({
           </button>
         )}
 
+        {!isCancelled && onAddProduct && !paid && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddProduct(appointment);
+            }}
+            className="flex-1 min-w-[125px] flex items-center justify-center gap-1.5 h-9 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-amber-500/40 text-xs font-semibold text-amber-300 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+          >
+            <ShoppingBag size={13} className="text-amber-400" />
+            <Plus size={11} className="-ml-1 text-amber-400" />
+            <span>Produto</span>
+          </button>
+        )}
+
         {!isCancelled && (
           <button
             type="button"
@@ -278,7 +384,7 @@ export default function AppointmentCard({
           </button>
         )}
 
-        {hasPhone && (
+        {hasPhone && !isCancelled && (
           <button
             type="button"
             onClick={(e) => {
@@ -290,20 +396,6 @@ export default function AppointmentCard({
           >
             <MessageSquare size={13} className="text-emerald-400" />
             <span>Lembrete</span>
-          </button>
-        )}
-
-        {isCancelled && onDelete && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(appointment.id);
-            }}
-            className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-xl bg-red-950/30 border border-red-900/50 text-xs font-medium text-red-400 active:scale-95 active:bg-red-900/50 transition-all touch-manipulation disabled:opacity-50"
-          >
-            <Trash2 size={14} /> Excluir registro
           </button>
         )}
       </div>

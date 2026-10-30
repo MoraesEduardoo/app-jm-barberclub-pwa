@@ -12,9 +12,9 @@ import Header from "@/components/admin/Header";
 import BottomNav from "@/components/admin/BottomNav";
 import ProfileSheet from "@/components/admin/ProfileSheet";
 import ToastStack from "@/components/admin/ToastStack";
-import InstallPwaBanner from "@/components/admin/InstallPwaBanner";
 import HamburgerDrawer from "@/components/admin/HamburgerDrawer";
 import ClientCyclesSheet from "@/components/admin/ClientCyclesSheet";
+import CommissionSettlementSheet from "@/components/admin/CommissionSettlementSheet";
 
 // Vive DENTRO do BarberProvider para poder usar useBarber().
 function AdminShell({ children, onProfileUpdated }) {
@@ -22,6 +22,7 @@ function AdminShell({ children, onProfileUpdated }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [recorrenciasOpen, setRecorrenciasOpen] = useState(false);
+  const [settlementOpen, setSettlementOpen] = useState(false);
   const { barber, isChefe, isLeadership, selectedBarberId, selectBarber } = useBarber();
 
   // Notificações seguem SEMPRE quem está logado, não quem está a ser visualizado.
@@ -36,7 +37,6 @@ function AdminShell({ children, onProfileUpdated }) {
           onOpenMenu={() => setDrawerOpen(true)}
         />
         <ToastStack />
-        <InstallPwaBanner />
         <main className="flex-1 pb-[calc(env(safe-area-inset-bottom,0px)+84px)]">{children}</main>
         <BottomNav />
       </div>
@@ -45,6 +45,7 @@ function AdminShell({ children, onProfileUpdated }) {
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         onOpenRecorrencias={() => setRecorrenciasOpen(true)}
+        onOpenSettlement={() => setSettlementOpen(true)}
       />
 
       <ClientCyclesSheet
@@ -52,6 +53,13 @@ function AdminShell({ children, onProfileUpdated }) {
         onClose={() => setRecorrenciasOpen(false)}
         scopeBarberId={isLeadership ? selectedBarberId : barber.id}
       />
+
+      {isChefe && (
+        <CommissionSettlementSheet
+          open={settlementOpen}
+          onClose={() => setSettlementOpen(false)}
+        />
+      )}
 
       <ProfileSheet
         open={profileOpen}

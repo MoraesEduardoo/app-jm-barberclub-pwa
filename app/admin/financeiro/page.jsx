@@ -101,9 +101,9 @@ export default function FinanceiroPage() {
 
   return (
     <div className="px-4 pt-4">
-      {/* Botões de Ação da Liderança (Exclusivo Chefe) */}
+      {/* Botão de Ação da Liderança (Exclusivo Chefe) */}
       {isChefe && (
-        <div className="space-y-2 mb-3.5">
+        <div className="mb-3.5">
           <button
             type="button"
             onClick={() => setSettlementOpen(true)}
@@ -127,29 +127,6 @@ export default function FinanceiroPage() {
               <ChevronRight size={14} />
             </span>
           </button>
-
-          <Link
-            href="/admin/financeiro/completo"
-            className="w-full flex items-center justify-between bg-gradient-to-r from-rose-950/60 via-surface to-rose-950/30 border border-rose-500/30 hover:border-rose-500/50 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-white shadow-sm active:scale-[0.99] transition-all touch-manipulation"
-          >
-            <span className="flex items-center gap-2.5">
-              <span className="h-8 w-8 rounded-lg bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
-                <Receipt size={16} />
-              </span>
-              <span className="text-left">
-                <span className="text-white font-bold block text-xs">
-                  Livro de Despesas Operacionais
-                </span>
-                <span className="text-zinc-400 text-[10.5px] block font-normal">
-                  Lançar compras, aluguel, contas e ver saldo líquido
-                </span>
-              </span>
-            </span>
-            <span className="flex items-center gap-1 text-rose-400 text-[11px] font-semibold shrink-0">
-              <span>Despesas</span>
-              <ChevronRight size={14} />
-            </span>
-          </Link>
         </div>
       )}
       {canManageFinance && team.length > 0 && (

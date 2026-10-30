@@ -20,14 +20,19 @@ import {
   Scissors,
   ChevronRight,
   Sparkles,
-  Receipt,
+  Wallet,
 } from 'lucide-react';
 import { useBarber } from '@/lib/barber-context';
 import { CHATBOT_URL } from '@/lib/site-url';
 import { toast } from '@/lib/toast';
 import HelpConfigModal from './HelpConfigModal';
 
-export default function HamburgerDrawer({ open, onClose, onOpenRecorrencias }) {
+export default function HamburgerDrawer({
+  open,
+  onClose,
+  onOpenRecorrencias,
+  onOpenSettlement,
+}) {
   const pathname = usePathname();
   const { barber, isChefe, isManager, signOut } = useBarber();
   const [copied, setCopied] = useState(false);
@@ -269,30 +274,31 @@ export default function HamburgerDrawer({ open, onClose, onOpenRecorrencias }) {
                 <ChevronRight size={14} className="text-zinc-600" />
               </Link>
 
-              {/* Despesas (Exclusivo Chefe / Admin) */}
+              {/* Fechamento & Acerto de Comissões (Exclusivo Chefe / Admin) */}
               {isChefe && (
-                <Link
-                  href="/admin/financeiro/completo"
-                  onClick={onClose}
-                  className={`flex items-center justify-between p-2.5 rounded-xl transition-all ${
-                    pathname === '/admin/financeiro/completo'
-                      ? 'bg-rose-500/15 text-white font-medium border border-rose-500/30'
-                      : 'text-zinc-300 hover:bg-zinc-900 hover:text-white'
-                  }`}
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    if (onOpenSettlement) onOpenSettlement();
+                  }}
+                  className="w-full flex items-center justify-between p-2.5 rounded-xl text-zinc-300 hover:bg-zinc-900 hover:text-white transition-all text-left touch-manipulation"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
-                      <Receipt size={16} />
+                    <div className="h-8 w-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                      <Wallet size={16} />
                     </div>
                     <div>
-                      <span className="text-xs font-semibold block leading-tight">Despesas</span>
+                      <span className="text-xs font-semibold block leading-tight text-white">
+                        Fechamento & Acerto de Comissões
+                      </span>
                       <span className="text-[10px] text-zinc-500">
-                        Custos fixos, compras e saldo líquido
+                        Pagar William e Matheus com recibo no WhatsApp
                       </span>
                     </div>
                   </div>
                   <ChevronRight size={14} className="text-zinc-600" />
-                </Link>
+                </button>
               )}
             </div>
 

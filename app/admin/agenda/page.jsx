@@ -10,7 +10,6 @@ import { PERMISSION_KEYS } from "@/lib/auth";
 import {
   listAppointmentsByDate,
   updateAppointmentStatus,
-  deleteAppointment,
   confirmAppointment,
   rescheduleAppointment,
 } from "@/lib/actions/appointments";
@@ -18,12 +17,12 @@ import { listTeam } from "@/lib/actions/team";
 import DateStepper from "@/components/admin/DateStepper";
 import AppointmentCard from "@/components/admin/AppointmentCard";
 import PaymentSheet from "@/components/admin/PaymentSheet";
+import AddProductSheet from "@/components/admin/AddProductSheet";
 import WalkInSheet from "@/components/admin/WalkInSheet";
 import ClientCyclesSheet from "@/components/admin/ClientCyclesSheet";
 import PreScheduleSheet from "@/components/admin/PreScheduleSheet";
 import AgendaDashboardWidget from "@/components/admin/AgendaDashboardWidget";
 import SystemBootstrapCard from "@/components/admin/SystemBootstrapCard";
-import BottomSheet from "@/components/admin/BottomSheet";
 import { isPreScheduledAppointment } from "@/lib/pre-scheduled";
 import { toast } from "@/lib/toast";
 
@@ -31,7 +30,6 @@ const STATUS_FILTERS = [
   { key: "all", label: "Todos" },
   { key: "confirmado", label: "Confirmados" },
   { key: "concluido", label: "Concluídos" },
-  { key: "cancelado", label: "Cancelados" },
 ];
 
 export default function AgendaPage() {
@@ -46,11 +44,11 @@ export default function AgendaPage() {
   const [actionError, setActionError] = useState("");
   const [busyId, setBusyId] = useState(null);
   const [paymentTarget, setPaymentTarget] = useState(null);
+  const [productTarget, setProductTarget] = useState(null);
   const [preScheduleTarget, setPreScheduleTarget] = useState(null);
-  const [filterMode, setFilterMode] = useState("all"); // 'all' | 'confirmado' | 'concluido' | 'cancelado' | 'pre_scheduled'
+  const [filterMode, setFilterMode] = useState("all"); // 'all' | 'confirmado' | 'concluido' | 'pre_scheduled'
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [cyclesOpen, setCyclesOpen] = useState(false);
-  const [confirmModal, setConfirmModal] = useState(null); // { type: 'cancel' | 'delete', id: string }
   const [team, setTeam] = useState([]);
   const requestIdRef = useRef(0);
 
@@ -126,6 +124,12 @@ export default function AgendaPage() {
     setBusyId(id);
     setActionError("");
 
+    // Atualização otimista imediata: se cancelado, já retira da visualização ativa da agenda
+    const previousAppointments = appointments;
+    setAppointments((prev) =>
+      prev.map((a) => (a.id === id ? { ...a, status } : a))
+    );
+
     try {
       const response = await updateAppointmentStatus(id, status);
 
@@ -135,21 +139,20 @@ export default function AgendaPage() {
       }
 
       if (!response?.success) {
+        setAppointments(previousAppointments);
         const msg = response?.error || "Não foi possível atualizar o status.";
         setActionError(msg);
         toast.error(msg);
         return;
       }
 
-      setAppointments((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, status } : a))
-      );
       toast.success(
         status === "confirmado"
           ? "Agendamento confirmado com sucesso!"
-          : "Agendamento cancelado. Vaga liberada na agenda!"
+          : "Agendamento cancelado e horário liberado na agenda!"
       );
     } catch {
+      setAppointments(previousAppointments);
       const msg = "Sem conexão. Não foi possível atualizar o status.";
       setActionError(msg);
       toast.error(msg);
@@ -160,47 +163,7 @@ export default function AgendaPage() {
 
   function handleChangeStatus(id, status) {
     if (busyId) return;
-    if (status === "cancelado") {
-      setConfirmModal({ type: "cancel", id });
-      return;
-    }
     executeStatusChange(id, status);
-  }
-
-  function handleDeleteAppointment(id) {
-    if (busyId) return;
-    setConfirmModal({ type: "delete", id });
-  }
-
-  async function executeDeleteAppointment(id) {
-    if (busyId) return;
-    setBusyId(id);
-    setActionError("");
-
-    try {
-      const response = await deleteAppointment(id);
-
-      if (response?.error === "AUTH_EXPIRED") {
-        endSession();
-        return;
-      }
-
-      if (!response?.success) {
-        const msg = response?.error || "Não foi possível excluir o agendamento.";
-        setActionError(msg);
-        toast.error(msg);
-        return;
-      }
-
-      setAppointments((prev) => prev.filter((a) => a.id !== id));
-      toast.success("Agendamento excluído do histórico.");
-    } catch {
-      const msg = "Sem conexão. Não foi possível excluir o agendamento.";
-      setActionError(msg);
-      toast.error(msg);
-    } finally {
-      setBusyId(null);
-    }
   }
 
   function handleClosePayment() {
@@ -247,9 +210,13 @@ export default function AgendaPage() {
   }
 
   const isToday = date === todayInShop();
-  const preScheduledCount = appointments.filter(isPreScheduledAppointment).length;
+  const activeAppointments = appointments.filter((a) => {
+    const st = (a.status || "confirmado").toLowerCase();
+    return st !== "cancelado" && st !== "cancelled";
+  });
+  const preScheduledCount = activeAppointments.filter(isPreScheduledAppointment).length;
 
-  const displayedAppointments = appointments.filter((a) => {
+  const displayedAppointments = activeAppointments.filter((a) => {
     if (filterMode === "all") return true;
     if (filterMode === "pre_scheduled") return isPreScheduledAppointment(a);
     const st = (a.status || "confirmado").toLowerCase();
@@ -258,9 +225,6 @@ export default function AgendaPage() {
     }
     if (filterMode === "concluido") {
       return st === "concluido" || st === "completed" || a.payment_status === "pago";
-    }
-    if (filterMode === "cancelado") {
-      return st === "cancelado" || st === "cancelled";
     }
     return true;
   });
@@ -448,7 +412,8 @@ export default function AgendaPage() {
                 busy={busyId === appointment.id}
                 onChangeStatus={handleChangeStatus}
                 onOpenPayment={setPaymentTarget}
-                onDelete={handleDeleteAppointment}
+                onAddProduct={setProductTarget}
+                onProductRemoved={() => load({ silent: true })}
                 onOpenPreSchedule={setPreScheduleTarget}
               />
             ))}
@@ -460,6 +425,30 @@ export default function AgendaPage() {
         open={Boolean(paymentTarget)}
         onClose={handleClosePayment}
         appointment={paymentTarget}
+      />
+
+      <AddProductSheet
+        open={Boolean(productTarget)}
+        onClose={() => setProductTarget(null)}
+        appointment={productTarget}
+        onAdded={(res) => {
+          toast.success("Produto adicionado e somado ao atendimento!");
+          if (productTarget?.id && res?.newTotal != null) {
+            setAppointments((prev) =>
+              prev.map((a) =>
+                a.id === productTarget.id
+                  ? {
+                      ...a,
+                      price: res.newTotal,
+                      total_price: res.newTotal,
+                      notes: res.updatedNotes,
+                    }
+                  : a
+              )
+            );
+          }
+          load({ silent: true });
+        }}
       />
 
       <PreScheduleSheet
@@ -497,49 +486,6 @@ export default function AgendaPage() {
         onClose={() => setCyclesOpen(false)}
         scopeBarberId={scopeBarberId}
       />
-
-      {/* Modal Interno de Confirmação (Substitui window.confirm nativo) */}
-      <BottomSheet
-        open={Boolean(confirmModal)}
-        onClose={() => setConfirmModal(null)}
-        title={
-          confirmModal?.type === "delete"
-            ? "Excluir agendamento"
-            : "Cancelar agendamento"
-        }
-      >
-        <div className="space-y-4">
-          <p className="text-zinc-300 text-sm leading-relaxed">
-            {confirmModal?.type === "delete"
-              ? "Deseja realmente excluir este registo definitivamente do histórico?"
-              : "Deseja cancelar este agendamento? O horário ficará imediatamente livre na agenda."}
-          </p>
-          <div className="grid grid-cols-2 gap-2.5">
-            <button
-              type="button"
-              onClick={() => setConfirmModal(null)}
-              className="h-11 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold transition-all"
-            >
-              Voltar
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const target = confirmModal;
-                setConfirmModal(null);
-                if (target?.type === "delete") {
-                  executeDeleteAppointment(target.id);
-                } else if (target?.type === "cancel") {
-                  executeStatusChange(target.id, "cancelado");
-                }
-              }}
-              className="h-11 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all"
-            >
-              {confirmModal?.type === "delete" ? "Sim, excluir" : "Sim, cancelar"}
-            </button>
-          </div>
-        </div>
-      </BottomSheet>
     </div>
   );
 }
