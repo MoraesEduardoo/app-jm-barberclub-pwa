@@ -101,34 +101,6 @@ export default function FinanceiroPage() {
 
   return (
     <div className="px-4 pt-4">
-      {/* Botão de Ação da Liderança (Exclusivo Chefe) */}
-      {isChefe && (
-        <div className="mb-3.5">
-          <button
-            type="button"
-            onClick={() => setSettlementOpen(true)}
-            className="w-full flex items-center justify-between bg-gradient-to-r from-emerald-950/70 via-surface to-emerald-950/40 border border-emerald-500/40 hover:border-emerald-500/60 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-white shadow-sm active:scale-[0.99] transition-all touch-manipulation"
-          >
-            <span className="flex items-center gap-2.5">
-              <span className="h-8 w-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-                <Wallet size={16} />
-              </span>
-              <span className="text-left">
-                <span className="text-white font-bold block text-xs">
-                  Fechamento & Acerto de Comissões
-                </span>
-                <span className="text-zinc-400 text-[10.5px] block font-normal">
-                  Pagar William e Matheus com recibo no WhatsApp
-                </span>
-              </span>
-            </span>
-            <span className="flex items-center gap-1 text-emerald-400 text-[11px] font-semibold shrink-0">
-              <span>Efetuar Acerto</span>
-              <ChevronRight size={14} />
-            </span>
-          </button>
-        </div>
-      )}
       {canManageFinance && team.length > 0 && (
         <div className="mb-3 -mx-1 flex gap-2 overflow-x-auto pb-1 scroll-touch no-scrollbar">
           <button

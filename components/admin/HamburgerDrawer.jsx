@@ -21,6 +21,7 @@ import {
   ChevronRight,
   Sparkles,
   Wallet,
+  Receipt,
 } from 'lucide-react';
 import { useBarber } from '@/lib/barber-context';
 import { CHATBOT_URL } from '@/lib/site-url';
@@ -273,6 +274,34 @@ export default function HamburgerDrawer({
                 </div>
                 <ChevronRight size={14} className="text-zinc-600" />
               </Link>
+
+              {/* Despesas (Exclusivo Chefe / Admin) */}
+              {isChefe && (
+                <Link
+                  href="/admin/financeiro/completo"
+                  onClick={onClose}
+                  className={`flex items-center justify-between p-2.5 rounded-xl transition-all ${
+                    pathname === '/admin/financeiro/completo'
+                      ? 'bg-rose-500/15 text-white font-medium border border-rose-500/30'
+                      : 'text-zinc-300 hover:bg-zinc-900 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
+                      <Receipt size={16} />
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold block leading-tight">
+                        Despesas
+                      </span>
+                      <span className="text-[10px] text-zinc-500">
+                        Custos fixos, compras e saldo líquido
+                      </span>
+                    </div>
+                  </div>
+                  <ChevronRight size={14} className="text-zinc-600" />
+                </Link>
+              )}
 
               {/* Fechamento & Acerto de Comissões (Exclusivo Chefe / Admin) */}
               {isChefe && (
