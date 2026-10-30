@@ -171,8 +171,24 @@ export default function AgendaPage() {
     load({ silent: true });
   }
 
-  function handleCloseWalkIn() {
+  function handleCloseWalkIn(result) {
     setWalkInOpen(false);
+    if (result?.created) {
+      const targetDate = result.date;
+      if (targetDate && targetDate !== date) {
+        setDate(targetDate);
+        const [, m, d] = String(targetDate).split("-");
+        toast.success(
+          `Agendamento marcado para ${d}/${m}${result.time ? ` às ${result.time}` : ""}!`
+        );
+        return;
+      }
+      toast.success(
+        result.time
+          ? `Atendimento agendado para ${result.time}!`
+          : "Atendimento registrado com sucesso!"
+      );
+    }
     load({ silent: true });
   }
 
@@ -466,16 +482,14 @@ export default function AgendaPage() {
         onCancel={handleCancelPreScheduled}
       />
 
-      {isToday && (
-        <button
-          type="button"
-          onClick={() => setWalkInOpen(true)}
-          className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+72px)] right-4 z-30 flex items-center gap-2 h-12 pl-4 pr-5 rounded-full bg-accent text-white text-sm font-semibold shadow-accent-glow active:scale-95 active:bg-accent-dark transition-all touch-manipulation select-none"
-        >
-          <UserPlus size={18} />
-          Sem hora
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={() => setWalkInOpen(true)}
+        className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+72px)] right-4 z-30 flex items-center gap-2 h-12 pl-4 pr-5 rounded-full bg-accent text-white text-sm font-semibold shadow-accent-glow active:scale-95 active:bg-accent-dark transition-all touch-manipulation select-none"
+      >
+        <UserPlus size={18} />
+        Sem hora
+      </button>
 
       <WalkInSheet
         open={walkInOpen}
