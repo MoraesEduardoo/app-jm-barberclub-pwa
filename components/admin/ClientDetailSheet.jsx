@@ -38,17 +38,19 @@ export default function ClientDetailSheet({ client, open, onClose, onWhatsApp, o
     try {
       const res = await deleteClient({ id: client.id, phone: client.phone });
       if (res?.error) {
-        toast(res.error, 'error');
-        setDeleting(false);
+        toast.error(res.error || 'Erro ao excluir cliente.');
         return;
       }
-      toast('Cliente excluído com sucesso!');
       setConfirmingDelete(false);
-      setDeleting(false);
-      if (onDeleted) onDeleted(client);
-      onClose();
+      onClose?.();
+      if (onDeleted) {
+        await onDeleted(client);
+      }
+      toast.success('Cliente excluído com sucesso!');
     } catch (err) {
-      toast('Erro ao excluir cliente.', 'error');
+      console.error('[ClientDetailSheet] Erro ao excluir cliente:', err);
+      toast.error('Erro ao excluir cliente.');
+    } finally {
       setDeleting(false);
     }
   }

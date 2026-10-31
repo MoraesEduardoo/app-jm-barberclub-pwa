@@ -45,10 +45,10 @@ export default function HamburgerDrawer({
     try {
       await navigator.clipboard.writeText(CHATBOT_URL);
       setCopied(true);
-      toast('Link do chatbot copiado!');
+      toast.success('Link do chatbot copiado!');
       setTimeout(() => setCopied(false), 2500);
     } catch {
-      toast('Não foi possível copiar o link.');
+      toast.error('Não foi possível copiar o link.');
     }
   }
 
