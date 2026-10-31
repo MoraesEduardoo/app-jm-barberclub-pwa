@@ -53,10 +53,11 @@ export default function HamburgerDrawer({
   }
 
   function handleReportError() {
+    const barberName = barber?.name ? ` (${barber.name})` : '';
     const text = encodeURIComponent(
-      `Olá! Estou usando o painel administrativo do JM Barberclub (${barber?.name || 'Barbeiro'}) e preciso de suporte com um detalhe do sistema:`
+      `Olá! Estou no Painel do Barbeiro do JM Barberclub${barberName} e gostaria de relatar um erro encontrado no sistema:`
     );
-    window.open(`https://wa.me/5583996646306?text=${text}`, '_blank');
+    window.open(`https://wa.me/5583986841090?text=${text}`, '_blank', 'noopener,noreferrer');
   }
 
   const roleLabel = isChefe ? 'Chefe / Admin' : isManager ? 'Gerente' : 'Barbeiro';

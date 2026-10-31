@@ -71,6 +71,31 @@ export default function ClientesPage() {
     window.open(`https://wa.me/${phoneToUse}?text=${encodeURIComponent(greeting)}`, '_blank');
   }
 
+  function handleClientDeleted(deletedClient) {
+    setClients((prev) =>
+      prev.filter(
+        (c) =>
+          c.id !== deletedClient.id &&
+          (!deletedClient.cleanPhone || c.cleanPhone !== deletedClient.cleanPhone)
+      )
+    );
+    setSelectedClient(null);
+
+    listClients({ search, filter, scopeBarberId })
+      .then((res) => {
+        if (res.data) {
+          setClients(res.data);
+          setCounts({
+            total: res.totalCount || 0,
+            fiel: res.fielCount || 0,
+            atrasado: res.atrasadoCount || 0,
+            novo: res.novoCount || 0,
+          });
+        }
+      })
+      .catch((err) => console.error(err));
+  }
+
   return (
     <div className="px-4 py-4 space-y-4 max-w-2xl mx-auto pb-24">
       {/* Cabeçalho da Seção */}
@@ -185,7 +210,7 @@ export default function ClientesPage() {
 
             return (
               <div
-                key={client.cleanPhone}
+                key={client.cleanPhone || client.id}
                 onClick={() => setSelectedClient(client)}
                 className="bg-surface hover:bg-surface/80 border border-zinc-800 hover:border-zinc-700/80 rounded-2xl p-3.5 transition-all cursor-pointer flex items-center justify-between gap-3 shadow-sm active:scale-[0.99] touch-manipulation"
               >
@@ -248,6 +273,7 @@ export default function ClientesPage() {
         open={Boolean(selectedClient)}
         onClose={() => setSelectedClient(null)}
         onWhatsApp={(c) => handleWhatsApp(c)}
+        onDeleted={handleClientDeleted}
       />
     </div>
   );
