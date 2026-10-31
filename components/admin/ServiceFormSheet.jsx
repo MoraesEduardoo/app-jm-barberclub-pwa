@@ -12,7 +12,7 @@ import {
 } from '@/lib/actions/services';
 import { listTeam } from '@/lib/actions/team';
 import { compressImage } from '@/lib/image-compress';
-import { Upload, X, Scissors, Loader2, Sparkles, UserCheck, Users } from 'lucide-react';
+import { Upload, X, Scissors, Loader2, Sparkles, UserCheck, Users, Clock, RotateCcw } from 'lucide-react';
 import { toast } from '@/lib/toast';
 
 const CATEGORIES = [
@@ -41,6 +41,9 @@ export default function ServiceFormSheet({ open, onClose, service }) {
   // Atribuição de Barbeiro (Todos ou Barbeiro Específico)
   const [barberId, setBarberId] = useState(service?.barber_id || service?.assigned_barber_id || 'all');
   const [teamMembers, setTeamMembers] = useState([]);
+
+  // Durações personalizadas por profissional: { [barberId]: string }
+  const [customDurations, setCustomDurations] = useState({});
 
   // Estados de Imagem Ilustrativa
   const [currentImageUrl, setCurrentImageUrl] = useState(service?.image_url || null);
@@ -82,6 +85,19 @@ export default function ServiceFormSheet({ open, onClose, service }) {
         setBarberId(service.barber_id || service.assigned_barber_id || 'all');
         setCurrentImageUrl(service.image_url || null);
         setPreviewUrl(service.image_url || null);
+
+        // Preenche durações personalizadas existentes na tabela barber_services
+        const initialCustom = {};
+        if (Array.isArray(service.barber_configs)) {
+          for (const cfg of service.barber_configs) {
+            if (cfg.custom_duration !== null && cfg.custom_duration !== undefined) {
+              initialCustom[cfg.barber_id] = String(cfg.custom_duration);
+            } else {
+              initialCustom[cfg.barber_id] = '';
+            }
+          }
+        }
+        setCustomDurations(initialCustom);
       } else {
         setName('');
         setCategory('cabelo');
@@ -90,12 +106,12 @@ export default function ServiceFormSheet({ open, onClose, service }) {
         setBarberId('all');
         setCurrentImageUrl(null);
         setPreviewUrl(null);
+        setCustomDurations({});
       }
       setPendingBlob(null);
       setIsPhotoRemoved(false);
       setError('');
     } else {
-      // Ao fechar, limpa preview temporário de blob se houver
       setPreviewUrl((prev) => {
         if (prev && typeof prev === 'string' && prev.startsWith('blob:')) {
           URL.revokeObjectURL(prev);
@@ -112,7 +128,6 @@ export default function ServiceFormSheet({ open, onClose, service }) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // 1. Valida se é um arquivo de imagem válido
     if (!(file instanceof Blob) || (file.type && !file.type.startsWith('image/'))) {
       setError('Por favor selecione um arquivo de imagem válido (JPG, PNG ou WebP).');
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -122,7 +137,6 @@ export default function ServiceFormSheet({ open, onClose, service }) {
     setError('');
     setCompressing(true);
     try {
-      // compressImage retorna { blob: Blob, width, height }
       const compressedResult = await compressImage(file, { maxSide: 1024, quality: 0.85 });
       const finalBlob = compressedResult?.blob || compressedResult;
 
@@ -130,7 +144,6 @@ export default function ServiceFormSheet({ open, onClose, service }) {
         throw new Error('Falha ao processar a imagem selecionada.');
       }
 
-      // Revoga preview de blob anterior se existir
       setPreviewUrl((prev) => {
         if (prev && typeof prev === 'string' && prev.startsWith('blob:')) {
           URL.revokeObjectURL(prev);
@@ -161,23 +174,42 @@ export default function ServiceFormSheet({ open, onClose, service }) {
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
+  function handleBarberDurationChange(bId, val) {
+    setCustomDurations((prev) => ({
+      ...prev,
+      [bId]: val,
+    }));
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
 
     if (!name.trim() || !price || !duration) {
-      setError('Preencha nome, preço e duração.');
+      setError('Preencha nome, preço e duração padrão.');
       return;
     }
 
     setSaving(true);
     try {
+      // Monta o mapa de durações personalizadas por profissional para gravar em barber_services
+      const barberDurationsPayload = {};
+      for (const member of teamMembers) {
+        const raw = String(customDurations[member.id] ?? '').trim();
+        const parsed = raw === '' ? null : Math.max(5, Math.round(Number(raw)));
+        barberDurationsPayload[member.id] = {
+          custom_duration: Number.isFinite(parsed) ? parsed : null,
+          is_active: barberId === 'all' ? true : String(barberId) === String(member.id),
+        };
+      }
+
       const payload = {
         name: name.trim(),
         category,
         price: Number(price),
         default_duration_minutes: Number(duration),
         barber_id: barberId === 'all' ? null : barberId,
+        barber_durations: barberDurationsPayload,
       };
 
       let targetServiceId = service?.id;
@@ -185,12 +217,10 @@ export default function ServiceFormSheet({ open, onClose, service }) {
       if (isEditing) {
         await updateService(targetServiceId, payload);
       } else {
-        // Criação de novo serviço
         const created = await createService(payload);
         targetServiceId = created?.id;
       }
 
-      // Se houver nova foto para upload
       if (pendingBlob && targetServiceId) {
         const formData = new FormData();
         const ext = pendingBlob.type === 'image/jpeg' ? 'jpg' : 'webp';
@@ -200,7 +230,7 @@ export default function ServiceFormSheet({ open, onClose, service }) {
         await removeServicePhoto(targetServiceId);
       }
 
-      toast.success(isEditing ? 'Serviço e foto atualizados!' : 'Serviço cadastrado com sucesso!');
+      toast.success(isEditing ? 'Serviço e durações atualizados!' : 'Serviço cadastrado com sucesso!');
       onClose();
     } catch (err) {
       setError(err.message || 'Erro ao salvar o serviço.');
@@ -248,7 +278,6 @@ export default function ServiceFormSheet({ open, onClose, service }) {
           </div>
 
           <div className="flex items-center gap-3.5">
-            {/* Thumbnail da foto atual / preview */}
             <div className="relative h-24 w-24 rounded-xl overflow-hidden bg-zinc-900 border border-zinc-700/80 shrink-0 flex items-center justify-center">
               {previewUrl ? (
                 <img
@@ -366,7 +395,7 @@ export default function ServiceFormSheet({ open, onClose, service }) {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <FormField label="Preço (R$)">
+          <FormField label="Preço padrão (R$)">
             <TextInput
               type="number"
               inputMode="decimal"
@@ -378,7 +407,7 @@ export default function ServiceFormSheet({ open, onClose, service }) {
               required
             />
           </FormField>
-          <FormField label="Duração (min)">
+          <FormField label="Duração padrão (min)">
             <TextInput
               type="number"
               inputMode="numeric"
@@ -391,6 +420,79 @@ export default function ServiceFormSheet({ open, onClose, service }) {
             />
           </FormField>
         </div>
+
+        {/* Tempo personalizado por profissional (barber_services.custom_duration) */}
+        {teamMembers.length > 0 && (
+          <div className="bg-[#050505] border border-zinc-800/90 rounded-2xl p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
+                <Clock size={13} className="text-accent" />
+                Tempo específico por profissional (opcional)
+              </span>
+            </div>
+            <p className="text-[11px] text-zinc-500 leading-relaxed">
+              Defina o tempo em minutos para cada barbeiro. Se deixar em branco, o profissional
+              herdará o tempo padrão ({duration || 30} min).
+            </p>
+
+            <div className="space-y-2 pt-1">
+              {teamMembers
+                .filter((m) => barberId === 'all' || String(m.id) === String(barberId))
+                .map((member) => {
+                  const rawVal = customDurations[member.id] ?? '';
+                  const hasCustom = String(rawVal).trim() !== '';
+                  return (
+                    <div
+                      key={member.id}
+                      className="flex items-center justify-between gap-2 rounded-xl bg-[#0b0b0b] border border-zinc-800/80 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <span className="text-xs font-semibold text-white block truncate">
+                          {member.name}
+                        </span>
+                        <span className="text-[10px] text-zinc-500">
+                          {hasCustom
+                            ? `Personalizado: ${rawVal} min`
+                            : `Herda padrão: ${duration || 30} min`}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="relative flex items-center">
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min="5"
+                            max="240"
+                            step="5"
+                            value={rawVal}
+                            onChange={(e) =>
+                              handleBarberDurationChange(member.id, e.target.value)
+                            }
+                            placeholder={`${duration || 30}`}
+                            className="w-20 h-8 rounded-lg bg-zinc-900 border border-zinc-700 focus:border-accent px-2 pr-7 text-xs font-bold text-white text-right focus:outline-none"
+                          />
+                          <span className="absolute right-2 text-[10px] text-zinc-500 pointer-events-none">
+                            min
+                          </span>
+                        </div>
+                        {hasCustom && (
+                          <button
+                            type="button"
+                            onClick={() => handleBarberDurationChange(member.id, '')}
+                            title="Herdar tempo padrão"
+                            className="h-8 w-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white active:scale-95"
+                          >
+                            <RotateCcw size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
 
         {error && <p className="text-accent-light text-xs">{error}</p>}
 

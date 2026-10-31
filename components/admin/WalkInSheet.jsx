@@ -11,6 +11,7 @@ import { listSchedule } from "@/lib/actions/schedule";
 import {
   createWalkInAppointment,
   getAvailableSlotsForBarber,
+  getBarberServiceDuration,
   listAppointmentsByDate,
 } from "@/lib/actions/appointments";
 import { dayOfWeekFromDate } from "@/lib/constants/schedule";
@@ -64,6 +65,7 @@ export default function WalkInSheet({
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [scheduleRows, setScheduleRows] = useState([]);
   const [targetDateAppointments, setTargetDateAppointments] = useState([]);
+  const [resolvedConfig, setResolvedConfig] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -74,12 +76,14 @@ export default function WalkInSheet({
         setServices((data || []).filter((s) => s.active !== false && s.is_active !== false))
       );
       setBarberId(barber.id);
+      setServiceId("");
       setClientName("");
       setClientPhone("");
       setTimingMode("now");
       setSelectedDate(addDaysStr(currentToday, 1));
       setManualTime("");
       setRpcSlots(null);
+      setResolvedConfig(null);
       setIsDayOff(false);
       setError("");
     }
@@ -90,7 +94,59 @@ export default function WalkInSheet({
     return today;
   }, [timingMode, selectedDate, today]);
 
-  const selectedService = services.find((s) => s.id === serviceId);
+  // Filtra serviços habilitados para o barbeiro selecionado
+  const availableServicesForBarber = useMemo(() => {
+    return services.filter((s) => {
+      const cfg = s.barber_durations?.[barberId];
+      if (cfg && cfg.is_active === false) return false;
+      if (s.barber_id && String(s.barber_id) !== String(barberId)) return false;
+      return true;
+    });
+  }, [services, barberId]);
+
+  const selectedService = useMemo(
+    () => services.find((s) => s.id === serviceId) || null,
+    [services, serviceId]
+  );
+
+  // Calcula duração e preço efetivos para o par (barberId, serviceId)
+  const effectiveServiceInfo = useMemo(() => {
+    if (!selectedService) return null;
+    const localCfg = selectedService.barber_durations?.[barberId];
+    const defaultDur =
+      selectedService.duration_minutes ?? selectedService.default_duration_minutes ?? 30;
+    const defaultPrice = Number(selectedService.price || 0);
+
+    const customDur =
+      resolvedConfig &&
+      String(resolvedConfig.barberId) === String(barberId) &&
+      String(resolvedConfig.serviceId) === String(serviceId)
+        ? resolvedConfig.customDuration
+        : localCfg?.custom_duration ?? null;
+
+    const durationMinutes =
+      resolvedConfig &&
+      String(resolvedConfig.barberId) === String(barberId) &&
+      String(resolvedConfig.serviceId) === String(serviceId) &&
+      resolvedConfig.durationMinutes
+        ? resolvedConfig.durationMinutes
+        : customDur ?? defaultDur;
+
+    const price =
+      resolvedConfig &&
+      String(resolvedConfig.barberId) === String(barberId) &&
+      String(resolvedConfig.serviceId) === String(serviceId) &&
+      resolvedConfig.price !== undefined
+        ? resolvedConfig.price
+        : localCfg?.effective_price ?? defaultPrice;
+
+    return {
+      durationMinutes,
+      customDuration: customDur,
+      defaultDuration: defaultDur,
+      price,
+    };
+  }, [selectedService, barberId, serviceId, resolvedConfig]);
 
   // Lista rápida de 14 dias para a mini agenda horizontal no modo "Marcar dia"
   const quickDays = useMemo(() => {
@@ -118,6 +174,32 @@ export default function WalkInSheet({
   useEffect(() => {
     setManualTime("");
   }, [timingMode, effectiveDate, barberId, serviceId]);
+
+  // No momento exato em que o barbeiro seleciona o serviço e o profissional,
+  // consulta barber_services (barber_id + service_id) para buscar custom_duration
+  useEffect(() => {
+    let cancelled = false;
+    if (!barberId || !serviceId) {
+      setResolvedConfig(null);
+      return;
+    }
+
+    getBarberServiceDuration({ barberId, serviceId })
+      .then((res) => {
+        if (!cancelled && res) {
+          setResolvedConfig({
+            barberId,
+            serviceId,
+            ...res,
+          });
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [barberId, serviceId]);
 
   // Carrega o expediente semanal do barbeiro selecionado
   useEffect(() => {
@@ -147,10 +229,21 @@ export default function WalkInSheet({
       ])
         .then(([slotRes, apptRes]) => {
           if (cancelled) return;
+          if (slotRes?.durationMinutes) {
+            setResolvedConfig({
+              barberId,
+              serviceId,
+              durationMinutes: slotRes.durationMinutes,
+              customDuration: slotRes.customDuration ?? null,
+              defaultDuration: slotRes.defaultDuration ?? 30,
+              price: slotRes.price,
+            });
+          }
+
           if (slotRes?.isDayOff) {
             setIsDayOff(true);
             setRpcSlots([]);
-          } else if (Array.isArray(slotRes?.slots) && slotRes.slots.length > 0) {
+          } else if (Array.isArray(slotRes?.slots)) {
             setRpcSlots(slotRes.slots);
           } else {
             setRpcSlots(null);
@@ -200,7 +293,10 @@ export default function WalkInSheet({
       effectiveDate === todayInShop() ? existingAppointments : targetDateAppointments;
     const busyRanges = extractBusyRangesFromAppointments(sourceAppointments, barberId);
     const serviceDur =
-      selectedService.duration_minutes ?? selectedService.default_duration_minutes ?? 30;
+      effectiveServiceInfo?.durationMinutes ??
+      selectedService.duration_minutes ??
+      selectedService.default_duration_minutes ??
+      30;
     const isTargetToday = effectiveDate === todayInShop();
 
     return generateAvailableSlots(daySchedule, busyRanges, serviceDur, {
@@ -209,6 +305,7 @@ export default function WalkInSheet({
   }, [
     timingMode,
     selectedService,
+    effectiveServiceInfo,
     isDayOff,
     rpcSlots,
     daySchedule,
@@ -276,6 +373,9 @@ export default function WalkInSheet({
     }
   }
 
+  const selectedBarberName =
+    team.find((m) => String(m.id) === String(barberId))?.name || barber?.name || "Profissional";
+
   return (
     <BottomSheet
       open={open}
@@ -300,9 +400,9 @@ export default function WalkInSheet({
         )}
 
         <FormField label="Serviço">
-          {services.length === 0 ? (
+          {availableServicesForBarber.length === 0 ? (
             <div className="rounded-xl bg-amber-950/30 border border-amber-500/30 p-3 text-xs text-amber-200 space-y-2">
-              <p>Nenhum serviço cadastrado no catálogo ainda.</p>
+              <p>Nenhum serviço disponível para este profissional.</p>
               <a
                 href="/admin/servicos"
                 className="inline-flex items-center gap-1 text-accent-light font-semibold underline"
@@ -311,20 +411,49 @@ export default function WalkInSheet({
               </a>
             </div>
           ) : (
-            <select
-              value={serviceId}
-              onChange={(e) => setServiceId(e.target.value)}
-              required
-              className="w-full h-12 rounded-lg bg-elevated border border-zinc-700 px-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-accent touch-manipulation"
-            >
-              <option value="">Selecione…</option>
-              {services.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} — R$ {Number(s.price || 0).toFixed(2).replace(".", ",")} (
-                  {s.duration_minutes ?? s.default_duration_minutes ?? 30} min)
-                </option>
-              ))}
-            </select>
+            <div className="space-y-1.5">
+              <select
+                value={serviceId}
+                onChange={(e) => setServiceId(e.target.value)}
+                required
+                className="w-full h-12 rounded-lg bg-elevated border border-zinc-700 px-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-accent touch-manipulation"
+              >
+                <option value="">Selecione…</option>
+                {availableServicesForBarber.map((s) => {
+                  const bCfg = s.barber_durations?.[barberId];
+                  const dur =
+                    bCfg?.effective_duration ??
+                    s.duration_minutes ??
+                    s.default_duration_minutes ??
+                    30;
+                  const prc = bCfg?.effective_price ?? Number(s.price || 0);
+                  return (
+                    <option key={s.id} value={s.id}>
+                      {s.name} — R$ {Number(prc).toFixed(2).replace(".", ",")} ({dur} min)
+                    </option>
+                  );
+                })}
+              </select>
+
+              {effectiveServiceInfo && (
+                <div className="flex items-center justify-between px-1 text-[11px] text-zinc-400">
+                  <span className="flex items-center gap-1">
+                    <Clock size={12} className="text-accent-light" />
+                    <span>
+                      Duração com <strong className="text-zinc-200">{selectedBarberName}</strong>:{" "}
+                      <strong className="text-accent-light">
+                        {effectiveServiceInfo.durationMinutes} min
+                      </strong>
+                    </span>
+                  </span>
+                  <span className="text-[10px] text-zinc-500">
+                    {effectiveServiceInfo.customDuration != null
+                      ? "Tempo personalizado"
+                      : "Tempo padrão"}
+                  </span>
+                </div>
+              )}
+            </div>
           )}
         </FormField>
 
@@ -479,7 +608,8 @@ export default function WalkInSheet({
                 </span>
                 {selectedService && !loadingSlots && availableSlots.length > 0 && (
                   <span className="text-[11px] font-medium text-zinc-500">
-                    {availableSlots.length} {availableSlots.length === 1 ? "vaga" : "vagas"}
+                    {availableSlots.length} {availableSlots.length === 1 ? "vaga" : "vagas"} (
+                    {effectiveServiceInfo?.durationMinutes ?? 30} min)
                   </span>
                 )}
               </div>
@@ -538,4 +668,3 @@ export default function WalkInSheet({
     </BottomSheet>
   );
 }
-

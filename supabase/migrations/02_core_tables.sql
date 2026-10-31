@@ -72,17 +72,26 @@ CREATE TABLE IF NOT EXISTS public.products (
 
 -- ------------------------------------------------------------------------------
 -- 3. TABELA DE VÍNCULO E ESPECIALIDADES BARBEIRO-SERVIÇO (public.barber_services)
+-- Suporta custom_duration e custom_duration_minutes (em minutos) e custom_price
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.barber_services (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     barber_id uuid NOT NULL REFERENCES public.barbers(id) ON DELETE CASCADE,
     service_id uuid NOT NULL REFERENCES public.services(id) ON DELETE CASCADE,
-    custom_duration_minutes integer CHECK (custom_duration_minutes >= 10),
+    custom_duration integer CHECK (custom_duration >= 5),
+    custom_duration_minutes integer CHECK (custom_duration_minutes >= 5),
     custom_price numeric(10,2),
     is_active boolean DEFAULT true NOT NULL,
     created_at timestamptz DEFAULT now() NOT NULL,
+    updated_at timestamptz DEFAULT now() NOT NULL,
     UNIQUE (barber_id, service_id)
 );
+
+ALTER TABLE public.barber_services ADD COLUMN IF NOT EXISTS custom_duration integer;
+ALTER TABLE public.barber_services ADD COLUMN IF NOT EXISTS custom_duration_minutes integer;
+ALTER TABLE public.barber_services ADD COLUMN IF NOT EXISTS custom_price numeric(10,2);
+ALTER TABLE public.barber_services ADD COLUMN IF NOT EXISTS is_active boolean DEFAULT true NOT NULL;
+ALTER TABLE public.barber_services ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now() NOT NULL;
 
 -- ------------------------------------------------------------------------------
 -- 4. ESCALA SEMANAL DE TRABALHO DOS BARBEIROS (public.barber_schedules)

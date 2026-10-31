@@ -95,9 +95,9 @@ BEGIN
         RETURN;
     END IF;
 
-    -- 3. Calcular a duração do serviço solicitado
+    -- 3. Calcular a duração do serviço solicitado (priorizando tempo personalizado em barber_services)
     IF p_service_id IS NOT NULL THEN
-        SELECT COALESCE(bs.custom_duration_minutes, s.duration_minutes, s.default_duration_minutes, 30)
+        SELECT COALESCE(bs.custom_duration, bs.custom_duration_minutes, s.duration_minutes, s.default_duration_minutes, 30)
         INTO v_service_duration
         FROM public.services s
         LEFT JOIN public.barber_services bs ON bs.service_id = s.id AND bs.barber_id = p_barber_id
@@ -242,7 +242,7 @@ BEGIN
     -- 3. Calcular duração total acumulada e valor total
     FOREACH v_service_elem IN ARRAY v_target_service_ids LOOP
         SELECT
-            COALESCE(bs.custom_duration_minutes, s.duration_minutes, s.default_duration_minutes, 30),
+            COALESCE(bs.custom_duration, bs.custom_duration_minutes, s.duration_minutes, s.default_duration_minutes, 30),
             COALESCE(bs.custom_price, s.price, 0.00)
         INTO
             v_item_duration,
@@ -294,7 +294,7 @@ BEGIN
     FOREACH v_service_elem IN ARRAY v_target_service_ids LOOP
         SELECT
             s.name,
-            COALESCE(bs.custom_duration_minutes, s.duration_minutes, s.default_duration_minutes, 30),
+            COALESCE(bs.custom_duration, bs.custom_duration_minutes, s.duration_minutes, s.default_duration_minutes, 30),
             COALESCE(bs.custom_price, s.price, 0.00)
         INTO
             v_item_name,

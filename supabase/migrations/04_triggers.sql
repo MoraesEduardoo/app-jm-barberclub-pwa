@@ -199,3 +199,31 @@ DROP TRIGGER IF EXISTS trg_sync_appointments_columns ON public.appointments;
 CREATE TRIGGER trg_sync_appointments_columns
 BEFORE INSERT OR UPDATE ON public.appointments
 FOR EACH ROW EXECUTE FUNCTION public.sync_appointments_columns();
+
+-- ------------------------------------------------------------------------------
+-- 6. TRIGGER DE SINCRONIZAÇÃO DA TABELA BARBER_SERVICES
+-- Mantém `custom_duration` <-> `custom_duration_minutes` sempre sincronizados
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.sync_barber_services_columns()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        NEW.custom_duration := COALESCE(NEW.custom_duration, NEW.custom_duration_minutes);
+        NEW.custom_duration_minutes := COALESCE(NEW.custom_duration_minutes, NEW.custom_duration);
+    ELSE
+        IF NEW.custom_duration IS DISTINCT FROM OLD.custom_duration THEN
+            NEW.custom_duration_minutes := NEW.custom_duration;
+        ELSIF NEW.custom_duration_minutes IS DISTINCT FROM OLD.custom_duration_minutes THEN
+            NEW.custom_duration := NEW.custom_duration_minutes;
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_sync_barber_services_columns ON public.barber_services;
+CREATE TRIGGER trg_sync_barber_services_columns
+BEFORE INSERT OR UPDATE ON public.barber_services
+FOR EACH ROW EXECUTE FUNCTION public.sync_barber_services_columns();
+

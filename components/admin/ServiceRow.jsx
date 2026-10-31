@@ -9,6 +9,12 @@ export default function ServiceRow({ service, onClick, dragControls, isDragging 
   const duration = service.default_duration_minutes || service.duration_minutes || 30;
   const hasValidImage = Boolean(service.image_url && !imgError);
 
+  const customBarberConfigs = Array.isArray(service.barber_configs)
+    ? service.barber_configs.filter(
+        (cfg) => cfg.is_active !== false && cfg.custom_duration !== null && cfg.custom_duration !== undefined
+      )
+    : [];
+
   return (
     <div
       className={`w-full flex items-center gap-3 sm:gap-4 bg-surface border rounded-2xl p-3 sm:p-3.5 transition-all select-none touch-pan-y ${
@@ -34,7 +40,7 @@ export default function ServiceRow({ service, onClick, dragControls, isDragging 
         <GripVertical size={18} />
       </div>
 
-      {/* Foto Ilustrativa Oficial do Serviço (w-20 h-20 no mobile, w-24 h-24 em telas maiores) */}
+      {/* Foto Ilustrativa Oficial do Serviço */}
       <button
         type="button"
         onClick={onClick}
@@ -58,7 +64,7 @@ export default function ServiceRow({ service, onClick, dragControls, isDragging 
         )}
       </button>
 
-      {/* Conteúdo clicável do serviço organizado de forma fluida ao lado da foto maior */}
+      {/* Conteúdo clicável do serviço */}
       <button
         type="button"
         onClick={onClick}
@@ -76,7 +82,7 @@ export default function ServiceRow({ service, onClick, dragControls, isDragging 
           )}
         </div>
 
-        {/* Linha 2: Tempo, Categoria e Profissional atribuído */}
+        {/* Linha 2: Tempo padrão, Categoria e Profissional atribuído */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-zinc-400 text-xs my-1">
           <span className="inline-flex items-center gap-1 text-zinc-300 font-medium">
             <Clock size={12} className="text-accent-light shrink-0" />
@@ -113,6 +119,21 @@ export default function ServiceRow({ service, onClick, dragControls, isDragging 
             )}
           </span>
         </div>
+
+        {/* Linha 2B: Tempos personalizados por profissional quando configurados em barber_services */}
+        {customBarberConfigs.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1 mb-1">
+            {customBarberConfigs.map((cfg) => (
+              <span
+                key={cfg.barber_id}
+                className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300"
+              >
+                <span className="text-zinc-400">{cfg.barber_name}:</span>
+                <span className="text-accent-light font-semibold">{cfg.custom_duration} min</span>
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* Linha 3: Preço em destaque + Indicador de edição */}
         <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-800/60 w-full">
