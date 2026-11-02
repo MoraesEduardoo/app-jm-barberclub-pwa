@@ -227,26 +227,70 @@ export default function AgendaPage() {
 
   const isToday = date === todayInShop();
   const activeAppointments = appointments.filter((a) => {
-    const st = (a.status || "confirmado").toLowerCase();
+    const st = (a.status || "confirmado").toLowerCase().trim();
     return st !== "cancelado" && st !== "cancelled";
   });
   const preScheduledCount = activeAppointments.filter(isPreScheduledAppointment).length;
 
+  const filterCounts = {
+    all: activeAppointments.length,
+    confirmado: activeAppointments.filter((a) => {
+      const st = (a.status || "confirmado").toLowerCase().trim();
+      return (
+        (st === "confirmado" ||
+          st === "confirmed" ||
+          st === "pendente" ||
+          st === "pending" ||
+          st === "agendado" ||
+          st === "pre_scheduled") &&
+        a.payment_status !== "pago" &&
+        st !== "concluido" &&
+        st !== "concluído" &&
+        st !== "completed"
+      );
+    }).length,
+    concluido: activeAppointments.filter((a) => {
+      const st = (a.status || "confirmado").toLowerCase().trim();
+      return (
+        st === "concluido" ||
+        st === "concluído" ||
+        st === "completed" ||
+        a.payment_status === "pago"
+      );
+    }).length,
+  };
+
   const displayedAppointments = activeAppointments.filter((a) => {
     if (filterMode === "all") return true;
     if (filterMode === "pre_scheduled") return isPreScheduledAppointment(a);
-    const st = (a.status || "confirmado").toLowerCase();
+    const st = (a.status || "confirmado").toLowerCase().trim();
     if (filterMode === "confirmado") {
-      return st === "confirmado" || st === "confirmed" || st === "pendente" || st === "pending";
+      return (
+        (st === "confirmado" ||
+          st === "confirmed" ||
+          st === "pendente" ||
+          st === "pending" ||
+          st === "agendado" ||
+          st === "pre_scheduled") &&
+        a.payment_status !== "pago" &&
+        st !== "concluido" &&
+        st !== "concluído" &&
+        st !== "completed"
+      );
     }
     if (filterMode === "concluido") {
-      return st === "concluido" || st === "completed" || a.payment_status === "pago";
+      return (
+        st === "concluido" ||
+        st === "concluído" ||
+        st === "completed" ||
+        a.payment_status === "pago"
+      );
     }
     return true;
   });
 
   return (
-    <div className="px-4 pt-4 relative">
+    <div className="px-4 pt-4 pb-8 relative">
       {/* Assistente de Primeiro Acesso / Bootstrap quando o banco está limpo */}
       <SystemBootstrapCard
         onBootstrapChange={() => {
@@ -293,7 +337,7 @@ export default function AgendaPage() {
 
       <DateStepper value={date} onChange={setDate} barberId={scopeBarberId} />
 
-      {/* Dashboard Dinâmico de Performance & Ocupação */}
+      {/* Dashboard Dinâmico de Status Financeiro do Dia */}
       <div className="mt-3">
         <AgendaDashboardWidget appointments={appointments} isToday={isToday} />
       </div>
@@ -303,6 +347,7 @@ export default function AgendaPage() {
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar select-none">
           {STATUS_FILTERS.map((f) => {
             const active = filterMode === f.key;
+            const count = filterCounts[f.key] ?? 0;
             return (
               <button
                 key={f.key}
@@ -314,7 +359,7 @@ export default function AgendaPage() {
                     : "bg-surface border border-zinc-800 text-zinc-400 hover:text-white"
                 }`}
               >
-                {f.label}
+                {f.label} ({count})
               </button>
             );
           })}
