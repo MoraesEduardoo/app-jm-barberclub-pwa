@@ -128,6 +128,10 @@ export default function ProfileSheet({
           </span>
           <ChevronRight size={16} className="text-zinc-500" />
         </button>
+
+        <p className="text-[10px] text-zinc-600 text-center font-mono mt-5 pt-3 border-t border-zinc-800/70">
+          JM Barberclub • PWA v2.5
+        </p>
       </BottomSheet>
 
       <ChangePasswordSheet open={open && passwordOpen} onClose={() => setPasswordOpen(false)} />

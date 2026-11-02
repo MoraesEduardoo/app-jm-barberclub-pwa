@@ -11,14 +11,14 @@ function todayISO() {
   return todayInShop();
 }
 
-export default function ExpenseFormSheet({ open, onClose, expense, chefeId }) {
+export default function ExpenseFormSheet({ open, onClose, expense, chefeId, defaultDate }) {
   const isEditing = Boolean(expense && expense.id);
 
   const [amount, setAmount] = useState(expense?.amount ?? '');
   const [description, setDescription] = useState(expense?.description ?? '');
   const [category, setCategory] = useState(expense?.category ?? 'outros');
   const [occurredAt, setOccurredAt] = useState(
-    expense?.occurred_at ? expense.occurred_at.slice(0, 10) : todayISO()
+    expense?.occurred_at ? expense.occurred_at.slice(0, 10) : defaultDate || todayISO()
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -30,16 +30,16 @@ export default function ExpenseFormSheet({ open, onClose, expense, chefeId }) {
         setAmount(expense.amount !== undefined && expense.amount !== null ? String(expense.amount) : '');
         setDescription(expense.description || '');
         setCategory(expense.category || 'outros');
-        setOccurredAt(expense.occurred_at ? expense.occurred_at.slice(0, 10) : todayISO());
+        setOccurredAt(expense.occurred_at ? expense.occurred_at.slice(0, 10) : defaultDate || todayISO());
       } else {
         setAmount('');
         setDescription('');
         setCategory('outros');
-        setOccurredAt(todayISO());
+        setOccurredAt(defaultDate || todayISO());
       }
       setError('');
     }
-  }, [open, expense]);
+  }, [open, expense, defaultDate]);
 
   async function handleSubmit(e) {
     e.preventDefault();

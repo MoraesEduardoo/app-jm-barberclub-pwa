@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import {
   QrCode,
@@ -11,11 +11,18 @@ import {
   Percent,
   Wallet,
   ChevronRight,
-  Receipt,
+  ChevronLeft,
+  Calendar,
 } from "lucide-react";
 import { useBarber } from "@/lib/barber-context";
 import { endSession } from "@/lib/session";
-import { financeRange } from "@/lib/dates";
+import {
+  financeRange,
+  currentMonthInShop,
+  shiftMonth,
+  formatMonthYearPT,
+  listSelectableMonths,
+} from "@/lib/dates";
 import { PERMISSION_KEYS } from "@/lib/auth";
 import { getFinanceSummary } from "@/lib/actions/finance";
 import { listTeam } from "@/lib/actions/team";
@@ -41,13 +48,17 @@ export default function FinanceiroPage() {
   const { barber, can, isChefe, selectedBarberId, selectBarber } = useBarber();
   const canManageFinance = can(PERMISSION_KEYS.MANAGE_FINANCE);
 
+  const currentMonth = useMemo(() => currentMonthInShop(), []);
   const [range, setRange] = useState("hoje");
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [tab, setTab] = useState("pagos");
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [team, setTeam] = useState([]);
   const [settlementOpen, setSettlementOpen] = useState(false);
   const requestIdRef = useRef(0);
+
+  const monthOptions = useMemo(() => listSelectableMonths(new Date(), 24, 3), []);
 
   // Chefe: o filtro é o profissional selecionado no contexto global (mesmo do perfil/agenda).
   // Barbeiro com MANAGE_FINANCE: filtro local, só desta tela.
@@ -73,7 +84,7 @@ export default function FinanceiroPage() {
   const load = useCallback(async () => {
     const requestId = ++requestIdRef.current;
     setLoading(true);
-    const { from, to } = financeRange(range);
+    const { from, to } = financeRange(range, new Date(), selectedMonth);
     const scope = canManageFinance
       ? scopeId === "todos"
         ? null
@@ -93,7 +104,7 @@ export default function FinanceiroPage() {
       }
       setLoading(false);
     }
-  }, [range, scopeId, canManageFinance, barber.id]);
+  }, [range, selectedMonth, scopeId, canManageFinance, barber.id]);
 
   useEffect(() => {
     load();
@@ -129,7 +140,7 @@ export default function FinanceiroPage() {
         </div>
       )}
 
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-3">
         {RANGES.map((r) => (
           <button
             key={r.key}
@@ -144,6 +155,49 @@ export default function FinanceiroPage() {
           </button>
         ))}
       </div>
+
+      {range === "mes" && (
+        <div className="bg-surface border border-zinc-800 rounded-xl p-2 mb-4 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => setSelectedMonth((prev) => shiftMonth(prev, -1))}
+            aria-label="Mês anterior"
+            className="h-9 w-9 rounded-lg bg-elevated border border-zinc-800 flex items-center justify-center text-zinc-300 active:scale-95 transition-all touch-manipulation shrink-0"
+          >
+            <ChevronLeft size={16} />
+          </button>
+
+          <div className="relative flex-1 min-w-0">
+            <div className="flex items-center justify-center gap-2 pointer-events-none">
+              <Calendar size={14} className="text-blue-400 shrink-0" />
+              <span className="text-white font-bold text-xs truncate">
+                {formatMonthYearPT(selectedMonth)}
+              </span>
+            </div>
+            <select
+              aria-label="Selecionar mês"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            >
+              {monthOptions.map((m) => (
+                <option key={m.value} value={m.value} className="bg-zinc-950 text-white">
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setSelectedMonth((prev) => shiftMonth(prev, 1))}
+            aria-label="Próximo mês"
+            className="h-9 w-9 rounded-lg bg-elevated border border-zinc-800 flex items-center justify-center text-zinc-300 active:scale-95 transition-all touch-manipulation shrink-0"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
 
       {loading || !summary ? (
         <div className="h-24 rounded-xl bg-surface animate-pulse mb-4" />

@@ -291,7 +291,7 @@ export default function AgendaPage() {
         </div>
       )}
 
-      <DateStepper value={date} onChange={setDate} />
+      <DateStepper value={date} onChange={setDate} barberId={scopeBarberId} />
 
       {/* Dashboard Dinâmico de Performance & Ocupação */}
       <div className="mt-3">
