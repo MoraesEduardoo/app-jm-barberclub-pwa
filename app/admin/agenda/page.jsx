@@ -18,6 +18,7 @@ import DateStepper from "@/components/admin/DateStepper";
 import AppointmentCard from "@/components/admin/AppointmentCard";
 import PaymentSheet from "@/components/admin/PaymentSheet";
 import AddProductSheet from "@/components/admin/AddProductSheet";
+import EditServiceSheet from "@/components/admin/EditServiceSheet";
 import WalkInSheet from "@/components/admin/WalkInSheet";
 import ClientCyclesSheet from "@/components/admin/ClientCyclesSheet";
 import PreScheduleSheet from "@/components/admin/PreScheduleSheet";
@@ -45,6 +46,7 @@ export default function AgendaPage() {
   const [busyId, setBusyId] = useState(null);
   const [paymentTarget, setPaymentTarget] = useState(null);
   const [productTarget, setProductTarget] = useState(null);
+  const [editServiceTarget, setEditServiceTarget] = useState(null);
   const [preScheduleTarget, setPreScheduleTarget] = useState(null);
   const [filterMode, setFilterMode] = useState("all"); // 'all' | 'confirmado' | 'concluido' | 'pre_scheduled'
   const [walkInOpen, setWalkInOpen] = useState(false);
@@ -474,6 +476,7 @@ export default function AgendaPage() {
                 onChangeStatus={handleChangeStatus}
                 onOpenPayment={setPaymentTarget}
                 onAddProduct={setProductTarget}
+                onEditService={setEditServiceTarget}
                 onProductRemoved={() => load({ silent: true })}
                 onOpenPreSchedule={setPreScheduleTarget}
               />
@@ -486,6 +489,45 @@ export default function AgendaPage() {
         open={Boolean(paymentTarget)}
         onClose={handleClosePayment}
         appointment={paymentTarget}
+      />
+
+      <EditServiceSheet
+        open={Boolean(editServiceTarget)}
+        onClose={() => setEditServiceTarget(null)}
+        appointment={editServiceTarget}
+        onSaved={(res) => {
+          toast.success(
+            res?.serviceName
+              ? `Serviço alterado para "${res.serviceName}" e valor atualizado!`
+              : "Serviço do atendimento atualizado com sucesso!"
+          );
+          if (editServiceTarget?.id && res?.serviceId) {
+            setAppointments((prev) =>
+              prev.map((a) =>
+                a.id === editServiceTarget.id
+                  ? {
+                      ...a,
+                      service_id: res.serviceId,
+                      service: res.serviceName || a.service,
+                      duration_minutes: res.durationMinutes ?? a.duration_minutes,
+                      price: res.newTotal ?? a.price,
+                      total_price: res.newTotal ?? a.total_price,
+                      services: {
+                        ...(a.services || {}),
+                        id: res.serviceId,
+                        name: res.serviceName || a.services?.name,
+                        price: res.servicePrice ?? a.services?.price,
+                        duration_minutes: res.durationMinutes ?? a.services?.duration_minutes,
+                        default_duration_minutes:
+                          res.durationMinutes ?? a.services?.default_duration_minutes,
+                      },
+                    }
+                  : a
+              )
+            );
+          }
+          load({ silent: true });
+        }}
       />
 
       <AddProductSheet

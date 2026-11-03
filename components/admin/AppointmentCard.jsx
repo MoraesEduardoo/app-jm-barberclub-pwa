@@ -17,6 +17,7 @@ import {
   ShoppingBag,
   Plus,
   X,
+  Scissors,
 } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import {
@@ -47,6 +48,7 @@ export default function AppointmentCard({
   onOpenPayment,
   onOpenPreSchedule,
   onAddProduct,
+  onEditService,
   onProductRemoved,
   busy = false,
 }) {
@@ -87,6 +89,11 @@ export default function AppointmentCard({
     appointment.total_price ?? appointment.price ?? appointment.services?.price ?? 0
   );
   const { cleanNotes, products: attachedProducts } = parseAppointmentNotes(appointment.notes);
+  const productsSubtotal = attachedProducts.reduce(
+    (acc, item) => acc + Number(item.subtotal || 0),
+    0
+  );
+  const serviceBaseAmount = Math.max(0, Number((totalAmount - productsSubtotal).toFixed(2)));
 
   // Lembrete ESPECÍFICO deste agendamento (100% limpo, sem emojis e com horário correto)
   function handleSendWhatsAppReminder(e) {
@@ -234,9 +241,9 @@ export default function AppointmentCard({
                 <span className="inline-flex items-center gap-1 text-amber-400 font-semibold">
                   <ShoppingBag size={11} /> Produto(s) adicionado(s)
                 </span>
-                {appointment.services?.price != null && (
+                {serviceBaseAmount > 0 && (
                   <span className="text-zinc-500">
-                    Serviço: R$ {Number(appointment.services.price).toFixed(2).replace('.', ',')}
+                    Serviço: R$ {serviceBaseAmount.toFixed(2).replace('.', ',')}
                   </span>
                 )}
               </div>
@@ -337,6 +344,21 @@ export default function AppointmentCard({
             className="flex-1 min-w-[110px] flex items-center justify-center gap-1.5 h-9 rounded-xl bg-zinc-900 border border-zinc-700/80 text-xs font-semibold text-white active:scale-95 active:bg-zinc-800 transition-all touch-manipulation disabled:opacity-50"
           >
             <CheckCircle2 size={14} className="text-emerald-400" /> Confirmar
+          </button>
+        )}
+
+        {!isCancelled && onEditService && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEditService(appointment);
+            }}
+            className="flex-1 min-w-[125px] flex items-center justify-center gap-1.5 h-9 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 text-xs font-semibold text-zinc-200 hover:text-white active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+          >
+            <Scissors size={13} className="text-accent-light" />
+            <span>Editar Serviço</span>
           </button>
         )}
 
