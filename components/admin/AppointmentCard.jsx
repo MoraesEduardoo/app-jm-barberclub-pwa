@@ -254,7 +254,7 @@ export default function AppointmentCard({
                     className="flex items-center justify-between gap-2 text-[11px] bg-black/60 border border-zinc-800/80 rounded-lg px-2 py-1"
                   >
                     <span className="text-zinc-200 font-medium truncate">{item.label}</span>
-                    {!paid && !isCancelled && (
+                    {!isCancelled && (
                       <button
                         type="button"
                         onClick={(e) => handleRemoveProduct(e, item)}
@@ -316,111 +316,121 @@ export default function AppointmentCard({
       </div>
 
       {/* Botões de Ação */}
-      <div className="flex flex-wrap items-center gap-2 mt-3.5 pt-2 border-t border-zinc-800/60">
-        {/* Botão de Gestão de Pré-Agendamento */}
-        {isPreScheduled && onOpenPreSchedule && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenPreSchedule(appointment);
-            }}
-            className="flex-1 min-w-[130px] flex items-center justify-center gap-1.5 h-9 rounded-xl bg-purple-600/30 hover:bg-purple-600/40 border border-purple-500/50 text-xs font-bold text-purple-200 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
-          >
-            <CalendarClock size={14} className="text-purple-300" />
-            <span>Gerenciar</span>
-          </button>
-        )}
+      {!isCancelled && (
+        <div className="mt-3.5 pt-2.5 border-t border-zinc-800/60 space-y-2">
+          {/* Linha 1: Botão "+ Produto" e Botão "Editar Serviço" coexistindo lado a lado */}
+          {(onAddProduct || onEditService) && (
+            <div className="grid grid-cols-2 gap-2">
+              {onAddProduct && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddProduct(appointment);
+                  }}
+                  className="flex items-center justify-center gap-1.5 h-9 px-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-amber-500/40 text-xs font-semibold text-amber-300 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+                >
+                  <ShoppingBag size={13} className="text-amber-400 shrink-0" />
+                  <span className="truncate">+ Produto</span>
+                </button>
+              )}
 
-        {isPending && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={(e) => {
-              e.stopPropagation();
-              onChangeStatus(appointment.id, 'confirmado');
-            }}
-            className="flex-1 min-w-[110px] flex items-center justify-center gap-1.5 h-9 rounded-xl bg-zinc-900 border border-zinc-700/80 text-xs font-semibold text-white active:scale-95 active:bg-zinc-800 transition-all touch-manipulation disabled:opacity-50"
-          >
-            <CheckCircle2 size={14} className="text-emerald-400" /> Confirmar
-          </button>
-        )}
+              {onEditService && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEditService(appointment);
+                  }}
+                  className="flex items-center justify-center gap-1.5 h-9 px-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 text-xs font-semibold text-zinc-200 hover:text-white active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+                >
+                  <Scissors size={13} className="text-accent-light shrink-0" />
+                  <span className="truncate">Editar Serviço</span>
+                </button>
+              )}
+            </div>
+          )}
 
-        {!isCancelled && onEditService && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={(e) => {
-              e.stopPropagation();
-              onEditService(appointment);
-            }}
-            className="flex-1 min-w-[125px] flex items-center justify-center gap-1.5 h-9 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 text-xs font-semibold text-zinc-200 hover:text-white active:scale-95 transition-all touch-manipulation disabled:opacity-50"
-          >
-            <Scissors size={13} className="text-accent-light" />
-            <span>Editar Serviço</span>
-          </button>
-        )}
+          {/* Linha 2: Botões essenciais do fluxo (Gerenciar, Confirmar, Cobrar, Cancelar, Lembrete) */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Botão de Gestão de Pré-Agendamento */}
+            {isPreScheduled && onOpenPreSchedule && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenPreSchedule(appointment);
+                }}
+                className="flex-1 min-w-[110px] flex items-center justify-center gap-1.5 h-9 px-2.5 rounded-xl bg-purple-600/30 hover:bg-purple-600/40 border border-purple-500/50 text-xs font-bold text-purple-200 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+              >
+                <CalendarClock size={14} className="text-purple-300 shrink-0" />
+                <span>Gerenciar</span>
+              </button>
+            )}
 
-        {!isCancelled && onAddProduct && !paid && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={(e) => {
-              e.stopPropagation();
-              onAddProduct(appointment);
-            }}
-            className="flex-1 min-w-[125px] flex items-center justify-center gap-1.5 h-9 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-amber-500/40 text-xs font-semibold text-amber-300 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
-          >
-            <ShoppingBag size={13} className="text-amber-400" />
-            <Plus size={11} className="-ml-1 text-amber-400" />
-            <span>Produto</span>
-          </button>
-        )}
+            {isPending && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onChangeStatus(appointment.id, 'confirmado');
+                }}
+                className="flex-1 min-w-[105px] flex items-center justify-center gap-1.5 h-9 px-2.5 rounded-xl bg-zinc-900 border border-zinc-700/80 text-xs font-semibold text-white active:scale-95 active:bg-zinc-800 transition-all touch-manipulation disabled:opacity-50"
+              >
+                <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
+                <span>Confirmar</span>
+              </button>
+            )}
 
-        {!isCancelled && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={(e) => {
-              e.stopPropagation();
-              onChangeStatus(appointment.id, 'cancelado');
-            }}
-            className="flex-1 min-w-[90px] flex items-center justify-center gap-1.5 h-9 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-medium text-zinc-400 active:scale-95 active:bg-zinc-800 transition-all touch-manipulation disabled:opacity-50"
-          >
-            <XCircle size={14} /> Cancelar
-          </button>
-        )}
+            {!paid && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenPayment(appointment);
+                }}
+                className="flex-1 min-w-[100px] flex items-center justify-center gap-1.5 h-9 px-3 rounded-xl bg-red-600 hover:bg-red-500 text-xs font-bold text-white shadow-sm active:scale-95 active:bg-red-700 transition-all touch-manipulation disabled:opacity-50"
+              >
+                <Wallet size={14} className="shrink-0" />
+                <span>Cobrar</span>
+              </button>
+            )}
 
-        {!paid && !isCancelled && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenPayment(appointment);
-            }}
-            className="flex-1 min-w-[110px] flex items-center justify-center gap-1.5 h-9 rounded-xl bg-red-600 hover:bg-red-500 text-xs font-bold text-white shadow-sm active:scale-95 active:bg-red-700 transition-all touch-manipulation disabled:opacity-50"
-          >
-            <Wallet size={14} /> Cobrar
-          </button>
-        )}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={(e) => {
+                e.stopPropagation();
+                onChangeStatus(appointment.id, 'cancelado');
+              }}
+              className="flex-1 min-w-[95px] flex items-center justify-center gap-1.5 h-9 px-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-medium text-zinc-400 hover:text-zinc-200 active:scale-95 active:bg-zinc-800 transition-all touch-manipulation disabled:opacity-50"
+            >
+              <XCircle size={14} className="shrink-0" />
+              <span>Cancelar</span>
+            </button>
 
-        {hasPhone && !isCancelled && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleSendWhatsAppReminder(e);
-            }}
-            title={`Enviar lembrete deste agendamento (${time}) via WhatsApp`}
-            className="h-9 px-3 rounded-xl bg-zinc-900/90 border border-zinc-800 hover:border-emerald-500/40 text-zinc-300 hover:text-white text-xs font-medium flex items-center gap-1.5 active:scale-95 active:bg-zinc-800 transition-all touch-manipulation"
-          >
-            <MessageSquare size={13} className="text-emerald-400" />
-            <span>Lembrete</span>
-          </button>
-        )}
-      </div>
+            {hasPhone && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSendWhatsAppReminder(e);
+                }}
+                title={`Enviar lembrete deste agendamento (${time}) via WhatsApp`}
+                className="flex-1 min-w-[100px] sm:flex-initial h-9 px-3 rounded-xl bg-zinc-900/90 border border-zinc-800 hover:border-emerald-500/40 text-zinc-300 hover:text-white text-xs font-medium flex items-center justify-center gap-1.5 active:scale-95 active:bg-zinc-800 transition-all touch-manipulation"
+              >
+                <MessageSquare size={13} className="text-emerald-400 shrink-0" />
+                <span>Lembrete</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
