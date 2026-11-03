@@ -230,17 +230,22 @@ export default function FinanceiroPage() {
 
           {summary.comissao && (
             <div className="bg-surface border border-accent/30 rounded-xl p-3.5 mb-4 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 min-w-0">
                 <div className="h-9 w-9 rounded-full bg-accent/15 flex items-center justify-center shrink-0">
                   <Percent size={16} className="text-accent-light" />
                 </div>
-                <div>
-                  <p className="text-zinc-400 text-xs">
-                    Comissão ({typeof summary.comissao.percent === "number" ? `${summary.comissao.percent}% do faturado` : "individual por barbeiro"})
+                <div className="min-w-0">
+                  <p className="text-zinc-400 text-xs truncate">
+                    Comissão ({summary.comissao.ruleLabel || (typeof summary.comissao.percent === "number" ? `${summary.comissao.percent}% do faturado` : "50% serv. + 10% prod.")})
                   </p>
-                  <p className="text-white font-bold text-base">
-                    {formatBRL(summary.comissao.valor)}
-                  </p>
+                  <div className="flex items-baseline gap-2.5 flex-wrap">
+                    <p className="text-white font-bold text-base">
+                      {formatBRL(summary.comissao.valor)}
+                    </p>
+                    <span className="text-[11px] text-amber-400 font-medium">
+                      A receber: {formatBRL(summary.comissao.aReceber ?? 0)}
+                    </span>
+                  </div>
                 </div>
               </div>
 

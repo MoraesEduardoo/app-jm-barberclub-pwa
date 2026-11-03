@@ -228,7 +228,7 @@ export default function CommissionSettlementSheet({ open, onClose, defaultBarber
                   <span className="text-[9px] text-zinc-500">{data.totals.cutsCount} cortes</span>
                 </div>
                 <div className="bg-surface border border-zinc-800 rounded-xl p-2.5 text-center">
-                  <span className="text-[10px] text-accent-light block">Comissões (50%)</span>
+                  <span className="text-[10px] text-accent-light block">Comissões</span>
                   <span className="text-accent-light text-xs font-bold mt-0.5 block">
                     {formatBRL(data.totals.commissionDue)}
                   </span>
@@ -283,7 +283,7 @@ export default function CommissionSettlementSheet({ open, onClose, defaultBarber
                                 )}
                               </div>
                               <p className="text-zinc-500 text-[11px]">
-                                {b.appointmentsCount} corte{b.appointmentsCount !== 1 ? 's' : ''} concluído(s) • Taxa de {b.commissionPercent}%
+                                {b.appointmentsCount} corte{b.appointmentsCount !== 1 ? 's' : ''} concluído(s) • {b.isOwner ? 'Taxa de 100% (Proprietário)' : `Taxa: ${b.commissionPercent}% serv. + ${b.productCommissionPercent ?? 10}% prod.`}
                               </p>
                             </div>
                           </div>
@@ -313,7 +313,9 @@ export default function CommissionSettlementSheet({ open, onClose, defaultBarber
                             </span>
                           </div>
                           <div>
-                            <span className="text-[9.5px] text-zinc-500 block">Comissão ({b.commissionPercent}%)</span>
+                            <span className="text-[9.5px] text-zinc-500 block">
+                              Comissão ({b.isOwner ? '100%' : `${b.commissionPercent}%/${b.productCommissionPercent ?? 10}%`})
+                            </span>
                             <span className="text-accent-light text-xs font-semibold">
                               {formatBRL(b.totalCommissionDue)}
                             </span>
@@ -355,7 +357,9 @@ export default function CommissionSettlementSheet({ open, onClose, defaultBarber
                         <div className="border-t border-zinc-800 bg-zinc-950/60 p-3 space-y-2">
                           <h5 className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider flex items-center justify-between">
                             <span>Extrato de Atendimentos ({b.cuts.length})</span>
-                            <span className="text-zinc-500 font-normal">Regra: 50% por serviço</span>
+                            <span className="text-zinc-500 font-normal">
+                              {b.isOwner ? 'Regra: 100% integral' : 'Regra: 50% serv. + 10% prod.'}
+                            </span>
                           </h5>
 
                           {b.cuts.length === 0 ? (
@@ -374,7 +378,8 @@ export default function CommissionSettlementSheet({ open, onClose, defaultBarber
                                       {c.clientName}
                                     </p>
                                     <p className="text-[10.5px] text-zinc-500 mt-0.5 truncate">
-                                      {c.serviceName} • {c.date.slice(5)} às {c.time}
+                                      {c.serviceName}
+                                      {c.productsAmount > 0 ? ` + Produtos (${formatBRL(c.productsAmount)})` : ''} • {c.date.slice(5)} às {c.time}
                                     </p>
                                   </div>
                                   <div className="text-right shrink-0">
@@ -382,7 +387,7 @@ export default function CommissionSettlementSheet({ open, onClose, defaultBarber
                                       {formatBRL(c.price)}
                                     </span>
                                     <span className="text-emerald-400 text-[10px] font-medium block">
-                                      +{formatBRL(c.commission)} (50%)
+                                      +{formatBRL(c.commission)} ({b.isOwner ? '100%' : c.productsAmount > 0 ? '50%+10%' : `${b.commissionPercent}%`})
                                     </span>
                                   </div>
                                 </div>
@@ -533,7 +538,11 @@ export default function CommissionSettlementSheet({ open, onClose, defaultBarber
               </div>
               <div className="flex justify-between text-xs text-zinc-400">
                 <span>Taxa de Comissão:</span>
-                <span className="text-white font-medium">{confirmModal.commissionPercent}%</span>
+                <span className="text-white font-medium">
+                  {confirmModal.isOwner
+                    ? '100% (Proprietário)'
+                    : `${confirmModal.commissionPercent}% serv. + ${confirmModal.productCommissionPercent ?? 10}% prod.`}
+                </span>
               </div>
               <div className="flex justify-between text-sm font-bold pt-2 border-t border-zinc-800 text-emerald-400">
                 <span>Total Líquido a Pagar:</span>
@@ -664,7 +673,11 @@ export default function CommissionSettlementSheet({ open, onClose, defaultBarber
                 </div>
                 <div className="flex justify-between">
                   <span className="text-zinc-500">Taxa de Comissão:</span>
-                  <span>{successReceipt.commission_percent}%</span>
+                  <span>
+                    {Number(successReceipt.commission_percent) === 100
+                      ? '100% (Proprietário)'
+                      : '50% serv. + 10% prod.'}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-zinc-500">Forma Pagto:</span>

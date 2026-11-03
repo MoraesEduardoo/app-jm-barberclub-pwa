@@ -38,13 +38,19 @@ export default function FinanceRow({ appointment, variant }) {
       </div>
       <div className="text-right shrink-0">
         <p className={`font-semibold text-sm ${variant === 'paid' ? 'text-emerald-400' : 'text-accent-light'}`}>
-          R$ {Number(appointment.price ?? appointment.amount ?? 0).toFixed(2).replace('.', ',')}
+          R$ {Number(appointment.amount ?? appointment.total_price ?? appointment.price ?? 0).toFixed(2).replace('.', ',')}
         </p>
-        {variant === 'paid' && appointment.payment_method && (
-          <p className="text-zinc-500 text-[11px]">
-            {METHOD_LABELS[appointment.payment_method] || appointment.payment_method}
-          </p>
-        )}
+        <div className="flex items-center justify-end gap-1.5 text-zinc-500 text-[11px]">
+          {variant === 'paid' && appointment.payment_method && (
+            <span>{METHOD_LABELS[appointment.payment_method] || appointment.payment_method}</span>
+          )}
+          {appointment.commission_amount != null && (
+            <span>
+              {variant === 'paid' && appointment.payment_method ? '· ' : ''}
+              Comissão: R$ {Number(appointment.commission_amount).toFixed(2).replace('.', ',')}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

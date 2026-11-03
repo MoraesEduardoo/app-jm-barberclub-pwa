@@ -9,9 +9,14 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { isPreScheduledAppointment } from '@/lib/pre-scheduled';
+import { calculateAppointmentFinance } from '@/lib/commission';
 
 function getAppointmentAmount(a) {
-  return Number(a?.total_price ?? a?.price ?? a?.services?.price ?? 0);
+  return calculateAppointmentFinance(a, a?.barbers).totalAmount;
+}
+
+function getAppointmentCommission(a) {
+  return calculateAppointmentFinance(a, a?.barbers).commissionAmount;
 }
 
 /**
@@ -40,6 +45,9 @@ export default function AgendaDashboardWidget({ appointments = [], isToday = tru
     const totalEstimated = active.reduce((acc, a) => acc + getAppointmentAmount(a), 0);
     const totalPaid = paidList.reduce((acc, a) => acc + getAppointmentAmount(a), 0);
     const totalPending = unpaidList.reduce((acc, a) => acc + getAppointmentAmount(a), 0);
+
+    const paidCommission = paidList.reduce((acc, a) => acc + getAppointmentCommission(a), 0);
+    const pendingCommission = unpaidList.reduce((acc, a) => acc + getAppointmentCommission(a), 0);
 
     const paidCount = paidList.length;
     const unpaidCount = unpaidList.length;
@@ -94,6 +102,8 @@ export default function AgendaDashboardWidget({ appointments = [], isToday = tru
       totalEstimated,
       totalPaid,
       totalPending,
+      paidCommission,
+      pendingCommission,
       paidPercent,
       ticketMedio,
       preScheduledCount,

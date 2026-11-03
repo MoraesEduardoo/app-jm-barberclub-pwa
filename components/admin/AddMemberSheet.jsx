@@ -28,7 +28,8 @@ export default function AddMemberSheet({ open, onClose }) {
 
     setSaving(true);
     try {
-      const commNumber = Math.min(100, Math.max(0, Math.round(Number(commission) || 25)));
+      const defaultComm = role === 'admin' ? 100 : 50;
+      const commNumber = Math.min(100, Math.max(0, Math.round(Number(commission) || defaultComm)));
       const res = await addTeamMember({
         name,
         phone,

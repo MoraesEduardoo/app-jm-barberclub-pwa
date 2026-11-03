@@ -161,13 +161,13 @@ export default function TeamMemberCashSheet({ open, onClose, member }) {
               {/* Comissão Acumulada */}
               <div className="bg-surface border border-zinc-800 rounded-xl p-3">
                 <div className="flex items-center gap-1.5 text-accent-light text-xs font-medium mb-1">
-                  <Percent size={13} /> Comissão ({data.commissionPercent}%)
+                  <Percent size={13} /> Comissão ({data.isOwner ? '100%' : `${data.commissionPercent}% / ${data.productCommissionPercent ?? 10}%`})
                 </div>
                 <p className="text-white font-bold text-lg">
                   {formatBRL(data.comissaoAcumulada)}
                 </p>
                 <p className="text-zinc-500 text-[10px] mt-0.5">
-                  a repassar ao barbeiro
+                  {data.isOwner ? '100% integral (Proprietário)' : '50% serviços + 10% produtos'}
                 </p>
               </div>
 
@@ -193,7 +193,9 @@ export default function TeamMemberCashSheet({ open, onClose, member }) {
                   {formatBRL(data.totalPendente)}
                 </p>
                 <p className="text-zinc-500 text-[10px] mt-0.5">
-                  não finalizados
+                  {data.comissaoPendente > 0
+                    ? `comissão: ${formatBRL(data.comissaoPendente)}`
+                    : 'não finalizados'}
                 </p>
               </div>
             </div>
@@ -203,7 +205,7 @@ export default function TeamMemberCashSheet({ open, onClose, member }) {
               <h4 className="text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-2.5 flex items-center justify-between">
                 <span>Atendimentos ({data.appointments.length})</span>
                 <span className="text-zinc-500 text-[11px] font-normal lowercase">
-                  taxa: {data.commissionPercent}%
+                  taxa: {data.isOwner ? '100% integral' : '50% serv. + 10% prod.'}
                 </span>
               </h4>
 
@@ -256,11 +258,9 @@ export default function TeamMemberCashSheet({ open, onClose, member }) {
                             >
                               {isPago ? 'Pago' : 'Pendente'}
                             </span>
-                            {isPago && (
-                              <span className="text-[10px] text-zinc-400 font-medium">
-                                comissão: {formatBRL(a.commission_value)}
-                              </span>
-                            )}
+                            <span className="text-[10px] text-zinc-400 font-medium">
+                              comissão: {formatBRL(a.commission_value)}
+                            </span>
                           </div>
                         </div>
                       </div>
