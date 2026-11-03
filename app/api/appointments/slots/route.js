@@ -170,7 +170,7 @@ async function computeAvailableSlots({ barberId, date, serviceIds }) {
   const { data: appts } = await admin
     .from('appointments')
     .select(
-      'id, barber_id, appointment_date, appointment_time, appointment_end_time, end_time, duration_minutes, status'
+      'id, barber_id, appointment_date, appointment_time, appointment_end_time, end_time, duration_minutes, buffer_minutes, status'
     )
     .eq('barber_id', barberId)
     .or(`appointment_date.eq.${targetDate},and(appointment_date.gte.${start},appointment_date.lt.${end})`);

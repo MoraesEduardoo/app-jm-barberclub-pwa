@@ -30,11 +30,13 @@ DECLARE
     v_current_slot time;
     v_slot_end time;
     v_is_conflict boolean;
-    v_now_fortaleza timestamptz;
+    v_now_fortaleza timestamp;
     v_today_fortaleza date;
     v_time_now_fortaleza time;
 BEGIN
-    v_now_fortaleza := timezone('America/Fortaleza', now());
+    -- Ajuste estrito para o fuso horário de Brasília/Fortaleza (UTC-3)
+    -- Usamos timestamp (sem timezone) após AT TIME ZONE para preservar a hora local exata
+    v_now_fortaleza := (now() AT TIME ZONE 'America/Fortaleza');
     v_today_fortaleza := v_now_fortaleza::date;
     v_time_now_fortaleza := v_now_fortaleza::time;
 
@@ -104,20 +106,20 @@ BEGIN
         WHERE s.id = p_service_id;
     END IF;
 
-    IF v_service_duration IS NULL OR v_service_duration < 10 THEN
+    IF v_service_duration IS NULL OR v_service_duration < 5 THEN
         v_service_duration := 30;
     END IF;
 
     -- 4. Iteração em grade pura de 10 em 10 minutos
     v_current_slot := v_start_time;
 
-    WHILE v_current_slot + (v_service_duration || ' minutes')::interval <= v_end_time LOOP
-        v_slot_end := (v_current_slot + (v_service_duration || ' minutes')::interval)::time;
+    WHILE v_current_slot + make_interval(mins => v_service_duration) <= v_end_time LOOP
+        v_slot_end := (v_current_slot + make_interval(mins => v_service_duration))::time;
         v_is_conflict := false;
 
-        -- Regra de antecedência mínima para hoje (mínimo 30 minutos à frente)
+        -- Se a data for hoje, disponibiliza qualquer slot estritamente no futuro (de 10 em 10 min, sem salto de +30 min)
         IF p_date = v_today_fortaleza THEN
-            IF v_current_slot < (v_time_now_fortaleza + '30 minutes'::interval)::time THEN
+            IF v_current_slot <= v_time_now_fortaleza THEN
                 v_is_conflict := true;
             END IF;
         END IF;
@@ -145,16 +147,24 @@ BEGIN
             END IF;
         END IF;
 
-        -- Regra de Colisão com Agendamentos Existentes (+ buffer de respiro de 10 min)
+        -- Regra de Colisão com Agendamentos Existentes (bloqueia apenas o tempo exato do serviço + buffer_minutes)
         IF NOT v_is_conflict THEN
             IF EXISTS (
                 SELECT 1 FROM public.appointments a
                 WHERE a.barber_id = p_barber_id
                   AND a.appointment_date = p_date
-                  AND a.status IN ('confirmed', 'confirmado', 'pending', 'pendente', 'completed', 'concluido', 'concluído', 'bloqueado', 'blocked', 'pre_scheduled')
+                  AND a.status IN (
+                      'confirmed', 'confirmado',
+                      'pending', 'pendente',
+                      'completed', 'concluido', 'concluído',
+                      'bloqueado', 'blocked',
+                      'pre_scheduled', 'pre_agendado'
+                  )
                   AND (
-                      a.appointment_time < v_slot_end
-                      AND (a.appointment_time + ((COALESCE(a.duration_minutes, 30) + COALESCE(a.buffer_minutes, 0)) || ' minutes')::interval)::time > v_current_slot
+                      v_current_slot < (
+                          a.appointment_time + make_interval(mins => COALESCE(a.duration_minutes, 30) + COALESCE(a.buffer_minutes, 0))
+                      )::time
+                      AND v_slot_end > a.appointment_time
                   )
             ) THEN
                 v_is_conflict := true;
@@ -168,7 +178,7 @@ BEGIN
         END IF;
 
         -- Avançar estritamente 10 minutos
-        v_current_slot := (v_current_slot + '10 minutes'::interval)::time;
+        v_current_slot := (v_current_slot + interval '10 minutes')::time;
     END LOOP;
 
     RETURN;

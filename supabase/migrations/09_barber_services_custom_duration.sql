@@ -91,11 +91,11 @@ DECLARE
     v_current_slot time;
     v_slot_end time;
     v_is_conflict boolean;
-    v_now_fortaleza timestamptz;
+    v_now_fortaleza timestamp;
     v_today_fortaleza date;
     v_time_now_fortaleza time;
 BEGIN
-    v_now_fortaleza := timezone('America/Fortaleza', now());
+    v_now_fortaleza := (now() AT TIME ZONE 'America/Fortaleza');
     v_today_fortaleza := v_now_fortaleza::date;
     v_time_now_fortaleza := v_now_fortaleza::time;
 
@@ -172,12 +172,13 @@ BEGIN
     -- 4. Iteração em grade pura de 10 em 10 minutos
     v_current_slot := v_start_time;
 
-    WHILE v_current_slot + (v_service_duration || ' minutes')::interval <= v_end_time LOOP
-        v_slot_end := (v_current_slot + (v_service_duration || ' minutes')::interval)::time;
+    WHILE v_current_slot + make_interval(mins => v_service_duration) <= v_end_time LOOP
+        v_slot_end := (v_current_slot + make_interval(mins => v_service_duration))::time;
         v_is_conflict := false;
 
+        -- Se for hoje, permite todos os horários estritamente futuros de 10 em 10 min (sem somar +30 min)
         IF p_date = v_today_fortaleza THEN
-            IF v_current_slot < (v_time_now_fortaleza + '30 minutes'::interval)::time THEN
+            IF v_current_slot <= v_time_now_fortaleza THEN
                 v_is_conflict := true;
             END IF;
         END IF;
@@ -208,10 +209,18 @@ BEGIN
                 SELECT 1 FROM public.appointments a
                 WHERE a.barber_id = p_barber_id
                   AND a.appointment_date = p_date
-                  AND a.status IN ('confirmed', 'confirmado', 'pending', 'pendente', 'completed', 'concluido', 'concluído', 'bloqueado', 'blocked', 'pre_scheduled')
+                  AND a.status IN (
+                      'confirmed', 'confirmado',
+                      'pending', 'pendente',
+                      'completed', 'concluido', 'concluído',
+                      'bloqueado', 'blocked',
+                      'pre_scheduled', 'pre_agendado'
+                  )
                   AND (
-                      a.appointment_time < v_slot_end
-                      AND (a.appointment_time + ((COALESCE(a.duration_minutes, 30) + COALESCE(a.buffer_minutes, 0)) || ' minutes')::interval)::time > v_current_slot
+                      v_current_slot < (
+                          a.appointment_time + make_interval(mins => COALESCE(a.duration_minutes, 30) + COALESCE(a.buffer_minutes, 0))
+                      )::time
+                      AND v_slot_end > a.appointment_time
                   )
             ) THEN
                 v_is_conflict := true;
@@ -223,7 +232,7 @@ BEGIN
             RETURN NEXT;
         END IF;
 
-        v_current_slot := (v_current_slot + '10 minutes'::interval)::time;
+        v_current_slot := (v_current_slot + interval '10 minutes')::time;
     END LOOP;
 
     RETURN;
