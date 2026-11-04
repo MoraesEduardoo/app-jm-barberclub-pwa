@@ -18,6 +18,7 @@
 DROP FUNCTION IF EXISTS public.chatbot_get_available_slots(uuid, date, uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.chatbot_get_available_slots(uuid, uuid, date) CASCADE;
 DROP FUNCTION IF EXISTS public.chatbot_get_available_slots(uuid, date) CASCADE;
+DROP FUNCTION IF EXISTS public.chatbot_get_available_slots(uuid, date, uuid, integer) CASCADE;
 DROP FUNCTION IF EXISTS public.chatbot_get_available_slots(text, text, text) CASCADE;
 
 CREATE OR REPLACE FUNCTION public.chatbot_get_available_slots(
@@ -129,9 +130,10 @@ BEGIN
         v_slot_end := (v_current_slot + make_interval(mins => v_service_duration))::time;
         v_is_conflict := false;
 
-        -- Regra 1: Se for hoje, bloqueia apenas horários que já passaram (sem salto artificial de +30 min)
+        -- Regra 1: Se for hoje, bloqueia apenas horários <= minuto atual em America/Fortaleza
+        -- (ex: às 10:07 libera 10:10, 10:20, 10:30, 10:40... sem salto artificial de +30 min)
         IF p_date = v_today_fortaleza THEN
-            IF v_current_slot <= v_time_now_fortaleza THEN
+            IF v_current_slot <= date_trunc('minute', v_time_now_fortaleza) THEN
                 v_is_conflict := true;
             END IF;
         END IF;

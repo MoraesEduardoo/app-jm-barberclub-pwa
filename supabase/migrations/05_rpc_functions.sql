@@ -7,8 +7,15 @@
 -- ------------------------------------------------------------------------------
 -- 1. FUNÇÃO RPC: chatbot_get_available_slots
 -- Assinatura única, canônica e blindada contra ambiguidades.
--- Grade rígida de 10 em 10 minutos com ocupação exata pela duração do serviço.
+-- Grade rígida de 10 em 10 minutos logo após o minuto atual em America/Fortaleza
+-- (sem trava de +30 minutos), com ocupação exata pela duração do serviço + buffer.
 -- ------------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.chatbot_get_available_slots(uuid, date, uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.chatbot_get_available_slots(uuid, uuid, date) CASCADE;
+DROP FUNCTION IF EXISTS public.chatbot_get_available_slots(uuid, date) CASCADE;
+DROP FUNCTION IF EXISTS public.chatbot_get_available_slots(uuid, date, uuid, integer) CASCADE;
+DROP FUNCTION IF EXISTS public.chatbot_get_available_slots(text, text, text) CASCADE;
+
 CREATE OR REPLACE FUNCTION public.chatbot_get_available_slots(
     p_barber_id uuid,
     p_date date,
@@ -110,16 +117,17 @@ BEGIN
         v_service_duration := 30;
     END IF;
 
-    -- 4. Iteração em grade pura de 10 em 10 minutos
+    -- 4. Iteração contínua e sequencial em grade pura de 10 em 10 minutos
     v_current_slot := v_start_time;
 
     WHILE v_current_slot + make_interval(mins => v_service_duration) <= v_end_time LOOP
         v_slot_end := (v_current_slot + make_interval(mins => v_service_duration))::time;
         v_is_conflict := false;
 
-        -- Se a data for hoje, disponibiliza qualquer slot estritamente no futuro (de 10 em 10 min, sem salto de +30 min)
+        -- Se a data for hoje, disponibiliza qualquer slot estritamente após o minuto atual em America/Fortaleza
+        -- (ex: às 10:07 libera 10:10, 10:20, 10:30, 10:40... sem salto artificial de +30 min)
         IF p_date = v_today_fortaleza THEN
-            IF v_current_slot <= v_time_now_fortaleza THEN
+            IF v_current_slot <= date_trunc('minute', v_time_now_fortaleza) THEN
                 v_is_conflict := true;
             END IF;
         END IF;
