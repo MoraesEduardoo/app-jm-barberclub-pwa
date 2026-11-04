@@ -1,17 +1,58 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Package, Plus, Minus, Check, Loader2, ShoppingBag } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Package,
+  Plus,
+  Minus,
+  Check,
+  Loader2,
+  ShoppingBag,
+  RefreshCw,
+  AlertCircle,
+} from "lucide-react";
 import BottomSheet from "./BottomSheet";
 import { PrimaryButton } from "./FormField";
 import { listProducts } from "@/lib/actions/products";
 import { addProductToAppointment } from "@/lib/actions/appointments";
-import { cacheKeys, getCache, fetchWithCache } from "@/lib/admin-cache";
+import { cacheKeys, getCache, setCache } from "@/lib/admin-cache";
 
 function formatBRL(val) {
   return `R$ ${Number(val || 0)
     .toFixed(2)
     .replace(".", ",")}`;
+}
+
+/**
+ * Busca produtos em estoque com proteção de timeout (8s) e duplo canal
+ * (API Route GET imediata + Server Action fallback) para nunca travar na fila de transição.
+ */
+async function fetchProductsSafe() {
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("TIMEOUT_PRODUCTS")), 8000)
+  );
+
+  const fetchTask = (async () => {
+    try {
+      const res = await fetch("/api/products", {
+        method: "GET",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (Array.isArray(json?.data)) {
+          return json.data;
+        }
+      }
+    } catch {
+      // Fallback imediato para Server Action se o endpoint HTTP falhar
+    }
+    const actionData = await listProducts();
+    return Array.isArray(actionData) ? actionData : [];
+  })();
+
+  return Promise.race([fetchTask, timeoutPromise]);
 }
 
 /**
@@ -54,44 +95,87 @@ export function parseAppointmentNotes(notes) {
 
 export default function AddProductSheet({ open, onClose, appointment, onAdded }) {
   const productsKey = cacheKeys.products();
-  const [products, setProducts] = useState(() =>
-    (getCache(productsKey) || []).filter((p) => p.is_active !== false)
-  );
+  const [products, setProducts] = useState(() => {
+    const cached = getCache(productsKey);
+    return Array.isArray(cached)
+      ? cached.filter((p) => p && p.is_active !== false && p.active !== false)
+      : [];
+  });
   const [loading, setLoading] = useState(false);
   // Mapa de carrinho: { [productId]: quantity }
   const [cart, setCart] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    if (!open) return;
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const loadProducts = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!silent) {
+        setLoading(true);
+      }
+      setLoadFailed(false);
+      setError("");
+
+      try {
+        const rawData = await fetchProductsSafe();
+        if (!mountedRef.current) return;
+
+        const safeList = Array.isArray(rawData) ? rawData : [];
+        const activeProducts = safeList.filter(
+          (p) => p && p.is_active !== false && p.active !== false
+        );
+
+        setCache(productsKey, safeList);
+        setProducts(activeProducts);
+        setLoadFailed(false);
+      } catch (err) {
+        console.warn("[AddProductSheet] Falha ao carregar produtos:", err?.message);
+        if (!mountedRef.current) return;
+
+        const fallbackCached = getCache(productsKey);
+        if (Array.isArray(fallbackCached) && fallbackCached.length > 0) {
+          setProducts(
+            fallbackCached.filter((p) => p && p.is_active !== false && p.active !== false)
+          );
+        } else {
+          setLoadFailed(true);
+          setError("Não foi possível carregar os produtos em estoque. Toque em 'Tentar novamente'.");
+        }
+      } finally {
+        if (mountedRef.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [productsKey]
+  );
+
+  useEffect(() => {
+    if (!open) {
+      setLoading(false);
+      return;
+    }
     setError("");
+    setLoadFailed(false);
     setCart({});
 
     const cached = getCache(productsKey);
     if (Array.isArray(cached) && cached.length > 0) {
-      setProducts(cached.filter((p) => p.is_active !== false));
+      setProducts(cached.filter((p) => p && p.is_active !== false && p.active !== false));
       setLoading(false);
+      loadProducts({ silent: true });
     } else {
-      setLoading(true);
+      loadProducts({ silent: false });
     }
-
-    fetchWithCache(productsKey, async () => (await listProducts()) || [], {
-      ttlMs: 60 * 1000,
-    })
-      .then((data) => {
-        const activeProducts = (data || []).filter((p) => p.is_active !== false);
-        setProducts(activeProducts);
-      })
-      .catch(() => {
-        if (!Array.isArray(cached)) {
-          setError("Não foi possível carregar o catálogo de produtos.");
-        }
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [open, productsKey]);
+  }, [open, productsKey, loadProducts]);
 
   if (!appointment) return null;
 
@@ -212,20 +296,31 @@ export default function AddProductSheet({ open, onClose, appointment, onAdded })
           </div>
         </div>
 
-        {/* Instrução rápida */}
+        {/* Instrução rápida + Botão de atualizar estoque */}
         <div className="flex items-center justify-between px-0.5">
           <span className="text-[11px] text-zinc-400">
             Toque nos produtos para marcar um ou mais itens:
           </span>
-          {selectedEntries.length > 0 && (
+          <div className="flex items-center gap-3">
+            {selectedEntries.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setCart({})}
+                className="text-[11px] font-semibold text-zinc-400 hover:text-white transition-colors"
+              >
+                Limpar ({selectedEntries.length})
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => setCart({})}
-              className="text-[11px] font-semibold text-zinc-400 hover:text-white transition-colors"
+              onClick={() => loadProducts({ silent: false })}
+              disabled={loading}
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-zinc-400 hover:text-white transition-colors disabled:opacity-50"
             >
-              Limpar ({selectedEntries.length})
+              <RefreshCw size={11} className={loading ? "animate-spin text-accent" : ""} />
+              <span>Atualizar</span>
             </button>
-          )}
+          </div>
         </div>
 
         {/* Lista de Produtos com Seleção Múltipla e Quantidade por Item */}
@@ -234,15 +329,43 @@ export default function AddProductSheet({ open, onClose, appointment, onAdded })
             <Loader2 size={20} className="animate-spin text-accent" />
             <span className="text-xs">Carregando produtos em estoque…</span>
           </div>
+        ) : loadFailed ? (
+          <div className="py-6 text-center bg-surface border border-rose-500/30 rounded-xl p-4 space-y-3">
+            <AlertCircle size={24} className="mx-auto text-rose-400" />
+            <div>
+              <p className="text-white text-xs font-semibold">
+                Falha ao consultar produtos em estoque
+              </p>
+              <p className="text-zinc-400 text-[11px] mt-1">
+                A conexão demorou mais do que o esperado. Tente recarregar a listagem.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => loadProducts({ silent: false })}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-accent hover:bg-accent-light px-4 py-2 text-xs font-semibold text-white active:scale-95 transition-all"
+            >
+              <RefreshCw size={13} /> Tentar novamente
+            </button>
+          </div>
         ) : products.length === 0 ? (
-          <div className="py-6 text-center bg-surface border border-zinc-800 rounded-xl p-4">
-            <Package size={24} className="mx-auto text-zinc-600 mb-2" />
-            <p className="text-white text-xs font-semibold">
-              Nenhum produto cadastrado
-            </p>
-            <p className="text-zinc-500 text-[11px] mt-1">
-              Cadastre pomadas, óleos ou itens na aba Serviços &gt; Produtos.
-            </p>
+          <div className="py-6 text-center bg-surface border border-zinc-800 rounded-xl p-4 space-y-3">
+            <Package size={24} className="mx-auto text-zinc-600" />
+            <div>
+              <p className="text-white text-xs font-semibold">
+                Nenhum produto disponível em estoque
+              </p>
+              <p className="text-zinc-500 text-[11px] mt-1">
+                Cadastre pomadas, óleos ou itens na aba Serviços &gt; Produtos ou toque abaixo para sincronizar.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => loadProducts({ silent: false })}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-elevated border border-zinc-700 hover:border-zinc-600 px-3.5 py-2 text-xs font-semibold text-zinc-200 active:scale-95 transition-all"
+            >
+              <RefreshCw size={13} /> Recarregar estoque
+            </button>
           </div>
         ) : (
           <div className="space-y-2 max-h-64 overflow-y-auto pr-0.5">

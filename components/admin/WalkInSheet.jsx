@@ -1,7 +1,7 @@
 "use client";
 
 import { endSession } from "@/lib/session";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, Clock, Zap, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import BottomSheet from "./BottomSheet";
 import { todayInShop, addDaysStr } from "@/lib/dates";
@@ -68,13 +68,22 @@ export default function WalkInSheet({
   const [resolvedConfig, setResolvedConfig] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const existingAppointmentsRef = useRef(existingAppointments);
+
+  useEffect(() => {
+    existingAppointmentsRef.current = existingAppointments;
+  }, [existingAppointments]);
 
   useEffect(() => {
     if (open) {
       const currentToday = todayInShop();
-      listServices().then((data) =>
-        setServices((data || []).filter((s) => s.active !== false && s.is_active !== false))
-      );
+      listServices()
+        .then((data) =>
+          setServices((data || []).filter((s) => s && s.active !== false && s.is_active !== false))
+        )
+        .catch(() => {
+          setServices([]);
+        });
       setBarberId(barber.id);
       setServiceId("");
       setClientName("");
@@ -224,7 +233,7 @@ export default function WalkInSheet({
           serviceId,
         }),
         effectiveDate === todayInShop()
-          ? Promise.resolve({ data: existingAppointments })
+          ? Promise.resolve({ data: existingAppointmentsRef.current })
           : listAppointmentsByDate(effectiveDate, barberId),
       ])
         .then(([slotRes, apptRes]) => {
@@ -273,7 +282,7 @@ export default function WalkInSheet({
     return () => {
       cancelled = true;
     };
-  }, [timingMode, barberId, serviceId, effectiveDate, existingAppointments]);
+  }, [timingMode, barberId, serviceId, effectiveDate]);
 
   const daySchedule = useMemo(() => {
     if (!scheduleRows || scheduleRows.length === 0 || !effectiveDate) return null;

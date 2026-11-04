@@ -17,7 +17,7 @@ export default function EquipePage() {
 
   const load = useCallback(
     async ({ silent = false, force = false } = {}) => {
-      if (!silent && !hasCache(cacheKeys.team()) && team.length === 0) {
+      if (!silent && !hasCache(cacheKeys.team())) {
         setLoading(true);
       }
       try {
@@ -26,7 +26,7 @@ export default function EquipePage() {
         setLoading(false);
       }
     },
-    [refreshTeam, team.length]
+    [refreshTeam]
   );
 
   const handleMemberRemoved = useCallback(
@@ -38,13 +38,13 @@ export default function EquipePage() {
   );
 
   useEffect(() => {
-    if (hasCache(cacheKeys.team()) || team.length > 0) {
+    if (hasCache(cacheKeys.team())) {
       setLoading(false);
       load({ silent: true, force: false });
     } else {
       load({ silent: false, force: true });
     }
-  }, [load, team.length]);
+  }, [load]);
 
   return (
     <div className="px-4 pt-4">

@@ -235,10 +235,23 @@ export default function FinanceiroCompletoPage() {
         </div>
       )}
 
-      {loading || !overview ? (
+      {loading ? (
         <div className="space-y-2.5 mb-4">
           <div className="h-24 rounded-xl bg-surface animate-pulse" />
           <div className="h-16 rounded-xl bg-surface animate-pulse" />
+        </div>
+      ) : !overview ? (
+        <div className="bg-surface border border-zinc-800 rounded-xl p-5 text-center space-y-3 mb-4">
+          <p className="text-zinc-300 text-xs font-medium">
+            Não foi possível carregar o livro de despesas deste período.
+          </p>
+          <button
+            type="button"
+            onClick={() => load()}
+            className="inline-flex items-center justify-center rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white active:scale-95 transition-all"
+          >
+            Tentar novamente
+          </button>
         </div>
       ) : (
         <>

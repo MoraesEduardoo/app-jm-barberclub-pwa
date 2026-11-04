@@ -98,10 +98,21 @@ export default function ServicosPage() {
     }
     setErrorMsg(null);
 
+    const fetchProductsFast = async () => {
+      try {
+        const res = await fetch('/api/products', { method: 'GET', cache: 'no-store' });
+        if (res.ok) {
+          const json = await res.json();
+          if (Array.isArray(json?.data)) return json.data;
+        }
+      } catch {}
+      return listProducts();
+    };
+
     try {
       const [servicesResult, productsResult] = await Promise.allSettled([
         listServices(),
-        listProducts(),
+        fetchProductsFast(),
       ]);
 
       if (servicesResult.status === 'fulfilled') {

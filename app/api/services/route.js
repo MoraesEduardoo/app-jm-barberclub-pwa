@@ -17,26 +17,30 @@ export async function GET(request) {
 
     // 1. Busca serviços, barbeiros e a tabela barber_services em paralelo
     const [servicesRes, barbersRes, bsRes] = await Promise.all([
-      admin
-        .from('services')
-        .select('*')
-        .order('display_order', { ascending: true })
-        .order('name', { ascending: true }),
-      admin
-        .from('barbers')
-        .select('id, name, role, active, is_active, display_order')
-        .order('display_order', { ascending: true }),
+      admin.from('services').select('*'),
+      admin.from('barbers').select('*'),
       admin.from('barber_services').select('*'),
     ]);
 
     if (servicesRes.error) {
-      return NextResponse.json({ ok: false, error: servicesRes.error.message }, { status: 500 });
+      return NextResponse.json({ ok: false, error: servicesRes.error.message, data: [] }, { status: 200 });
     }
 
-    const services = servicesRes.data || [];
-    const barbers = (barbersRes.data || []).filter(
-      (b) => b.active !== false && b.is_active !== false
-    );
+    const services = [...(servicesRes.data || [])].sort((a, b) => {
+      const orderA = Number.isFinite(Number(a?.display_order)) ? Number(a.display_order) : 9999;
+      const orderB = Number.isFinite(Number(b?.display_order)) ? Number(b.display_order) : 9999;
+      if (orderA !== orderB) return orderA - orderB;
+      return String(a?.name || '').localeCompare(String(b?.name || ''), 'pt-BR');
+    });
+
+    const barbers = [...(barbersRes.data || [])]
+      .filter((b) => b.active !== false && b.is_active !== false)
+      .sort((a, b) => {
+        const orderA = Number.isFinite(Number(a?.display_order)) ? Number(a.display_order) : 9999;
+        const orderB = Number.isFinite(Number(b?.display_order)) ? Number(b.display_order) : 9999;
+        if (orderA !== orderB) return orderA - orderB;
+        return String(a?.name || '').localeCompare(String(b?.name || ''), 'pt-BR');
+      });
     const barberServices = bsRes.data || [];
 
     // 2. Busca galeria para fallback de fotos

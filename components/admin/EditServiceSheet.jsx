@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Scissors, Check, Clock, Loader2, Sparkles, User } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Scissors, Check, Clock, Loader2, Sparkles, User, RefreshCw } from "lucide-react";
 import BottomSheet from "./BottomSheet";
 import { PrimaryButton } from "./FormField";
 import { listServices } from "@/lib/actions/services";
 import { updateAppointmentService } from "@/lib/actions/appointments";
-import { cacheKeys, getCache, fetchWithCache } from "@/lib/admin-cache";
+import { cacheKeys, getCache, setCache } from "@/lib/admin-cache";
 import { parseAppointmentNotes } from "./AddProductSheet";
 
 function formatBRL(val) {
@@ -15,27 +15,110 @@ function formatBRL(val) {
     .replace(".", ",")}`;
 }
 
+async function fetchServicesSafe() {
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("TIMEOUT_SERVICES")), 8000)
+  );
+
+  const fetchTask = (async () => {
+    try {
+      const res = await fetch("/api/services", {
+        method: "GET",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (Array.isArray(json?.data)) {
+          return json.data;
+        }
+      }
+    } catch {
+      // Fallback para Server Action
+    }
+    const actionData = await listServices();
+    return Array.isArray(actionData) ? actionData : [];
+  })();
+
+  return Promise.race([fetchTask, timeoutPromise]);
+}
+
 export default function EditServiceSheet({ open, onClose, appointment, onSaved }) {
   const servicesKey = cacheKeys.services();
   const [services, setServices] = useState(() =>
     (getCache(servicesKey) || []).filter(
-      (s) => s.is_active !== false && s.active !== false
+      (s) => s && s.is_active !== false && s.active !== false
     )
   );
   const [loading, setLoading] = useState(false);
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    if (!open || !appointment) return;
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const loadServices = useCallback(
+    async ({ silent = false, apptServiceId = "", apptServiceName = "" } = {}) => {
+      if (!silent) {
+        setLoading(true);
+      }
+      setError("");
+
+      try {
+        const rawData = await fetchServicesSafe();
+        if (!mountedRef.current) return;
+
+        const safeList = Array.isArray(rawData) ? rawData : [];
+        const activeList = safeList.filter(
+          (s) => s && s.is_active !== false && s.active !== false
+        );
+
+        setCache(servicesKey, safeList);
+        setServices(activeList);
+
+        if (!apptServiceId && apptServiceName) {
+          const matched = activeList.find(
+            (s) =>
+              String(s.name || "").trim().toLowerCase() ===
+              String(apptServiceName || "").trim().toLowerCase()
+          );
+          if (matched) {
+            setSelectedServiceId(matched.id);
+          }
+        }
+      } catch {
+        if (!mountedRef.current) return;
+        const cached = getCache(servicesKey);
+        if (!Array.isArray(cached) || cached.length === 0) {
+          setError("Não foi possível carregar a lista de serviços.");
+        }
+      } finally {
+        if (mountedRef.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [servicesKey]
+  );
+
+  useEffect(() => {
+    if (!open || !appointment) {
+      setLoading(false);
+      return;
+    }
     setError("");
     setSelectedServiceId(appointment.service_id || "");
 
     const cached = getCache(servicesKey);
     if (Array.isArray(cached) && cached.length > 0) {
       const activeCached = cached.filter(
-        (s) => s.is_active !== false && s.active !== false
+        (s) => s && s.is_active !== false && s.active !== false
       );
       setServices(activeCached);
       setLoading(false);
@@ -48,39 +131,19 @@ export default function EditServiceSheet({ open, onClose, appointment, onSaved }
         );
         if (matched) setSelectedServiceId(matched.id);
       }
-    } else {
-      setLoading(true);
-    }
-
-    fetchWithCache(servicesKey, async () => (await listServices()) || [], {
-      ttlMs: 2 * 60 * 1000,
-    })
-      .then((data) => {
-        const activeList = (data || []).filter(
-          (s) => s.is_active !== false && s.active !== false
-        );
-        setServices(activeList);
-
-        if (!appointment.service_id && appointment.service) {
-          const matched = activeList.find(
-            (s) =>
-              String(s.name || "").trim().toLowerCase() ===
-              String(appointment.service || "").trim().toLowerCase()
-          );
-          if (matched) {
-            setSelectedServiceId(matched.id);
-          }
-        }
-      })
-      .catch(() => {
-        if (!Array.isArray(cached)) {
-          setError("Não foi possível carregar a lista de serviços.");
-        }
-      })
-      .finally(() => {
-        setLoading(false);
+      loadServices({
+        silent: true,
+        apptServiceId: appointment.service_id,
+        apptServiceName: appointment.service,
       });
-  }, [open, appointment?.id, appointment?.service_id, appointment?.service, servicesKey]);
+    } else {
+      loadServices({
+        silent: false,
+        apptServiceId: appointment.service_id,
+        apptServiceName: appointment.service,
+      });
+    }
+  }, [open, appointment?.id, appointment?.service_id, appointment?.service, servicesKey, loadServices]);
 
   if (!appointment) return null;
 
@@ -222,11 +285,24 @@ export default function EditServiceSheet({ open, onClose, appointment, onSaved }
             <span className="text-xs">Carregando serviços disponíveis…</span>
           </div>
         ) : services.length === 0 ? (
-          <div className="py-6 text-center bg-surface border border-zinc-800 rounded-xl p-4">
-            <Scissors size={22} className="mx-auto text-zinc-600 mb-2" />
+          <div className="py-6 text-center bg-surface border border-zinc-800 rounded-xl p-4 space-y-3">
+            <Scissors size={22} className="mx-auto text-zinc-600" />
             <p className="text-white text-xs font-semibold">
               Nenhum serviço ativo encontrado
             </p>
+            <button
+              type="button"
+              onClick={() =>
+                loadServices({
+                  silent: false,
+                  apptServiceId: appointment.service_id,
+                  apptServiceName: appointment.service,
+                })
+              }
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-elevated border border-zinc-700 hover:border-zinc-600 px-3.5 py-2 text-xs font-semibold text-zinc-200 active:scale-95 transition-all"
+            >
+              <RefreshCw size={13} /> Tentar novamente
+            </button>
           </div>
         ) : (
           <div className="space-y-2 max-h-64 overflow-y-auto pr-0.5">

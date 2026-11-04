@@ -212,8 +212,21 @@ export default function FinanceiroPage() {
         </div>
       )}
 
-      {loading || !summary ? (
+      {loading ? (
         <div className="h-24 rounded-xl bg-surface animate-pulse mb-4" />
+      ) : !summary ? (
+        <div className="bg-surface border border-zinc-800 rounded-xl p-5 text-center space-y-3 mb-4">
+          <p className="text-zinc-300 text-xs font-medium">
+            Não foi possível carregar o resumo financeiro deste período.
+          </p>
+          <button
+            type="button"
+            onClick={() => load({ silent: false })}
+            className="inline-flex items-center justify-center rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white active:scale-95 transition-all"
+          >
+            Tentar novamente
+          </button>
+        </div>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-2.5 mb-4">
