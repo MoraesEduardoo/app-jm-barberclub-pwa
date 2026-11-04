@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import Link from "next/link";
 import {
   QrCode,
   CreditCard,
@@ -25,7 +24,7 @@ import {
 } from "@/lib/dates";
 import { PERMISSION_KEYS } from "@/lib/auth";
 import { getFinanceSummary } from "@/lib/actions/finance";
-import { listTeam } from "@/lib/actions/team";
+import { cacheKeys, getCache, setCache } from "@/lib/admin-cache";
 import FinanceRow from "@/components/admin/FinanceRow";
 import CommissionSettlementSheet from "@/components/admin/CommissionSettlementSheet";
 
@@ -45,70 +44,84 @@ function formatBRL(value) {
 }
 
 export default function FinanceiroPage() {
-  const { barber, can, isChefe, selectedBarberId, selectBarber } = useBarber();
+  const { barber, can, isChefe, selectedBarberId, selectBarber, team } = useBarber();
   const canManageFinance = can(PERMISSION_KEYS.MANAGE_FINANCE);
 
   const currentMonth = useMemo(() => currentMonthInShop(), []);
   const [range, setRange] = useState("hoje");
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [tab, setTab] = useState("pagos");
-  const [summary, setSummary] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [team, setTeam] = useState([]);
+
+  const [localScope, setLocalScope] = useState(
+    canManageFinance ? "todos" : barber.id
+  );
+  const scopeId = isChefe ? (selectedBarberId ?? "todos") : localScope;
+  const effectiveScope = canManageFinance
+    ? scopeId === "todos"
+      ? null
+      : scopeId
+    : barber.id;
+
+  const { from: initialFrom, to: initialTo } = useMemo(
+    () => financeRange(range, new Date(), selectedMonth),
+    [range, selectedMonth]
+  );
+  const financeCacheKey = cacheKeys.finance(initialFrom, initialTo, effectiveScope);
+
+  const [summary, setSummary] = useState(() => getCache(financeCacheKey) || null);
+  const [loading, setLoading] = useState(() => !getCache(financeCacheKey));
   const [settlementOpen, setSettlementOpen] = useState(false);
   const requestIdRef = useRef(0);
 
   const monthOptions = useMemo(() => listSelectableMonths(new Date(), 24, 3), []);
-
-  // Chefe: o filtro é o profissional selecionado no contexto global (mesmo do perfil/agenda).
-  // Barbeiro com MANAGE_FINANCE: filtro local, só desta tela.
-  // Barbeiro sem a permissão: sempre travado no próprio id.
-  const [localScope, setLocalScope] = useState(
-    canManageFinance ? "todos" : barber.id,
-  );
-  const scopeId = isChefe ? (selectedBarberId ?? "todos") : localScope;
 
   function changeScope(id) {
     if (isChefe) selectBarber(id === "todos" ? null : id);
     else setLocalScope(id);
   }
 
-  useEffect(() => {
-    if (canManageFinance) {
-      listTeam()
-        .then(setTeam)
-        .catch(() => {});
-    }
-  }, [canManageFinance]);
+  const load = useCallback(
+    async ({ silent = false } = {}) => {
+      const requestId = ++requestIdRef.current;
+      const { from, to } = financeRange(range, new Date(), selectedMonth);
+      const currentKey = cacheKeys.finance(from, to, effectiveScope);
+      const cached = getCache(currentKey);
 
-  const load = useCallback(async () => {
-    const requestId = ++requestIdRef.current;
-    setLoading(true);
-    const { from, to } = financeRange(range, new Date(), selectedMonth);
-    const scope = canManageFinance
-      ? scopeId === "todos"
-        ? null
-        : scopeId
-      : barber.id;
-
-    try {
-      const data = await getFinanceSummary({ from, to, scopeBarberId: scope });
-      if (requestId !== requestIdRef.current) return; // resposta antiga
-      setSummary(data);
-      setLoading(false);
-    } catch (error) {
-      if (requestId !== requestIdRef.current) return;
-      if (String(error?.message).includes("AUTH_EXPIRED")) {
-        endSession();
-        return;
+      if (cached) {
+        setSummary(cached);
+        setLoading(false);
+      } else if (!silent) {
+        setLoading(true);
       }
-      setLoading(false);
-    }
-  }, [range, selectedMonth, scopeId, canManageFinance, barber.id]);
+
+      try {
+        const data = await getFinanceSummary({ from, to, scopeBarberId: effectiveScope });
+        if (requestId !== requestIdRef.current) return;
+        setCache(currentKey, data);
+        setSummary(data);
+        setLoading(false);
+      } catch (error) {
+        if (requestId !== requestIdRef.current) return;
+        if (String(error?.message).includes("AUTH_EXPIRED")) {
+          endSession();
+          return;
+        }
+        setLoading(false);
+      }
+    },
+    [range, selectedMonth, effectiveScope]
+  );
 
   useEffect(() => {
-    load();
-  }, [load]);
+    const cached = getCache(financeCacheKey);
+    if (cached) {
+      setSummary(cached);
+      setLoading(false);
+      load({ silent: true });
+    } else {
+      load({ silent: false });
+    }
+  }, [financeCacheKey, load]);
 
   return (
     <div className="px-4 pt-4">
@@ -314,7 +327,7 @@ export default function FinanceiroPage() {
               <p className="text-zinc-600 text-sm text-center mt-10">
                 {tab === "pagos"
                   ? "Nenhum pagamento registrado."
-                  : "Ninguém pendente. 🎉"}
+                  : "Ninguém pendente."}
               </p>
             ) : (
               (tab === "pagos" ? summary.pagos : summary.pendentes).map(
@@ -324,7 +337,7 @@ export default function FinanceiroPage() {
                     appointment={appointment}
                     variant={tab === "pagos" ? "paid" : "pending"}
                   />
-                ),
+                )
               )
             )}
           </div>
@@ -336,7 +349,7 @@ export default function FinanceiroPage() {
           open={settlementOpen}
           onClose={() => {
             setSettlementOpen(false);
-            load();
+            load({ silent: true });
           }}
         />
       )}

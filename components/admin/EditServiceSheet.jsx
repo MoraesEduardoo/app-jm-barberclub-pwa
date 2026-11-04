@@ -6,6 +6,7 @@ import BottomSheet from "./BottomSheet";
 import { PrimaryButton } from "./FormField";
 import { listServices } from "@/lib/actions/services";
 import { updateAppointmentService } from "@/lib/actions/appointments";
+import { cacheKeys, getCache, fetchWithCache } from "@/lib/admin-cache";
 import { parseAppointmentNotes } from "./AddProductSheet";
 
 function formatBRL(val) {
@@ -15,7 +16,12 @@ function formatBRL(val) {
 }
 
 export default function EditServiceSheet({ open, onClose, appointment, onSaved }) {
-  const [services, setServices] = useState([]);
+  const servicesKey = cacheKeys.services();
+  const [services, setServices] = useState(() =>
+    (getCache(servicesKey) || []).filter(
+      (s) => s.is_active !== false && s.active !== false
+    )
+  );
   const [loading, setLoading] = useState(false);
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [saving, setSaving] = useState(false);
@@ -25,9 +31,30 @@ export default function EditServiceSheet({ open, onClose, appointment, onSaved }
     if (!open || !appointment) return;
     setError("");
     setSelectedServiceId(appointment.service_id || "");
-    setLoading(true);
 
-    listServices()
+    const cached = getCache(servicesKey);
+    if (Array.isArray(cached) && cached.length > 0) {
+      const activeCached = cached.filter(
+        (s) => s.is_active !== false && s.active !== false
+      );
+      setServices(activeCached);
+      setLoading(false);
+
+      if (!appointment.service_id && appointment.service) {
+        const matched = activeCached.find(
+          (s) =>
+            String(s.name || "").trim().toLowerCase() ===
+            String(appointment.service || "").trim().toLowerCase()
+        );
+        if (matched) setSelectedServiceId(matched.id);
+      }
+    } else {
+      setLoading(true);
+    }
+
+    fetchWithCache(servicesKey, async () => (await listServices()) || [], {
+      ttlMs: 2 * 60 * 1000,
+    })
       .then((data) => {
         const activeList = (data || []).filter(
           (s) => s.is_active !== false && s.active !== false
@@ -46,12 +73,14 @@ export default function EditServiceSheet({ open, onClose, appointment, onSaved }
         }
       })
       .catch(() => {
-        setError("Não foi possível carregar a lista de serviços.");
+        if (!Array.isArray(cached)) {
+          setError("Não foi possível carregar a lista de serviços.");
+        }
       })
       .finally(() => {
         setLoading(false);
       });
-  }, [open, appointment?.id, appointment?.service_id, appointment?.service]);
+  }, [open, appointment?.id, appointment?.service_id, appointment?.service, servicesKey]);
 
   if (!appointment) return null;
 

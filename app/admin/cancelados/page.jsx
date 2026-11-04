@@ -6,14 +6,12 @@ import {
   Calendar,
   Clock,
   Scissors,
-  MessageSquare,
   Search,
-  User,
-  AlertCircle,
   RotateCcw,
 } from 'lucide-react';
 import { listCancelledAppointments } from '@/lib/actions/cancellations';
 import { useBarber } from '@/lib/barber-context';
+import { cacheKeys, getCache, hasCache, setCache } from '@/lib/admin-cache';
 import { formatPhoneBR } from '@/lib/whatsapp';
 
 function formatBRL(val) {
@@ -21,19 +19,32 @@ function formatBRL(val) {
 }
 
 export default function CanceladosPage() {
-  const { scopeBarberId, isLeadership } = useBarber();
-  const [cancellations, setCancellations] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { scopeBarberId } = useBarber();
+  const cancelKey = cacheKeys.cancellations(scopeBarberId);
+
+  const [cancellations, setCancellations] = useState(
+    () => getCache(cancelKey) || []
+  );
+  const [loading, setLoading] = useState(() => !hasCache(cancelKey));
   const [search, setSearch] = useState('');
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
+    const cached = getCache(cancelKey);
+    if (Array.isArray(cached)) {
+      setCancellations(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
 
     listCancelledAppointments({ scopeBarberId })
       .then((res) => {
         if (!active) return;
-        if (res.data) setCancellations(res.data);
+        if (res.data) {
+          setCancellations(res.data);
+          setCache(cancelKey, res.data);
+        }
       })
       .catch((err) => console.error(err))
       .finally(() => {
@@ -43,7 +54,7 @@ export default function CanceladosPage() {
     return () => {
       active = false;
     };
-  }, [scopeBarberId]);
+  }, [scopeBarberId, cancelKey]);
 
   function handleRescheduleWhatsApp(item) {
     const digits = (item.client_phone || '').replace(/\D/g, '');

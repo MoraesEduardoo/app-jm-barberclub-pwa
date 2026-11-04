@@ -13,7 +13,13 @@ import {
   confirmAppointment,
   rescheduleAppointment,
 } from "@/lib/actions/appointments";
-import { listTeam } from "@/lib/actions/team";
+import {
+  cacheKeys,
+  getCache,
+  hasCache,
+  setCache,
+  invalidateCache,
+} from "@/lib/admin-cache";
 import DateStepper from "@/components/admin/DateStepper";
 import AppointmentCard, {
   getAppointmentStartTime,
@@ -108,13 +114,26 @@ function buildTimelineItems(appointmentsList) {
 }
 
 export default function AgendaPage() {
-  const { can, scopeBarberId, selectedBarberId, selectBarber, viewedBarber } = useBarber();
+  const {
+    can,
+    scopeBarberId,
+    selectedBarberId,
+    selectBarber,
+    viewedBarber,
+    team,
+    refreshTeam,
+  } = useBarber();
   const { notifications } = useNotifications();
   const canViewAll = can(PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS);
 
-  const [date, setDate] = useState(todayInShop());
-  const [appointments, setAppointments] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [date, setDate] = useState(() => todayInShop());
+  const apptCacheKey = cacheKeys.appointments(date, scopeBarberId);
+
+  // Inicializa sincronamente do cache em memória para renderização em 0ms ao trocar de aba
+  const [appointments, setAppointments] = useState(
+    () => getCache(apptCacheKey) || []
+  );
+  const [loading, setLoading] = useState(() => !hasCache(apptCacheKey));
   const [loadError, setLoadError] = useState("");
   const [actionError, setActionError] = useState("");
   const [busyId, setBusyId] = useState(null);
@@ -126,29 +145,37 @@ export default function AgendaPage() {
   const [filterMode, setFilterMode] = useState("all"); // 'all' | 'confirmado' | 'concluido' | 'pre_scheduled'
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [cyclesOpen, setCyclesOpen] = useState(false);
-  const [team, setTeam] = useState([]);
   const requestIdRef = useRef(0);
 
-  const refreshTeamList = useCallback(() => {
-    if (canViewAll) {
-      listTeam()
-        .then(setTeam)
-        .catch(() => {});
-    }
-  }, [canViewAll]);
-
-  useEffect(() => {
-    refreshTeamList();
-  }, [refreshTeamList]);
+  /**
+   * Atualiza estado local e sincroniza imediatamente o cache em memória da data/escopo atual.
+   */
+  const syncAppointmentsState = useCallback(
+    (updater) => {
+      setAppointments((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        setCache(cacheKeys.appointments(date, scopeBarberId), next);
+        return next;
+      });
+    },
+    [date, scopeBarberId]
+  );
 
   /**
    * Busca os agendamentos do dia selecionado.
-   * silent = true recarrega sem piscar o skeleton (usado após ações e eventos realtime).
+   * Quando já existe cache em memória, exibe os dados instantaneamente (0ms) e revalida com silent = true.
    */
   const load = useCallback(
     async ({ silent = false } = {}) => {
       const requestId = ++requestIdRef.current;
-      if (!silent) {
+      const currentKey = cacheKeys.appointments(date, scopeBarberId);
+      const cachedList = getCache(currentKey);
+      const hasCachedData = Array.isArray(cachedList);
+
+      if (hasCachedData) {
+        setAppointments(cachedList);
+        setLoading(false);
+      } else if (!silent) {
         setLoading(true);
         setLoadError("");
       }
@@ -164,17 +191,20 @@ export default function AgendaPage() {
         }
 
         if (response?.error) {
-          if (!silent) {
+          if (!silent && !hasCachedData) {
             setAppointments([]);
             setLoadError(response.error);
           }
           return;
         }
 
-        setAppointments(response?.data || []);
+        const freshData = response?.data || [];
+        setCache(currentKey, freshData);
+        setAppointments(freshData);
+        setLoadError("");
       } catch {
         if (requestId !== requestIdRef.current) return;
-        if (!silent) {
+        if (!silent && !hasCachedData) {
           setAppointments([]);
           setLoadError("Sem conexão. Verifique a internet e tente de novo.");
         }
@@ -186,8 +216,15 @@ export default function AgendaPage() {
   );
 
   useEffect(() => {
-    load();
-  }, [load]);
+    const cached = getCache(apptCacheKey);
+    if (Array.isArray(cached)) {
+      setAppointments(cached);
+      setLoading(false);
+      load({ silent: true });
+    } else {
+      load({ silent: false });
+    }
+  }, [apptCacheKey, load]);
 
   const loadRef = useRef(load);
   loadRef.current = load;
@@ -201,9 +238,9 @@ export default function AgendaPage() {
     setBusyId(id);
     setActionError("");
 
-    // Atualização otimista imediata: se cancelado, já retira da visualização ativa da agenda
+    // Atualização otimista imediata no estado e no cache
     const previousAppointments = appointments;
-    setAppointments((prev) =>
+    syncAppointmentsState((prev) =>
       prev.map((a) => (a.id === id ? { ...a, status } : a))
     );
 
@@ -216,12 +253,16 @@ export default function AgendaPage() {
       }
 
       if (!response?.success) {
-        setAppointments(previousAppointments);
+        syncAppointmentsState(previousAppointments);
         const msg = response?.error || "Não foi possível atualizar o status.";
         setActionError(msg);
         toast.error(msg);
         return;
       }
+
+      invalidateCache("finance:");
+      invalidateCache("cancellations:");
+      invalidateCache("clients:");
 
       toast.success(
         status === "confirmado"
@@ -229,7 +270,7 @@ export default function AgendaPage() {
           : "Agendamento cancelado e horário liberado na agenda!"
       );
     } catch {
-      setAppointments(previousAppointments);
+      syncAppointmentsState(previousAppointments);
       const msg = "Sem conexão. Não foi possível atualizar o status.";
       setActionError(msg);
       toast.error(msg);
@@ -245,12 +286,17 @@ export default function AgendaPage() {
 
   function handleClosePayment() {
     setPaymentTarget(null);
+    invalidateCache("finance:");
+    invalidateCache("clients:");
     load({ silent: true });
   }
 
   function handleCloseWalkIn(result) {
     setWalkInOpen(false);
     if (result?.created) {
+      invalidateCache("appointments:");
+      invalidateCache("finance:");
+      invalidateCache("clients:");
       const targetDate = result.date;
       if (targetDate && targetDate !== date) {
         setDate(targetDate);
@@ -275,7 +321,7 @@ export default function AgendaPage() {
       toast.error(res.error);
       throw new Error(res.error);
     }
-    setAppointments((prev) =>
+    syncAppointmentsState((prev) =>
       prev.map((a) => (a.id === id ? { ...a, status: "confirmado" } : a))
     );
     load({ silent: true });
@@ -287,6 +333,7 @@ export default function AgendaPage() {
       toast.error(res.error);
       throw new Error(res.error);
     }
+    invalidateCache("appointments:");
     load({ silent: true });
   }
 
@@ -296,9 +343,10 @@ export default function AgendaPage() {
       toast.error(res.error);
       throw new Error(res.error);
     }
-    setAppointments((prev) =>
+    syncAppointmentsState((prev) =>
       prev.map((a) => (a.id === id ? { ...a, status: "cancelado" } : a))
     );
+    invalidateCache("cancellations:");
     load({ silent: true });
   }
 
@@ -381,7 +429,7 @@ export default function AgendaPage() {
       {/* Assistente de Primeiro Acesso / Bootstrap quando o banco está limpo */}
       <SystemBootstrapCard
         onBootstrapChange={() => {
-          refreshTeamList();
+          refreshTeam({ force: true });
           load({ silent: true });
         }}
       />
@@ -627,7 +675,11 @@ export default function AgendaPage() {
         onAddProduct={setProductTarget}
         onEditService={setEditServiceTarget}
         onOpenPreSchedule={setPreScheduleTarget}
-        onProductRemoved={() => load({ silent: true })}
+        onProductRemoved={() => {
+          invalidateCache(cacheKeys.products());
+          invalidateCache("finance:");
+          load({ silent: true });
+        }}
       />
 
       <PaymentSheet
@@ -647,7 +699,7 @@ export default function AgendaPage() {
               : "Serviço do atendimento atualizado com sucesso!"
           );
           if (editServiceTarget?.id && res?.serviceId) {
-            setAppointments((prev) =>
+            syncAppointmentsState((prev) =>
               prev.map((a) =>
                 a.id === editServiceTarget.id
                   ? {
@@ -671,6 +723,7 @@ export default function AgendaPage() {
               )
             );
           }
+          invalidateCache("finance:");
           load({ silent: true });
         }}
       />
@@ -687,7 +740,7 @@ export default function AgendaPage() {
               : "Produto adicionado e somado ao atendimento!"
           );
           if (productTarget?.id && res?.newTotal != null) {
-            setAppointments((prev) =>
+            syncAppointmentsState((prev) =>
               prev.map((a) =>
                 a.id === productTarget.id
                   ? {
@@ -700,6 +753,8 @@ export default function AgendaPage() {
               )
             );
           }
+          invalidateCache(cacheKeys.products());
+          invalidateCache("finance:");
           load({ silent: true });
         }}
       />

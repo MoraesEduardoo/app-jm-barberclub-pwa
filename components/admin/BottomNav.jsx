@@ -1,9 +1,12 @@
 'use client';
 
+import { useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { CalendarDays, Scissors, Clock, Users2, Images } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { CalendarDays, Scissors, Clock, Users2 } from 'lucide-react';
 import { useBarber } from '@/lib/barber-context';
+import { warmupAdminTabsData } from '@/lib/admin-cache';
+import { PERMISSION_KEYS } from '@/lib/auth';
 
 /**
  * Abas principais da barra inferior (mobile-first):
@@ -19,9 +22,39 @@ const CHEFE_TAB = { href: '/admin/equipe', label: 'Equipe', icon: Users2 };
 
 export default function BottomNav() {
   const pathname = usePathname();
-  const { isChefe } = useBarber();
+  const router = useRouter();
+  const { barber, isChefe, isLeadership, scopeBarberId, can } = useBarber();
 
   const tabs = isChefe ? [...BASE_TABS, CHEFE_TAB] : BASE_TABS;
+
+  // Faz prefetch proativo das rotas do App Router assim que a barra inferior é montada
+  useEffect(() => {
+    tabs.forEach(({ href }) => {
+      try {
+        router.prefetch(href);
+      } catch {
+        // ignora caso prefetch não esteja disponível
+      }
+    });
+    // Também faz prefetch das páginas frequentes do menu lateral
+    ['/admin/financeiro', '/admin/clientes', '/admin/cancelados'].forEach((route) => {
+      try {
+        router.prefetch(route);
+      } catch {
+        // ignora
+      }
+    });
+  }, [router, isChefe]);
+
+  const handleWarmupInteraction = () => {
+    if (!barber?.id) return;
+    warmupAdminTabsData({
+      barberId: barber.id,
+      scopeBarberId,
+      canViewAll: isLeadership || can(PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS),
+      canManageServices: can(PERMISSION_KEYS.MANAGE_SERVICES),
+    });
+  };
 
   return (
     <nav
@@ -36,6 +69,9 @@ export default function BottomNav() {
             <li key={href} className="flex-1">
               <Link
                 href={href}
+                prefetch={true}
+                onPointerEnter={handleWarmupInteraction}
+                onTouchStart={handleWarmupInteraction}
                 className="relative flex flex-col items-center justify-center gap-1 py-2 min-h-[52px] active:scale-95 active:opacity-75 transition-all touch-manipulation"
               >
                 {active && <span className="tab-indicator" aria-hidden="true" />}

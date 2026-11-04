@@ -6,6 +6,14 @@ import { Reorder, useDragControls } from 'framer-motion';
 import { listServices, reorderServices } from '@/lib/actions/services';
 import { listProducts } from '@/lib/actions/products';
 import { bootstrapInitialServicesCatalogAction } from '@/lib/actions/bootstrap';
+import {
+  cacheKeys,
+  getCache,
+  hasCache,
+  setCache,
+  fetchWithCache,
+  invalidateCache,
+} from '@/lib/admin-cache';
 import ServiceRow from '@/components/admin/ServiceRow';
 import ServiceFormSheet from '@/components/admin/ServiceFormSheet';
 import ProductFormSheet from '@/components/admin/ProductFormSheet';
@@ -48,10 +56,16 @@ export default function ServicosPage() {
   const { can } = useBarber();
   const canManage = can(PERMISSION_KEYS.MANAGE_SERVICES);
 
+  const servicesKey = cacheKeys.services();
+  const productsKey = cacheKeys.products();
+
   const [activeTab, setActiveTab] = useState('services'); // 'services' | 'products'
-  const [services, setServices] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Inicializa sincronamente do cache em memória para renderização em 0ms na troca de aba
+  const [services, setServices] = useState(() => getCache(servicesKey) || []);
+  const [products, setProducts] = useState(() => getCache(productsKey) || []);
+  const [loading, setLoading] = useState(
+    () => !(hasCache(servicesKey) && hasCache(productsKey))
+  );
   const [bootstrapping, setBootstrapping] = useState(false);
 
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -63,36 +77,63 @@ export default function ServicosPage() {
   const [saveStatus, setSaveStatus] = useState(null); // 'saving' | 'saved' | null
   const saveTimeoutRef = useRef(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [servicesData, productsData] = await Promise.all([
-        listServices(),
-        listProducts(),
-      ]);
-      setServices(servicesData || []);
-      setProducts(productsData || []);
-    } catch (err) {
-      console.error('Erro ao carregar catálogo:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const load = useCallback(
+    async ({ silent = false, force = false } = {}) => {
+      const hasCached = hasCache(servicesKey) && hasCache(productsKey);
+      if (!silent && !hasCached) {
+        setLoading(true);
+      }
+
+      try {
+        const [servicesData, productsData] = await Promise.all([
+          fetchWithCache(
+            servicesKey,
+            async () => (await listServices()) || [],
+            { ttlMs: 2 * 60 * 1000, force }
+          ),
+          fetchWithCache(
+            productsKey,
+            async () => (await listProducts()) || [],
+            { ttlMs: 2 * 60 * 1000, force }
+          ),
+        ]);
+        const nextServices = servicesData || [];
+        const nextProducts = productsData || [];
+        setServices(nextServices);
+        setProducts(nextProducts);
+        setCache(servicesKey, nextServices);
+        setCache(productsKey, nextProducts);
+      } catch (err) {
+        console.error('Erro ao carregar catálogo:', err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [servicesKey, productsKey]
+  );
 
   useEffect(() => {
-    load();
-  }, [load]);
+    const hasCached = hasCache(servicesKey) && hasCache(productsKey);
+    if (hasCached) {
+      setServices(getCache(servicesKey) || []);
+      setProducts(getCache(productsKey) || []);
+      setLoading(false);
+      load({ silent: true, force: false });
+    } else {
+      load({ silent: false, force: true });
+    }
+  }, [servicesKey, productsKey, load]);
 
   function handleClose() {
     setSheetOpen(false);
     setEditing(null);
-    load();
+    load({ silent: true, force: true });
   }
 
   function handleCloseProduct() {
     setProductSheetOpen(false);
     setEditingProduct(null);
-    load();
+    load({ silent: true, force: true });
   }
 
   async function handleSeedCatalog() {
@@ -103,7 +144,8 @@ export default function ServicosPage() {
         toast.error(res.error);
       } else {
         toast.success('Catálogo base do JM BarberClub carregado com sucesso!');
-        await load();
+        invalidateCache(cacheKeys.bootstrapStatus());
+        await load({ silent: true, force: true });
       }
     } catch {
       toast.error('Erro ao carregar catálogo inicial.');
@@ -114,6 +156,7 @@ export default function ServicosPage() {
 
   const handleReorder = async (newOrder) => {
     setServices(newOrder);
+    setCache(servicesKey, newOrder);
     setSaveStatus('saving');
 
     if (saveTimeoutRef.current) {

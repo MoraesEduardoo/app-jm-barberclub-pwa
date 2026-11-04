@@ -3,37 +3,48 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Plus, Lock } from 'lucide-react';
 import { useBarber } from '@/lib/barber-context';
-import { listTeam } from '@/lib/actions/team';
+import { cacheKeys, hasCache } from '@/lib/admin-cache';
 import TeamMemberCard from '@/components/admin/TeamMemberCard';
 import AddMemberSheet from '@/components/admin/AddMemberSheet';
 
 export default function EquipePage() {
-  const { barber, isChefe } = useBarber();
+  const { barber, isChefe, team, setTeam, refreshTeam } = useBarber();
   const canManageTeam = Boolean(isChefe && barber?.role === 'admin');
-  const [team, setTeam] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    () => !(hasCache(cacheKeys.team()) || team.length > 0)
+  );
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  const load = useCallback(async ({ silent } = {}) => {
-    if (!silent) setLoading(true);
-    try {
-      const data = await listTeam();
-      setTeam(data || []);
-    } catch {
-      setTeam([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const load = useCallback(
+    async ({ silent = false, force = false } = {}) => {
+      if (!silent && !hasCache(cacheKeys.team()) && team.length === 0) {
+        setLoading(true);
+      }
+      try {
+        await refreshTeam({ force });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [refreshTeam, team.length]
+  );
 
-  const handleMemberRemoved = useCallback((memberId) => {
-    if (!memberId) return;
-    setTeam((prev) => prev.filter((item) => item.id !== memberId));
-  }, []);
+  const handleMemberRemoved = useCallback(
+    (memberId) => {
+      if (!memberId) return;
+      setTeam((prev) => prev.filter((item) => item.id !== memberId));
+    },
+    [setTeam]
+  );
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (hasCache(cacheKeys.team()) || team.length > 0) {
+      setLoading(false);
+      load({ silent: true, force: false });
+    } else {
+      load({ silent: false, force: true });
+    }
+  }, [load, team.length]);
 
   return (
     <div className="px-4 pt-4">
@@ -68,7 +79,7 @@ export default function EquipePage() {
               key={member.id}
               member={member}
               onChanged={handleMemberRemoved}
-              onUpdated={() => load({ silent: true })}
+              onUpdated={() => load({ silent: true, force: true })}
             />
           ))}
         </div>
@@ -79,7 +90,7 @@ export default function EquipePage() {
           open={sheetOpen}
           onClose={() => {
             setSheetOpen(false);
-            load({ silent: true });
+            load({ silent: true, force: true });
           }}
         />
       )}

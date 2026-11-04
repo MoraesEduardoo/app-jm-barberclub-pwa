@@ -6,6 +6,7 @@ import BottomSheet from "./BottomSheet";
 import { PrimaryButton } from "./FormField";
 import { listProducts } from "@/lib/actions/products";
 import { addProductToAppointment } from "@/lib/actions/appointments";
+import { cacheKeys, getCache, fetchWithCache } from "@/lib/admin-cache";
 
 function formatBRL(val) {
   return `R$ ${Number(val || 0)
@@ -52,7 +53,10 @@ export function parseAppointmentNotes(notes) {
 }
 
 export default function AddProductSheet({ open, onClose, appointment, onAdded }) {
-  const [products, setProducts] = useState([]);
+  const productsKey = cacheKeys.products();
+  const [products, setProducts] = useState(() =>
+    (getCache(productsKey) || []).filter((p) => p.is_active !== false)
+  );
   const [loading, setLoading] = useState(false);
   // Mapa de carrinho: { [productId]: quantity }
   const [cart, setCart] = useState({});
@@ -63,20 +67,31 @@ export default function AddProductSheet({ open, onClose, appointment, onAdded })
     if (!open) return;
     setError("");
     setCart({});
-    setLoading(true);
 
-    listProducts()
+    const cached = getCache(productsKey);
+    if (Array.isArray(cached) && cached.length > 0) {
+      setProducts(cached.filter((p) => p.is_active !== false));
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
+    fetchWithCache(productsKey, async () => (await listProducts()) || [], {
+      ttlMs: 60 * 1000,
+    })
       .then((data) => {
         const activeProducts = (data || []).filter((p) => p.is_active !== false);
         setProducts(activeProducts);
       })
       .catch(() => {
-        setError("Não foi possível carregar o catálogo de produtos.");
+        if (!Array.isArray(cached)) {
+          setError("Não foi possível carregar o catálogo de produtos.");
+        }
       })
       .finally(() => {
         setLoading(false);
       });
-  }, [open]);
+  }, [open, productsKey]);
 
   if (!appointment) return null;
 
@@ -133,11 +148,11 @@ export default function AddProductSheet({ open, onClose, appointment, onAdded })
 
   const totalUnits = selectedEntries.reduce((acc, item) => acc + item.quantity, 0);
   const productsSubtotal = Number(
-    selectedEntries.reduce((acc, item) => acc + item.subtotal, 0).toFixed(2),
+    selectedEntries.reduce((acc, item) => acc + item.subtotal, 0).toFixed(2)
   );
 
   const currentTotal = Number(
-    appointment.total_price ?? appointment.price ?? appointment.services?.price ?? 0,
+    appointment.total_price ?? appointment.price ?? appointment.services?.price ?? 0
   );
   const nextTotal = Number((currentTotal + productsSubtotal).toFixed(2));
 

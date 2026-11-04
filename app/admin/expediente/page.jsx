@@ -4,16 +4,21 @@ import { useEffect, useState, useCallback, useTransition } from "react";
 import { CalendarOff, Plus, Trash2, Save, Loader2 } from "lucide-react";
 import { useBarber } from "@/lib/barber-context";
 import { PERMISSION_KEYS } from "@/lib/auth";
-import { listTeam } from "@/lib/actions/team";
 import { WEEKDAYS } from "@/lib/constants/schedule";
 import {
   listSchedule,
   saveScheduleBatch,
-  upsertScheduleDay,
   listExceptions,
   createException,
   deleteException,
 } from "@/lib/actions/schedule";
+import {
+  cacheKeys,
+  getCache,
+  setCache,
+  fetchWithCache,
+  invalidateCache,
+} from "@/lib/admin-cache";
 import ScheduleDayRow from "@/components/admin/ScheduleDayRow";
 import BottomSheet from "@/components/admin/BottomSheet";
 import {
@@ -24,50 +29,79 @@ import {
 import { toast } from "@/lib/toast";
 
 export default function ExpedientePage() {
-  const { barber, can, isChefe, isLeadership, selectedBarberId, selectBarber, setSelectionGuard } = useBarber();
+  const {
+    barber,
+    can,
+    isLeadership,
+    selectedBarberId,
+    selectBarber,
+    setSelectionGuard,
+    team,
+  } = useBarber();
   const canManageOthers = can(PERMISSION_KEYS.MANAGE_SCHEDULE_OTHERS);
 
-  const [team, setTeam] = useState([]);
   // Liderança (Chefe/Gerente): segue o profissional selecionado no contexto global.
   // Barbeiro com MANAGE_SCHEDULE_OTHERS: escolha local, só desta tela.
   const [localTargetId, setLocalTargetId] = useState(barber?.id);
   const targetBarberId = isLeadership ? (selectedBarberId ?? barber?.id) : localTargetId;
-  const [schedule, setSchedule] = useState([]);
-  const [exceptions, setExceptions] = useState([]);
-  const [isPending, startTransition] = useTransition();
+
+  const schedKey = cacheKeys.schedule(targetBarberId);
+  const excKey = cacheKeys.exceptions(targetBarberId);
+
+  // Inicializa sincronamente do cache em memória para exibição instantânea (0ms) na troca de aba
+  const [schedule, setSchedule] = useState(() => getCache(schedKey) || []);
+  const [exceptions, setExceptions] = useState(() => getCache(excKey) || []);
+  const [, startTransition] = useTransition();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [blockDate, setBlockDate] = useState("");
   const [blockNote, setBlockNote] = useState("");
 
-  // Novos estados para o controlo de salvamento manual
+  // Estados para o controlo de salvamento manual
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    if (canManageOthers) {
-      listTeam()
-        .then(setTeam)
-        .catch(() => {});
-    }
-  }, [canManageOthers]);
+  const loadData = useCallback(
+    async (barberId, { force = false } = {}) => {
+      if (!barberId) return;
+      const sKey = cacheKeys.schedule(barberId);
+      const eKey = cacheKeys.exceptions(barberId);
 
-  const loadData = useCallback(async (barberId) => {
-    try {
-      const [sched, exc] = await Promise.all([
-        listSchedule(barberId),
-        listExceptions(barberId),
-      ]);
-      setSchedule(sched || []);
-      setExceptions(exc || []);
-      setHasChanges(false); // Reseta o estado de alterações ao carregar
-    } catch (err) {
-      console.error(err);
-    }
-  }, []);
+      // Hidrata imediatamente se já existir no cache ao alternar de barbeiro
+      const cachedSched = getCache(sKey);
+      const cachedExc = getCache(eKey);
+      if (Array.isArray(cachedSched)) setSchedule(cachedSched);
+      if (Array.isArray(cachedExc)) setExceptions(cachedExc);
+
+      try {
+        const [sched, exc] = await Promise.all([
+          fetchWithCache(
+            sKey,
+            async () => (await listSchedule(barberId)) || [],
+            { ttlMs: 2 * 60 * 1000, force }
+          ),
+          fetchWithCache(
+            eKey,
+            async () => (await listExceptions(barberId)) || [],
+            { ttlMs: 2 * 60 * 1000, force }
+          ),
+        ]);
+        const nextSched = sched || [];
+        const nextExc = exc || [];
+        setSchedule(nextSched);
+        setExceptions(nextExc);
+        setCache(sKey, nextSched);
+        setCache(eKey, nextExc);
+        setHasChanges(false);
+      } catch (err) {
+        console.error(err);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     if (targetBarberId) {
-      loadData(targetBarberId);
+      loadData(targetBarberId, { force: false });
     }
   }, [targetBarberId, loadData]);
 
@@ -90,7 +124,6 @@ export default function ExpedientePage() {
   }
 
   function handleDayChange(dayValue, values) {
-    // Apenas atualiza a UI otimista localmente, sem contactar o servidor
     setSchedule((prev) => {
       const index = prev.findIndex((s) => s.day_of_week === dayValue);
       if (index >= 0) {
@@ -100,7 +133,7 @@ export default function ExpedientePage() {
       }
       return [...prev, { day_of_week: dayValue, ...values }];
     });
-    setHasChanges(true); // Exibe o botão de salvar
+    setHasChanges(true);
   }
 
   async function handleSaveChanges() {
@@ -111,7 +144,10 @@ export default function ExpedientePage() {
         throw new Error(res.error);
       }
       setHasChanges(false);
-      await loadData(targetBarberId);
+      setCache(schedKey, schedule);
+      invalidateCache("schedule:week:");
+      invalidateCache(cacheKeys.bootstrapStatus());
+      await loadData(targetBarberId, { force: true });
       toast.success("Escala de expediente salva com sucesso!");
     } catch (error) {
       console.error("Erro ao salvar horários:", error);
@@ -131,17 +167,23 @@ export default function ExpedientePage() {
     setBlockDate("");
     setBlockNote("");
     setSheetOpen(false);
-    loadData(targetBarberId);
+    invalidateCache("schedule:week:");
+    loadData(targetBarberId, { force: true });
   }
 
   async function handleRemoveBlock(id) {
-    setExceptions((prev) => prev.filter((exc) => exc.id !== id));
+    setExceptions((prev) => {
+      const next = prev.filter((exc) => exc.id !== id);
+      setCache(excKey, next);
+      return next;
+    });
     await deleteException(id);
-    loadData(targetBarberId);
+    invalidateCache("schedule:week:");
+    loadData(targetBarberId, { force: true });
   }
 
   const scheduleByDay = Object.fromEntries(
-    schedule.map((s) => [s.day_of_week, s]),
+    schedule.map((s) => [s.day_of_week, s])
   );
 
   return (
@@ -206,7 +248,7 @@ export default function ExpedientePage() {
               <div className="flex-1 min-w-0">
                 <p className="text-white text-sm font-medium">
                   {new Date(
-                    exc.exception_date + "T00:00:00",
+                    exc.exception_date + "T00:00:00"
                   ).toLocaleDateString("pt-BR", {
                     day: "2-digit",
                     month: "long",

@@ -1,54 +1,65 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Users,
   Search,
   MessageSquare,
-  Sparkles,
-  AlertCircle,
-  Calendar,
-  Clock,
-  Scissors,
-  ArrowUpDown,
-  RefreshCw,
   ChevronRight,
-  TrendingUp,
 } from 'lucide-react';
 import { listClients } from '@/lib/actions/clients';
 import { useBarber } from '@/lib/barber-context';
+import { cacheKeys, getCache, setCache } from '@/lib/admin-cache';
 import { formatPhoneBR } from '@/lib/whatsapp';
 import ClientDetailSheet from '@/components/admin/ClientDetailSheet';
 
-function formatBRL(val) {
-  return `R$ ${Number(val || 0).toFixed(2).replace('.', ',')}`;
-}
-
 export default function ClientesPage() {
-  const { scopeBarberId, isLeadership, isChefe } = useBarber();
-  const [clients, setClients] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { scopeBarberId } = useBarber();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('todos'); // 'todos' | 'fiel' | 'atrasado' | 'novo'
-  const [counts, setCounts] = useState({ total: 0, fiel: 0, atrasado: 0, novo: 0 });
+
+  const clientsKey = cacheKeys.clients(search, filter, scopeBarberId);
+  const cachedPayload = getCache(clientsKey);
+
+  const [clients, setClients] = useState(() => cachedPayload?.clients || []);
+  const [counts, setCounts] = useState(
+    () =>
+      cachedPayload?.counts || {
+        total: 0,
+        fiel: 0,
+        atrasado: 0,
+        novo: 0,
+      }
+  );
+  const [loading, setLoading] = useState(() => !cachedPayload);
   const [selectedClient, setSelectedClient] = useState(null);
-  const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
+    const currentCached = getCache(clientsKey);
+    if (currentCached) {
+      setClients(currentCached.clients || []);
+      setCounts(
+        currentCached.counts || { total: 0, fiel: 0, atrasado: 0, novo: 0 }
+      );
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
 
     listClients({ search, filter, scopeBarberId })
       .then((res) => {
         if (!active) return;
         if (res.data) {
-          setClients(res.data);
-          setCounts({
+          const nextCounts = {
             total: res.totalCount || 0,
             fiel: res.fielCount || 0,
             atrasado: res.atrasadoCount || 0,
             novo: res.novoCount || 0,
-          });
+          };
+          setClients(res.data);
+          setCounts(nextCounts);
+          setCache(clientsKey, { clients: res.data, counts: nextCounts });
         }
       })
       .catch((err) => {
@@ -61,7 +72,7 @@ export default function ClientesPage() {
     return () => {
       active = false;
     };
-  }, [search, filter, scopeBarberId]);
+  }, [search, filter, scopeBarberId, clientsKey]);
 
   function handleWhatsApp(client, e) {
     if (e) e.stopPropagation();
@@ -72,25 +83,29 @@ export default function ClientesPage() {
   }
 
   function handleClientDeleted(deletedClient) {
-    setClients((prev) =>
-      prev.filter(
+    setClients((prev) => {
+      const next = prev.filter(
         (c) =>
           c.id !== deletedClient.id &&
           (!deletedClient.cleanPhone || c.cleanPhone !== deletedClient.cleanPhone)
-      )
-    );
+      );
+      setCache(clientsKey, { clients: next, counts });
+      return next;
+    });
     setSelectedClient(null);
 
     listClients({ search, filter, scopeBarberId })
       .then((res) => {
         if (res.data) {
-          setClients(res.data);
-          setCounts({
+          const nextCounts = {
             total: res.totalCount || 0,
             fiel: res.fielCount || 0,
             atrasado: res.atrasadoCount || 0,
             novo: res.novoCount || 0,
-          });
+          };
+          setClients(res.data);
+          setCounts(nextCounts);
+          setCache(clientsKey, { clients: res.data, counts: nextCounts });
         }
       })
       .catch((err) => console.error(err));
@@ -158,7 +173,7 @@ export default function ClientesPage() {
               : 'bg-surface border border-zinc-800 text-zinc-400 hover:text-emerald-400'
           }`}
         >
-          <span>⭐ Fiéis ({counts.fiel})</span>
+          <span>Fiéis ({counts.fiel})</span>
         </button>
 
         <button
@@ -170,7 +185,7 @@ export default function ClientesPage() {
               : 'bg-surface border border-zinc-800 text-zinc-400 hover:text-amber-400'
           }`}
         >
-          <span>⏳ Atrasados (+30d) ({counts.atrasado})</span>
+          <span>Atrasados (+30d) ({counts.atrasado})</span>
         </button>
 
         <button
@@ -182,7 +197,7 @@ export default function ClientesPage() {
               : 'bg-surface border border-zinc-800 text-zinc-400 hover:text-sky-400'
           }`}
         >
-          <span>🌱 Novos ({counts.novo})</span>
+          <span>Novos ({counts.novo})</span>
         </button>
       </div>
 

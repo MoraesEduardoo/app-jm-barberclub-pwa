@@ -20,26 +20,42 @@ import {
   bootstrapInitialSchedulesAction,
 } from "@/lib/actions/bootstrap";
 import { useBarber } from "@/lib/barber-context";
+import {
+  cacheKeys,
+  getCache,
+  fetchWithCache,
+  invalidateCache,
+} from "@/lib/admin-cache";
 import { toast } from "@/lib/toast";
 
 export default function SystemBootstrapCard({ onBootstrapChange }) {
   const { isChefe, isLeadership, refreshTeam } = useBarber();
-  const [status, setStatus] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const bootKey = cacheKeys.bootstrapStatus();
+  const cachedStatus = getCache(bootKey);
+
+  const [status, setStatus] = useState(() => cachedStatus || null);
+  const [loading, setLoading] = useState(() => !cachedStatus);
   const [busyStep, setBusyStep] = useState(null); // 'team' | 'services' | 'schedules' | 'all'
 
-  const checkStatus = useCallback(async () => {
-    try {
-      const res = await getShopBootstrapStatus();
-      if (!res?.error) {
-        setStatus(res);
+  const checkStatus = useCallback(
+    async ({ force = false } = {}) => {
+      try {
+        const res = await fetchWithCache(
+          bootKey,
+          () => getShopBootstrapStatus(),
+          { ttlMs: 5 * 60 * 1000, force }
+        );
+        if (!res?.error) {
+          setStatus(res);
+        }
+      } catch {
+        // ignora silenciosamente
+      } finally {
+        setLoading(false);
       }
-    } catch {
-      // ignora silenciosamente
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    [bootKey]
+  );
 
   useEffect(() => {
     if (isLeadership) {
@@ -61,8 +77,10 @@ export default function SystemBootstrapCard({ onBootstrapChange }) {
         toast.error(res.error);
       } else {
         toast.success("Equipe inicial (Matheus e William) e escalas registadas com sucesso!");
-        await refreshTeam();
-        await checkStatus();
+        invalidateCache("team:");
+        invalidateCache("schedule:");
+        await refreshTeam({ force: true });
+        await checkStatus({ force: true });
         if (onBootstrapChange) onBootstrapChange();
       }
     } catch {
@@ -82,7 +100,8 @@ export default function SystemBootstrapCard({ onBootstrapChange }) {
         toast.success(
           `Catálogo inicial configurado (${res.insertedCount || 13} serviços ativos)!`
         );
-        await checkStatus();
+        invalidateCache(cacheKeys.services());
+        await checkStatus({ force: true });
         if (onBootstrapChange) onBootstrapChange();
       }
     } catch {
@@ -100,7 +119,8 @@ export default function SystemBootstrapCard({ onBootstrapChange }) {
         toast.error(res.error);
       } else {
         toast.success("Escala semanal padrão (Seg–Sáb 09:00–19:00) gravada para a equipe!");
-        await checkStatus();
+        invalidateCache("schedule:");
+        await checkStatus({ force: true });
         if (onBootstrapChange) onBootstrapChange();
       }
     } catch {
@@ -116,8 +136,9 @@ export default function SystemBootstrapCard({ onBootstrapChange }) {
       await bootstrapInitialTeamAction();
       await bootstrapInitialServicesCatalogAction();
       await bootstrapInitialSchedulesAction();
-      await refreshTeam();
-      await checkStatus();
+      invalidateCache();
+      await refreshTeam({ force: true });
+      await checkStatus({ force: true });
       if (onBootstrapChange) onBootstrapChange();
       toast.success("Banco inicializado com Equipe, Catálogo de Serviços e Escalas!");
     } catch {

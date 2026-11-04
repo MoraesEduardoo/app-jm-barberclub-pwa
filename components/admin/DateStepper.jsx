@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { todayInShop, addDaysStr } from "@/lib/dates";
 import { getWeekScheduleStatus } from "@/lib/actions/schedule";
+import { cacheKeys, getCache, fetchWithCache } from "@/lib/admin-cache";
 
 // Rótulos fixos: não dependem do Intl/ICU do aparelho, então o texto é idêntico
 // no servidor (SSR) e no navegador (sem erro de hidratação).
@@ -39,7 +40,6 @@ const NAV_BTN =
  */
 export default function DateStepper({ value, onChange, barberId = null }) {
   const today = todayInShop();
-  const [statusMap, setStatusMap] = useState({});
 
   const weekDays = useMemo(() => {
     const monday = mondayOf(value);
@@ -55,12 +55,26 @@ export default function DateStepper({ value, onChange, barberId = null }) {
 
   const fromDate = weekDays[0]?.dateStr;
   const toDate = weekDays[6]?.dateStr;
+  const weekCacheKey = cacheKeys.weekSchedule(fromDate, toDate, barberId);
+
+  const [statusMap, setStatusMap] = useState(
+    () => getCache(weekCacheKey) || {}
+  );
 
   useEffect(() => {
     let active = true;
     if (!fromDate || !toDate) return;
 
-    getWeekScheduleStatus({ fromDate, toDate, barberId })
+    const cached = getCache(weekCacheKey);
+    if (cached && typeof cached === "object") {
+      setStatusMap((prev) => ({ ...prev, ...cached }));
+    }
+
+    fetchWithCache(
+      weekCacheKey,
+      () => getWeekScheduleStatus({ fromDate, toDate, barberId }),
+      { ttlMs: 5 * 60 * 1000 }
+    )
       .then((res) => {
         if (active && res && typeof res === "object") {
           setStatusMap((prev) => ({ ...prev, ...res }));
@@ -71,7 +85,7 @@ export default function DateStepper({ value, onChange, barberId = null }) {
     return () => {
       active = false;
     };
-  }, [fromDate, toDate, barberId]);
+  }, [fromDate, toDate, barberId, weekCacheKey]);
 
   const rangeLabel = `${formatShort(weekDays[0].dateStr)} a ${formatShort(weekDays[6].dateStr)}`;
 

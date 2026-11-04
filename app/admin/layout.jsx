@@ -8,6 +8,7 @@ import { hasPermission, PERMISSION_KEYS } from "@/lib/auth";
 import { getCurrentBarber } from "@/lib/actions/session";
 import { BarberProvider, useBarber } from "@/lib/barber-context";
 import { NotificationProvider } from "@/lib/notifications";
+import { cacheKeys, getCache, setCache, invalidateCache } from "@/lib/admin-cache";
 import Header from "@/components/admin/Header";
 import BottomNav from "@/components/admin/BottomNav";
 import ProfileSheet from "@/components/admin/ProfileSheet";
@@ -75,8 +76,9 @@ function AdminShell({ children, onProfileUpdated }) {
 }
 
 export default function AdminLayout({ children }) {
-  const [status, setStatus] = useState("loading"); // loading | ok
-  const [barber, setBarber] = useState(null);
+  const cachedBarber = getCache(cacheKeys.sessionBarber()) || null;
+  const [status, setStatus] = useState(() => (cachedBarber ? "ok" : "loading")); // loading | ok
+  const [barber, setBarber] = useState(() => cachedBarber);
 
   useEffect(() => {
     let active = true;
@@ -85,9 +87,11 @@ export default function AdminLayout({ children }) {
       const res = await getCurrentBarber();
       if (!active) return;
       if (res?.error || !res?.barber) {
+        invalidateCache();
         await endSession();
         return;
       }
+      setCache(cacheKeys.sessionBarber(), res.barber);
       setBarber(res.barber);
       setStatus("ok");
     }
@@ -98,7 +102,12 @@ export default function AdminLayout({ children }) {
     };
   }, []);
 
-  if (status === "loading") {
+  const handleSignOut = async () => {
+    invalidateCache();
+    await endSession();
+  };
+
+  if (status === "loading" || !barber) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-3">
         <Loader2 className="animate-spin text-accent" size={28} />
@@ -108,8 +117,15 @@ export default function AdminLayout({ children }) {
   }
 
   return (
-    <BarberProvider barber={barber} signOut={endSession}>
-      <AdminShell onProfileUpdated={(updated) => setBarber(updated)}>{children}</AdminShell>
+    <BarberProvider barber={barber} signOut={handleSignOut}>
+      <AdminShell
+        onProfileUpdated={(updated) => {
+          setCache(cacheKeys.sessionBarber(), updated);
+          setBarber(updated);
+        }}
+      >
+        {children}
+      </AdminShell>
     </BarberProvider>
   );
 }
