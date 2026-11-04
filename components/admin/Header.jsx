@@ -54,7 +54,7 @@ export default function Header({ pathname, onOpenProfile, onOpenMenu }) {
           <div className="flex flex-col leading-tight min-w-0">
             <span className="text-white font-semibold text-base truncate">{title}</span>
             <span className="text-zinc-500 text-xs truncate">
-              {isChefe ? 'Acesso total' : isManager ? 'Gerência e agenda' : 'Meus atendimentos'}
+              {isChefe ? 'Acesso total' : isManager ? 'Gerência e agenda' : 'Meus atendimentos'} • v2.6
             </span>
           </div>
         </div>

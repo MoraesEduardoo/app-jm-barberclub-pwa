@@ -1,7 +1,17 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Plus, Lock, ArrowUpDown, Check, Loader2, Sparkles, Scissors, Package } from 'lucide-react';
+import {
+  Plus,
+  Lock,
+  ArrowUpDown,
+  Check,
+  Loader2,
+  Sparkles,
+  Scissors,
+  Package,
+  RefreshCw,
+} from 'lucide-react';
 import { Reorder, useDragControls } from 'framer-motion';
 import { listServices, reorderServices } from '@/lib/actions/services';
 import { listProducts } from '@/lib/actions/products';
@@ -9,9 +19,7 @@ import { bootstrapInitialServicesCatalogAction } from '@/lib/actions/bootstrap';
 import {
   cacheKeys,
   getCache,
-  hasCache,
   setCache,
-  fetchWithCache,
   invalidateCache,
 } from '@/lib/admin-cache';
 import ServiceRow from '@/components/admin/ServiceRow';
@@ -20,6 +28,9 @@ import ProductFormSheet from '@/components/admin/ProductFormSheet';
 import { useBarber } from '@/lib/barber-context';
 import { PERMISSION_KEYS } from '@/lib/auth';
 import { toast } from '@/lib/toast';
+
+const SERVICES_KEY = cacheKeys.services();
+const PRODUCTS_KEY = cacheKeys.products();
 
 function ReorderableServiceRow({ service, onEdit }) {
   const dragControls = useDragControls();
@@ -56,16 +67,20 @@ export default function ServicosPage() {
   const { can } = useBarber();
   const canManage = can(PERMISSION_KEYS.MANAGE_SERVICES);
 
-  const servicesKey = cacheKeys.services();
-  const productsKey = cacheKeys.products();
-
   const [activeTab, setActiveTab] = useState('services'); // 'services' | 'products'
-  // Inicializa sincronamente do cache em memória para renderização em 0ms na troca de aba
-  const [services, setServices] = useState(() => getCache(servicesKey) || []);
-  const [products, setProducts] = useState(() => getCache(productsKey) || []);
-  const [loading, setLoading] = useState(
-    () => !(hasCache(servicesKey) && hasCache(productsKey))
-  );
+  const [services, setServices] = useState(() => {
+    const cached = getCache(SERVICES_KEY);
+    return Array.isArray(cached) ? cached : [];
+  });
+  const [products, setProducts] = useState(() => {
+    const cached = getCache(PRODUCTS_KEY);
+    return Array.isArray(cached) ? cached : [];
+  });
+  const [loading, setLoading] = useState(() => {
+    const cachedServices = getCache(SERVICES_KEY);
+    return !(Array.isArray(cachedServices) && cachedServices.length > 0);
+  });
+  const [errorMsg, setErrorMsg] = useState(null);
   const [bootstrapping, setBootstrapping] = useState(false);
 
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -77,63 +92,58 @@ export default function ServicosPage() {
   const [saveStatus, setSaveStatus] = useState(null); // 'saving' | 'saved' | null
   const saveTimeoutRef = useRef(null);
 
-  const load = useCallback(
-    async ({ silent = false, force = false } = {}) => {
-      const hasCached = hasCache(servicesKey) && hasCache(productsKey);
-      if (!silent && !hasCached) {
-        setLoading(true);
+  const loadCatalog = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+    }
+    setErrorMsg(null);
+
+    try {
+      const [servicesResult, productsResult] = await Promise.allSettled([
+        listServices(),
+        listProducts(),
+      ]);
+
+      if (servicesResult.status === 'fulfilled') {
+        const nextServices = Array.isArray(servicesResult.value) ? servicesResult.value : [];
+        setServices(nextServices);
+        setCache(SERVICES_KEY, nextServices);
+      } else {
+        console.error('[ServicosPage] Erro ao buscar serviços:', servicesResult.reason);
+        setErrorMsg('Não foi possível sincronizar todos os itens. Tente atualizar.');
       }
 
-      try {
-        const [servicesData, productsData] = await Promise.all([
-          fetchWithCache(
-            servicesKey,
-            async () => (await listServices()) || [],
-            { ttlMs: 2 * 60 * 1000, force }
-          ),
-          fetchWithCache(
-            productsKey,
-            async () => (await listProducts()) || [],
-            { ttlMs: 2 * 60 * 1000, force }
-          ),
-        ]);
-        const nextServices = servicesData || [];
-        const nextProducts = productsData || [];
-        setServices(nextServices);
+      if (productsResult.status === 'fulfilled') {
+        const nextProducts = Array.isArray(productsResult.value) ? productsResult.value : [];
         setProducts(nextProducts);
-        setCache(servicesKey, nextServices);
-        setCache(productsKey, nextProducts);
-      } catch (err) {
-        console.error('Erro ao carregar catálogo:', err);
-      } finally {
-        setLoading(false);
+        setCache(PRODUCTS_KEY, nextProducts);
+      } else {
+        console.error('[ServicosPage] Erro ao buscar produtos:', productsResult.reason);
       }
-    },
-    [servicesKey, productsKey]
-  );
+    } catch (err) {
+      console.error('[ServicosPage] Exceção ao carregar catálogo:', err);
+      setErrorMsg('Falha de comunicação ao carregar catálogo.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const hasCached = hasCache(servicesKey) && hasCache(productsKey);
-    if (hasCached) {
-      setServices(getCache(servicesKey) || []);
-      setProducts(getCache(productsKey) || []);
-      setLoading(false);
-      load({ silent: true, force: false });
-    } else {
-      load({ silent: false, force: true });
-    }
-  }, [servicesKey, productsKey, load]);
+    const cachedServices = getCache(SERVICES_KEY);
+    const hasLoadedServices = Array.isArray(cachedServices) && cachedServices.length > 0;
+    loadCatalog({ silent: hasLoadedServices });
+  }, [loadCatalog]);
 
-  function handleClose() {
+  function handleCloseServiceSheet() {
     setSheetOpen(false);
     setEditing(null);
-    load({ silent: true, force: true });
+    loadCatalog({ silent: true });
   }
 
-  function handleCloseProduct() {
+  function handleCloseProductSheet() {
     setProductSheetOpen(false);
     setEditingProduct(null);
-    load({ silent: true, force: true });
+    loadCatalog({ silent: true });
   }
 
   async function handleSeedCatalog() {
@@ -145,7 +155,7 @@ export default function ServicosPage() {
       } else {
         toast.success('Catálogo base do JM BarberClub carregado com sucesso!');
         invalidateCache(cacheKeys.bootstrapStatus());
-        await load({ silent: true, force: true });
+        await loadCatalog({ silent: false });
       }
     } catch {
       toast.error('Erro ao carregar catálogo inicial.');
@@ -154,9 +164,9 @@ export default function ServicosPage() {
     }
   }
 
-  const handleReorder = async (newOrder) => {
+  function handleReorder(newOrder) {
     setServices(newOrder);
-    setCache(servicesKey, newOrder);
+    setCache(SERVICES_KEY, newOrder);
     setSaveStatus('saving');
 
     if (saveTimeoutRef.current) {
@@ -174,7 +184,7 @@ export default function ServicosPage() {
         setSaveStatus(null);
       }
     }, 400);
-  };
+  }
 
   if (!canManage) {
     return (
@@ -218,15 +228,25 @@ export default function ServicosPage() {
         </button>
       </div>
 
+      {errorMsg && (
+        <div className="mb-3 flex items-center justify-between gap-2 rounded-xl border border-rose-500/30 bg-rose-950/30 px-3 py-2 text-xs text-rose-300">
+          <span>{errorMsg}</span>
+          <button
+            type="button"
+            onClick={() => loadCatalog({ silent: false })}
+            className="flex items-center gap-1 rounded-lg bg-rose-500/20 px-2.5 py-1 font-semibold text-white active:scale-95"
+          >
+            <RefreshCw size={12} /> Recarregar
+          </button>
+        </div>
+      )}
+
       {activeTab === 'services' ? (
         <>
-          {/* Cabeçalho e Botão de Novo Serviço */}
           <div className="flex items-center justify-between mb-2">
-            <div>
-              <p className="text-zinc-400 text-xs font-medium">
-                {services.length} serviço{services.length !== 1 ? 's' : ''} no catálogo
-              </p>
-            </div>
+            <p className="text-zinc-400 text-xs font-medium">
+              {services.length} serviço{services.length !== 1 ? 's' : ''} no catálogo
+            </p>
             <div className="flex items-center gap-2">
               {saveStatus === 'saving' && (
                 <span className="flex items-center gap-1 text-[11px] text-zinc-400 bg-zinc-900 border border-zinc-800 rounded-full px-2.5 py-1 animate-pulse">
@@ -239,6 +259,7 @@ export default function ServicosPage() {
                 </span>
               )}
               <button
+                type="button"
                 onClick={() => {
                   setEditing(null);
                   setSheetOpen(true);
@@ -260,9 +281,9 @@ export default function ServicosPage() {
             </div>
           )}
 
-          {loading ? (
+          {loading && services.length === 0 ? (
             <div className="space-y-3">
-              {[...Array(6)].map((_, i) => (
+              {[...Array(5)].map((_, i) => (
                 <div key={i} className="h-[104px] rounded-2xl bg-surface animate-pulse" />
               ))}
             </div>
@@ -330,15 +351,13 @@ export default function ServicosPage() {
         </>
       ) : (
         <>
-          {/* Cabeçalho e Botão de Novo Produto */}
           <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="text-zinc-400 text-xs font-medium">
-                {products.length} produto{products.length !== 1 ? 's' : ''} registado
-                {products.length !== 1 ? 's' : ''}
-              </p>
-            </div>
+            <p className="text-zinc-400 text-xs font-medium">
+              {products.length} produto{products.length !== 1 ? 's' : ''} registado
+              {products.length !== 1 ? 's' : ''}
+            </p>
             <button
+              type="button"
               onClick={() => {
                 setEditingProduct(null);
                 setProductSheetOpen(true);
@@ -349,7 +368,7 @@ export default function ServicosPage() {
             </button>
           </div>
 
-          {loading ? (
+          {loading && products.length === 0 ? (
             <div className="space-y-3">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="h-[96px] rounded-2xl bg-surface animate-pulse" />
@@ -443,14 +462,14 @@ export default function ServicosPage() {
       <ServiceFormSheet
         key={editing?.id || (sheetOpen ? 'new-service' : 'none')}
         open={sheetOpen}
-        onClose={handleClose}
+        onClose={handleCloseServiceSheet}
         service={editing}
       />
 
       <ProductFormSheet
         key={editingProduct?.id || (productSheetOpen ? 'new-product' : 'none')}
         open={productSheetOpen}
-        onClose={handleCloseProduct}
+        onClose={handleCloseProductSheet}
         product={editingProduct}
       />
     </div>
