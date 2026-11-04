@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
-import { UserPlus, AlertCircle, RefreshCcw, Sparkles, CheckCircle2, XCircle, Clock3 } from "lucide-react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { UserPlus, AlertCircle, RefreshCcw, Sparkles, Clock } from "lucide-react";
 import { useBarber } from "@/lib/barber-context";
 import { useNotifications } from "@/lib/notifications";
 import { endSession } from "@/lib/session";
@@ -15,7 +15,14 @@ import {
 } from "@/lib/actions/appointments";
 import { listTeam } from "@/lib/actions/team";
 import DateStepper from "@/components/admin/DateStepper";
-import AppointmentCard from "@/components/admin/AppointmentCard";
+import AppointmentCard, {
+  getAppointmentStartTime,
+  getAppointmentDuration,
+  getAppointmentEndTime,
+  timeStrToMinutes,
+  minutesToTimeStr,
+} from "@/components/admin/AppointmentCard";
+import AppointmentActionSheet from "@/components/admin/AppointmentActionSheet";
 import PaymentSheet from "@/components/admin/PaymentSheet";
 import AddProductSheet from "@/components/admin/AddProductSheet";
 import EditServiceSheet from "@/components/admin/EditServiceSheet";
@@ -33,6 +40,73 @@ const STATUS_FILTERS = [
   { key: "concluido", label: "Concluídos" },
 ];
 
+/**
+ * Monta os itens da Linha do Tempo Vertical intercalando agendamentos ordenados
+ * e marcadores de horário (de 30 em 30 min) nos intervalos livres.
+ */
+function buildTimelineItems(appointmentsList) {
+  if (!Array.isArray(appointmentsList) || appointmentsList.length === 0) {
+    return [];
+  }
+
+  const sorted = [...appointmentsList].sort((a, b) => {
+    const startA = timeStrToMinutes(getAppointmentStartTime(a));
+    const startB = timeStrToMinutes(getAppointmentStartTime(b));
+    if (startA === null && startB === null) return 0;
+    if (startA === null) return 1;
+    if (startB === null) return -1;
+    return startA - startB;
+  });
+
+  const items = [];
+  let prevEndMin = null;
+
+  sorted.forEach((appt, idx) => {
+    const startStr = getAppointmentStartTime(appt);
+    const startMin = timeStrToMinutes(startStr);
+    const durationMin = getAppointmentDuration(appt);
+    const endStr = getAppointmentEndTime(appt, startStr, durationMin);
+    const endMin = timeStrToMinutes(endStr);
+
+    // Se houver janela livre >= 20 min entre o término anterior e o próximo início,
+    // insere marcadores de referência de 30 em 30 min (ex: 14:30, 15:00, 15:30)
+    if (prevEndMin !== null && startMin !== null && startMin - prevEndMin >= 20) {
+      const gapMinutes = startMin - prevEndMin;
+      const firstTick = Math.ceil(prevEndMin / 30) * 30;
+      const ticks = [];
+      let cursor = firstTick;
+      while (cursor < startMin - 5 && ticks.length < 3) {
+        ticks.push(minutesToTimeStr(cursor));
+        cursor += 30;
+      }
+      if (ticks.length === 0) {
+        ticks.push(minutesToTimeStr(prevEndMin));
+      }
+
+      items.push({
+        type: "gap",
+        key: `gap-${prevEndMin}-${startMin}-${idx}`,
+        ticks,
+        gapMinutes,
+        fromTime: minutesToTimeStr(prevEndMin),
+        toTime: startStr,
+      });
+    }
+
+    items.push({
+      type: "appointment",
+      key: appt.id,
+      appointment: appt,
+    });
+
+    if (endMin !== null) {
+      prevEndMin = prevEndMin === null ? endMin : Math.max(prevEndMin, endMin);
+    }
+  });
+
+  return items;
+}
+
 export default function AgendaPage() {
   const { can, scopeBarberId, selectedBarberId, selectBarber, viewedBarber } = useBarber();
   const { notifications } = useNotifications();
@@ -44,6 +118,7 @@ export default function AgendaPage() {
   const [loadError, setLoadError] = useState("");
   const [actionError, setActionError] = useState("");
   const [busyId, setBusyId] = useState(null);
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState(null);
   const [paymentTarget, setPaymentTarget] = useState(null);
   const [productTarget, setProductTarget] = useState(null);
   const [editServiceTarget, setEditServiceTarget] = useState(null);
@@ -291,6 +366,16 @@ export default function AgendaPage() {
     return true;
   });
 
+  const timelineItems = useMemo(
+    () => buildTimelineItems(displayedAppointments),
+    [displayedAppointments]
+  );
+
+  const selectedAppointment = useMemo(
+    () => appointments.find((a) => a.id === selectedAppointmentId) || null,
+    [appointments, selectedAppointmentId]
+  );
+
   return (
     <div className="px-4 pt-4 pb-8 relative">
       {/* Assistente de Primeiro Acesso / Bootstrap quando o banco está limpo */}
@@ -313,7 +398,7 @@ export default function AgendaPage() {
                 : "bg-surface border border-zinc-800 text-zinc-400 hover:text-white"
             }`}
           >
-            👥 Toda a equipe
+            Toda a equipe
           </button>
           {team.map((m) => {
             const isSelected = selectedBarberId === m.id;
@@ -329,8 +414,8 @@ export default function AgendaPage() {
                 }`}
               >
                 <span>{m.name.split(" ")[0]}</span>
-                {m.role === "admin" && <span className="text-[10px]">👑</span>}
-                {m.role === "manager" && <span className="text-[10px]">👔</span>}
+                {m.role === "admin" && <span className="text-[10px]">Chefe</span>}
+                {m.role === "manager" && <span className="text-[10px]">Ger.</span>}
               </button>
             );
           })}
@@ -382,7 +467,7 @@ export default function AgendaPage() {
         <div className="mt-3 flex items-center justify-between gap-2 p-3 rounded-2xl bg-gradient-to-r from-purple-950/40 via-purple-900/25 to-zinc-900 border border-purple-500/30 animate-in fade-in">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="h-7 w-7 rounded-lg bg-purple-500/20 border border-purple-500/40 text-purple-300 flex items-center justify-center shrink-0 text-xs font-bold">
-              🔄
+              <Sparkles size={13} />
             </div>
             <div className="min-w-0">
               <p className="text-xs text-white font-bold truncate">
@@ -428,14 +513,17 @@ export default function AgendaPage() {
         </div>
       )}
 
+      {/* Visualização em Linha do Tempo Vertical */}
       <div className="mt-4">
         {loading ? (
-          <div className="space-y-2">
-            {[...Array(3)].map((_, i) => (
-              <div
-                key={i}
-                className="h-[124px] rounded-xl bg-surface animate-pulse"
-              />
+          <div className="space-y-3">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="flex items-stretch gap-3">
+                <div className="w-14 shrink-0 flex flex-col items-end pr-2 pt-2">
+                  <div className="h-3.5 w-10 rounded bg-surface animate-pulse" />
+                </div>
+                <div className="flex-1 h-[84px] rounded-2xl bg-surface animate-pulse" />
+              </div>
             ))}
           </div>
         ) : loadError ? (
@@ -467,23 +555,80 @@ export default function AgendaPage() {
             )}
           </div>
         ) : (
-          <div className="space-y-2.5">
-            {displayedAppointments.map((appointment) => (
-              <AppointmentCard
-                key={appointment.id}
-                appointment={appointment}
-                busy={busyId === appointment.id}
-                onChangeStatus={handleChangeStatus}
-                onOpenPayment={setPaymentTarget}
-                onAddProduct={setProductTarget}
-                onEditService={setEditServiceTarget}
-                onProductRemoved={() => load({ silent: true })}
-                onOpenPreSchedule={setPreScheduleTarget}
-              />
-            ))}
+          <div>
+            {/* Cabeçalho discreto da Timeline */}
+            <div className="flex items-center justify-between mb-3 px-1">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                <Clock size={12} className="text-accent-light" />
+                <span>Linha do Tempo</span>
+              </div>
+              <span className="text-[11px] text-zinc-500">
+                Toque no horário para abrir ações
+              </span>
+            </div>
+
+            <div className="relative">
+              {timelineItems.map((item, index) => {
+                if (item.type === "gap") {
+                  return (
+                    <div
+                      key={item.key}
+                      className="relative flex items-center gap-3 sm:gap-4 py-1.5 select-none"
+                    >
+                      <div className="w-14 sm:w-16 shrink-0 flex flex-col items-end pr-2 relative">
+                        <div className="absolute right-0 -top-2 -bottom-2 w-px border-r border-dashed border-zinc-800" />
+                        <span className="absolute -right-[3px] top-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full bg-zinc-700" />
+                        <div className="flex flex-col items-end gap-1">
+                          {item.ticks.map((t) => (
+                            <span
+                              key={t}
+                              className="font-mono tabular-nums text-[10px] font-medium text-zinc-600 leading-none"
+                            >
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0 py-1">
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-dashed border-zinc-900 bg-zinc-950/40">
+                          <span className="text-[11px] text-zinc-600 font-medium">
+                            Janela livre ({item.fromTime} – {item.toTime})
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                const isLastItem = index === timelineItems.length - 1;
+                return (
+                  <AppointmentCard
+                    key={item.key}
+                    appointment={item.appointment}
+                    isLast={isLastItem}
+                    busy={busyId === item.appointment.id}
+                    onSelect={(appt) => setSelectedAppointmentId(appt.id)}
+                  />
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
+
+      {/* Modal / Drawer de Ações ao clicar no Card da Timeline */}
+      <AppointmentActionSheet
+        open={Boolean(selectedAppointment)}
+        onClose={() => setSelectedAppointmentId(null)}
+        appointment={selectedAppointment}
+        busy={busyId === selectedAppointment?.id}
+        onChangeStatus={handleChangeStatus}
+        onOpenPayment={setPaymentTarget}
+        onAddProduct={setProductTarget}
+        onEditService={setEditServiceTarget}
+        onOpenPreSchedule={setPreScheduleTarget}
+        onProductRemoved={() => load({ silent: true })}
+      />
 
       <PaymentSheet
         open={Boolean(paymentTarget)}

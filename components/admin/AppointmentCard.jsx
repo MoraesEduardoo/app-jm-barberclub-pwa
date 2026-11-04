@@ -1,436 +1,300 @@
 'use client';
 
-import { useState } from 'react';
-import {
-  CheckCircle2,
-  XCircle,
-  Clock3,
-  Wallet,
-  User,
-  Zap,
-  MessageSquare,
-  Crown,
-  Clock,
-  RefreshCw,
-  Sparkles,
-  CalendarClock,
-  ShoppingBag,
-  Plus,
-  X,
-  Scissors,
-} from 'lucide-react';
-import { toast } from '@/lib/toast';
-import {
-  buildAppointmentReminderWhatsAppMessage,
-  getWhatsAppClickToChatUrl,
-} from '@/lib/whatsapp';
+import { CheckCircle2, ShoppingBag, Sparkles, Zap, ChevronRight } from 'lucide-react';
 import { isPreScheduledAppointment } from '@/lib/pre-scheduled';
 import { parseAppointmentNotes } from './AddProductSheet';
-import { removeProductFromAppointment } from '@/lib/actions/appointments';
 
-const STATUS_STYLES = {
-  pendente: { label: 'Pendente', className: 'bg-zinc-800 text-zinc-300' },
-  pending: { label: 'Pendente', className: 'bg-zinc-800 text-zinc-300' },
-  pre_scheduled: { label: 'Pré-agendado', className: 'bg-purple-500/20 text-purple-300 border border-purple-500/30' },
-  pre_agendado: { label: 'Pré-agendado', className: 'bg-purple-500/20 text-purple-300 border border-purple-500/30' },
-  'pre-agendado': { label: 'Pré-agendado', className: 'bg-purple-500/20 text-purple-300 border border-purple-500/30' },
-  confirmado: { label: 'Confirmado', className: 'bg-emerald-500/15 text-emerald-400' },
-  confirmed: { label: 'Confirmado', className: 'bg-emerald-500/15 text-emerald-400' },
-  concluido: { label: 'Concluído', className: 'bg-blue-500/15 text-blue-400' },
-  completed: { label: 'Concluído', className: 'bg-blue-500/15 text-blue-400' },
-  cancelado: { label: 'Cancelado', className: 'bg-accent/15 text-accent-light' },
-  cancelled: { label: 'Cancelado', className: 'bg-accent/15 text-accent-light' },
-};
+/**
+ * Converte "HH:MM" em minutos desde 00:00.
+ */
+export function timeStrToMinutes(timeStr) {
+  if (!timeStr || typeof timeStr !== 'string' || !timeStr.includes(':')) return null;
+  const [hStr, mStr] = timeStr.slice(0, 5).split(':');
+  const h = Number(hStr);
+  const m = Number(mStr);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
+}
+
+/**
+ * Converte minutos desde 00:00 para "HH:MM".
+ */
+export function minutesToTimeStr(totalMinutes) {
+  if (!Number.isFinite(totalMinutes) || totalMinutes < 0) return '';
+  const normalized = ((Math.round(totalMinutes) % 1440) + 1440) % 1440;
+  const h = Math.floor(normalized / 60);
+  const m = normalized % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/**
+ * Extrai o horário de início ("HH:MM") do agendamento no fuso America/Fortaleza.
+ */
+export function getAppointmentStartTime(appointment) {
+  if (!appointment) return '';
+  if (appointment.appointment_time) {
+    return String(appointment.appointment_time).slice(0, 5);
+  }
+  if (
+    appointment.appointment_date &&
+    String(appointment.appointment_date).includes('T') &&
+    !String(appointment.appointment_date).includes('T00:00:00')
+  ) {
+    return new Date(appointment.appointment_date).toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'America/Fortaleza',
+    });
+  }
+  return '';
+}
+
+/**
+ * Obtém a duração em minutos do agendamento (padrão 30 min).
+ */
+export function getAppointmentDuration(appointment) {
+  const raw =
+    appointment?.duration_minutes ??
+    appointment?.services?.duration_minutes ??
+    appointment?.services?.default_duration_minutes ??
+    30;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
+}
+
+/**
+ * Obtém o horário de término ("HH:MM") do agendamento.
+ */
+export function getAppointmentEndTime(
+  appointment,
+  startTime = getAppointmentStartTime(appointment),
+  durationMin = getAppointmentDuration(appointment)
+) {
+  if (appointment?.end_time) {
+    return String(appointment.end_time).slice(0, 5);
+  }
+  const startMinutes = timeStrToMinutes(startTime);
+  if (startMinutes === null) return '';
+  return minutesToTimeStr(startMinutes + durationMin);
+}
+
+/**
+ * Gera marcações intermediárias de 30 em 30 minutos para agendamentos longos
+ * na coluna esquerda da linha do tempo.
+ */
+function getIntermediateTicks(startTime, durationMin) {
+  const startMin = timeStrToMinutes(startTime);
+  if (startMin === null || durationMin < 45) return [];
+  const endMin = startMin + durationMin;
+  const ticks = [];
+  let cursor = Math.ceil((startMin + 15) / 30) * 30;
+  while (cursor <= endMin - 15) {
+    ticks.push(minutesToTimeStr(cursor));
+    cursor += 30;
+  }
+  return ticks;
+}
 
 export default function AppointmentCard({
   appointment,
-  onChangeStatus,
-  onOpenPayment,
-  onOpenPreSchedule,
-  onAddProduct,
-  onEditService,
-  onProductRemoved,
+  onSelect,
+  isLast = false,
   busy = false,
 }) {
-  const [removingKey, setRemovingKey] = useState(null);
-
   const isPreScheduled = isPreScheduledAppointment(appointment);
-  const status = STATUS_STYLES[appointment.status] || STATUS_STYLES.confirmado;
   const paid = appointment.payment_status === 'pago';
-  const isCancelled = appointment.status === 'cancelado' || appointment.status === 'cancelled';
+  const rawStatus = (appointment.status || 'confirmado').toLowerCase().trim();
+  const isCompleted =
+    paid ||
+    rawStatus === 'concluido' ||
+    rawStatus === 'concluído' ||
+    rawStatus === 'completed';
   const isPending =
-    appointment.status === 'pendente' ||
-    appointment.status === 'pending' ||
-    appointment.status === 'pre_scheduled' ||
-    appointment.status === 'pre_agendado' ||
-    appointment.status === 'pre-agendado';
+    rawStatus === 'pendente' ||
+    rawStatus === 'pending' ||
+    isPreScheduled;
 
-  // Extração rigorosa do horário local (elimina o desvio de UTC que jogava tudo para 21:00)
-  const time = appointment.appointment_time
-    ? String(appointment.appointment_time).slice(0, 5)
-    : appointment.appointment_date &&
-      String(appointment.appointment_date).includes('T') &&
-      !String(appointment.appointment_date).includes('T00:00:00')
-    ? new Date(appointment.appointment_date).toLocaleTimeString('pt-BR', {
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: 'America/Fortaleza',
-      })
-    : '';
+  const startTime = getAppointmentStartTime(appointment);
+  const durationMin = getAppointmentDuration(appointment);
+  const endTime = getAppointmentEndTime(appointment, startTime, durationMin);
+  const intermediateTicks = getIntermediateTicks(startTime, durationMin);
 
-  const firstName = appointment.client_name?.trim().split(' ')[0] || 'Cliente';
-  const hasPhone = Boolean(appointment.client_phone && appointment.client_phone.length >= 8);
+  const serviceName =
+    appointment.services?.name || appointment.service || 'Serviço';
+  const barberName = appointment.barbers?.name || '';
 
-  // Heurística de cliente recorrente (quando possui telefone e dados completos)
-  const isFrequentClient = Boolean(hasPhone && appointment.client_name);
-
-  // Valor total atualizado do atendimento (serviço + eventuais produtos vinculados)
   const totalAmount = Number(
     appointment.total_price ?? appointment.price ?? appointment.services?.price ?? 0
   );
-  const { cleanNotes, products: attachedProducts } = parseAppointmentNotes(appointment.notes);
-  const productsSubtotal = attachedProducts.reduce(
-    (acc, item) => acc + Number(item.subtotal || 0),
-    0
-  );
-  const serviceBaseAmount = Math.max(0, Number((totalAmount - productsSubtotal).toFixed(2)));
+  const { products: attachedProducts } = parseAppointmentNotes(appointment.notes);
 
-  // Lembrete ESPECÍFICO deste agendamento (100% limpo, sem emojis e com horário correto)
-  function handleSendWhatsAppReminder(e) {
-    e.stopPropagation();
-    if (!appointment.client_phone) {
-      toast.warning('Telefone do cliente não cadastrado.');
-      return;
-    }
+  // Altura proporcional à duração na linha do tempo (ex: 30min -> 78px, 60min -> 118px)
+  const blockMinHeight = Math.max(76, Math.min(164, Math.round(durationMin * 1.95 + 18)));
 
-    const serviceName =
-      appointment.services?.name || appointment.service || 'Corte';
-    const barberName = appointment.barbers?.name || '';
+  // Estilização OLED Dark com acentos em Azul Profundo, Vermelho Escarlate e Branco
+  let cardSurfaceClass =
+    'bg-[#080d18] border-blue-500/35 hover:border-blue-400/60 hover:bg-[#0b1222]';
+  let nodeDotClass = 'bg-accent border-black ring-2 ring-accent/30';
+  let timeBadgeClass = 'text-blue-300/90';
+  let statusLabel = 'Confirmado';
+  let statusTextClass = 'text-blue-400';
 
-    const text = buildAppointmentReminderWhatsAppMessage({
-      clientName: appointment.client_name,
-      serviceName,
-      appointmentDate: appointment.appointment_date,
-      appointmentTime: appointment.appointment_time || (time ? `${time}:00` : null),
-      barberName,
-    });
-
-    const url = getWhatsAppClickToChatUrl(appointment.client_phone, text);
-    if (!url) {
-      toast.warning('Número de telefone inválido para WhatsApp.');
-      return;
-    }
-
-    window.open(url, '_blank', 'noopener,noreferrer');
-    toast.success(`Lembrete de agendamento gerado para ${firstName}!`);
+  if (isCompleted) {
+    cardSurfaceClass =
+      'bg-[#06090f] border-zinc-800/90 hover:border-emerald-500/40 hover:bg-[#090e17]';
+    nodeDotClass = 'bg-emerald-400 border-black ring-2 ring-emerald-500/25';
+    timeBadgeClass = 'text-emerald-400/90';
+    statusLabel = paid ? 'Pago' : 'Concluído';
+    statusTextClass = 'text-emerald-400';
+  } else if (isPreScheduled) {
+    cardSurfaceClass =
+      'bg-[#0b0914] border-purple-500/40 hover:border-purple-400/65 hover:bg-[#100d1d]';
+    nodeDotClass = 'bg-purple-400 border-black ring-2 ring-purple-500/25';
+    timeBadgeClass = 'text-purple-300/90';
+    statusLabel = 'Pré-agendado';
+    statusTextClass = 'text-purple-300';
+  } else if (isPending) {
+    cardSurfaceClass =
+      'bg-[#11080a] border-accent/45 hover:border-accent-light/70 hover:bg-[#170b0d]';
+    nodeDotClass = 'bg-accent border-black ring-2 ring-accent/35';
+    timeBadgeClass = 'text-accent-light';
+    statusLabel = 'Pendente';
+    statusTextClass = 'text-accent-light';
   }
-
-  async function handleRemoveProduct(e, item) {
-    e.stopPropagation();
-    if (removingKey) return;
-    setRemovingKey(item.key);
-    try {
-      const res = await removeProductFromAppointment({
-        appointmentId: appointment.id,
-        rawLine: item.rawLine,
-      });
-      if (res?.error) {
-        toast.error(res.error);
-        return;
-      }
-      toast.success('Produto removido e devolvido ao estoque.');
-      if (onProductRemoved) {
-        onProductRemoved(res);
-      }
-    } catch {
-      toast.error('Não foi possível remover o produto.');
-    } finally {
-      setRemovingKey(null);
-    }
-  }
-
-  const durationMin = appointment.duration_minutes || appointment.services?.default_duration_minutes;
 
   return (
-    <div
-      onClick={() => {
-        if (isPreScheduled && onOpenPreSchedule) {
-          onOpenPreSchedule(appointment);
-        }
-      }}
-      className={`rounded-2xl p-4 shadow-sm transition-all ${
-        isPreScheduled
-          ? 'bg-gradient-to-b from-[#181226] via-[#120f1c] to-[#0d0b14] border-2 border-purple-500/50 shadow-purple-950/30 hover:border-purple-400/70 cursor-pointer ring-1 ring-purple-500/20'
-          : 'bg-[#0f0f0f] border border-zinc-800/80 hover:border-zinc-700/80'
-      }`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          {/* Header com Horário, Status e Badges */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-white font-bold text-sm tracking-tight">{time || 'Horário'}</span>
+    <div className="relative flex items-stretch gap-3 sm:gap-4 select-none">
+      {/* Coluna Esquerda: Eixo Vertical de Horários da Timeline */}
+      <div className="w-14 sm:w-16 shrink-0 flex flex-col items-end pr-2 relative">
+        {/* Linha Conectora Vertical */}
+        <div
+          className={`absolute right-0 top-2.5 w-px ${
+            isLast ? 'bottom-3 bg-gradient-to-b from-zinc-800 to-transparent' : '-bottom-3 bg-zinc-800/90'
+          }`}
+        />
 
-            <span
-              className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${status.className}`}
-            >
-              {status.label}
-            </span>
+        {/* Nó indicador no eixo */}
+        <span
+          className={`absolute -right-[4.5px] top-2.5 h-2.5 w-2.5 rounded-full border ${nodeDotClass} z-10`}
+        />
 
-            {isPreScheduled && (
-              <span className="flex items-center gap-1 text-[10px] font-bold rounded-full px-2.5 py-0.5 bg-purple-500/25 text-purple-200 border border-purple-400/40 shadow-sm">
-                <RefreshCw size={10} className="text-purple-300" />
-                <span>🔄 Pré-agendado</span>
+        {/* Horário de Início */}
+        <span className="font-mono tabular-nums text-xs sm:text-[13px] font-bold text-white leading-none mt-1">
+          {startTime || '--:--'}
+        </span>
+
+        {/* Marcações intermediárias se o bloco ocupar 45+ min */}
+        {intermediateTicks.length > 0 && (
+          <div className="flex-1 flex flex-col justify-evenly items-end py-2">
+            {intermediateTicks.map((tick) => (
+              <span
+                key={tick}
+                className="font-mono tabular-nums text-[10px] font-medium text-zinc-600 leading-none"
+              >
+                {tick}
               </span>
-            )}
-
-            {appointment.is_walk_in && (
-              <span className="flex items-center gap-0.5 text-[10px] font-medium rounded-full px-2 py-0.5 bg-amber-500/15 text-amber-400 border border-amber-500/20">
-                <Zap size={10} /> Sem hora
-              </span>
-            )}
-
-            {isFrequentClient && (
-              <span className="flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5 bg-red-950/50 text-red-400 border border-red-800/40">
-                <Crown size={10} /> Cliente Fiel
-              </span>
-            )}
+            ))}
           </div>
+        )}
 
-          {/* Nome do Cliente */}
-          <div className="flex items-center gap-1.5 mt-2 text-zinc-200 text-sm font-semibold">
-            <User size={14} className="text-zinc-500 shrink-0" />
-            <span className="truncate">{appointment.client_name}</span>
-          </div>
+        {/* Horário de Término discreto na base do bloco */}
+        {endTime && (
+          <span className="mt-auto pb-1.5 font-mono tabular-nums text-[10px] font-medium text-zinc-500 leading-none">
+            {endTime}
+          </span>
+        )}
+      </div>
 
-          {/* Serviço e Barbeiro */}
-          <p className="text-zinc-400 text-xs mt-0.5 font-medium">
-            {appointment.services?.name || appointment.service || 'Serviço'}
-            {appointment.barbers?.name ? ` · ${appointment.barbers.name}` : ''}
-          </p>
-
-          {/* Tag especial de pré-agendamento futuro / chatbot */}
-          {isPreScheduled && (
-            <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-purple-300 font-medium">
-              <Sparkles size={12} className="text-purple-400 shrink-0" />
-              <span>Recorrência garantida via chatbot</span>
-            </div>
-          )}
-
-          {/* Duração estimada do atendimento */}
-          {durationMin ? (
-            <div className="flex items-center gap-1.5 mt-1 text-[11px] text-zinc-500">
-              <Clock size={11} className="text-zinc-500 shrink-0" />
-              <span>Duração: ~{durationMin} min</span>
-            </div>
-          ) : null}
-
-          {/* Observações normais do cliente */}
-          {cleanNotes ? (
-            <p className="text-[11px] text-zinc-400 mt-1.5 italic bg-zinc-900/70 border border-zinc-800/70 rounded-lg px-2.5 py-1">
-              {cleanNotes}
-            </p>
-          ) : null}
-
-          {/* Produtos vinculados ao atendimento */}
-          {attachedProducts.length > 0 && (
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className="mt-2.5 bg-zinc-900/80 border border-zinc-800 rounded-xl p-2 space-y-1.5"
-            >
-              <div className="flex items-center justify-between text-[10.5px]">
-                <span className="inline-flex items-center gap-1 text-amber-400 font-semibold">
-                  <ShoppingBag size={11} /> Produto(s) adicionado(s)
-                </span>
-                {serviceBaseAmount > 0 && (
-                  <span className="text-zinc-500">
-                    Serviço: R$ {serviceBaseAmount.toFixed(2).replace('.', ',')}
+      {/* Coluna Direita: Bloco Enxuto do Agendamento (Clicável para abrir Modal/Drawer) */}
+      <div className="flex-1 min-w-0 pb-2.5">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onSelect && onSelect(appointment)}
+          style={{ minHeight: `${blockMinHeight}px` }}
+          className={`w-full text-left rounded-2xl border px-3.5 py-3 transition-all duration-150 flex flex-col justify-between group active:scale-[0.99] touch-manipulation ${cardSurfaceClass} ${
+            busy ? 'opacity-60 pointer-events-none' : ''
+          }`}
+        >
+          {/* Topo: Nome do Cliente + Preço / Status */}
+          <div className="flex items-start justify-between gap-2.5">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-white font-bold text-sm sm:text-[15px] tracking-tight truncate">
+                  {appointment.client_name || 'Cliente'}
+                </h3>
+                {appointment.is_walk_in && (
+                  <span
+                    title="Atendimento sem hora marcada"
+                    className="inline-flex items-center text-[10px] font-semibold text-amber-400 shrink-0"
+                  >
+                    <Zap size={11} />
+                  </span>
+                )}
+                {isPreScheduled && (
+                  <span
+                    title="Pré-agendamento recorrente"
+                    className="inline-flex items-center text-[10px] font-semibold text-purple-300 shrink-0"
+                  >
+                    <Sparkles size={11} />
                   </span>
                 )}
               </div>
-              <div className="space-y-1">
-                {attachedProducts.map((item) => (
-                  <div
-                    key={item.key}
-                    className="flex items-center justify-between gap-2 text-[11px] bg-black/60 border border-zinc-800/80 rounded-lg px-2 py-1"
-                  >
-                    <span className="text-zinc-200 font-medium truncate">{item.label}</span>
-                    {!isCancelled && (
-                      <button
-                        type="button"
-                        onClick={(e) => handleRemoveProduct(e, item)}
-                        disabled={removingKey === item.key}
-                        title="Remover produto e devolver ao estoque"
-                        className="text-zinc-500 hover:text-rose-400 p-0.5 rounded transition-colors shrink-0"
-                      >
-                        <X size={12} />
-                      </button>
-                    )}
+
+              {/* Serviço + Barbeiro */}
+              <p className="text-zinc-300 text-xs font-medium truncate mt-0.5">
+                {serviceName}
+                {barberName ? (
+                  <span className="text-zinc-500 font-normal"> · {barberName}</span>
+                ) : null}
+              </p>
+            </div>
+
+            {/* Valor e Indicador de Clique */}
+            <div className="shrink-0 flex items-center gap-1.5">
+              <div className="text-right">
+                {totalAmount > 0 && (
+                  <div className="font-mono tabular-nums text-xs sm:text-[13px] font-bold text-white leading-tight">
+                    R$ {totalAmount.toFixed(2).replace('.', ',')}
                   </div>
-                ))}
+                )}
+                <div className={`flex items-center justify-end gap-1 text-[10px] font-semibold ${statusTextClass}`}>
+                  {paid && <CheckCircle2 size={10} className="shrink-0" />}
+                  <span>{statusLabel}</span>
+                </div>
               </div>
-            </div>
-          )}
-
-          {/* Foto de Referência */}
-          {appointment.reference_photo && (
-            <a
-              href={appointment.reference_photo.image_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="mt-2.5 inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/90 p-1.5 pr-3 active:opacity-80"
-            >
-              <img
-                src={appointment.reference_photo.image_url}
-                alt=""
-                loading="lazy"
-                className="h-10 w-10 rounded-lg object-cover"
+              <ChevronRight
+                size={15}
+                className="text-zinc-600 group-hover:text-zinc-300 transition-colors shrink-0"
               />
-              <span className="text-[11px] text-zinc-300">
-                Referência:{' '}
-                <span className="text-white font-medium">
-                  {appointment.reference_photo.title}
-                </span>
-              </span>
-            </a>
-          )}
-        </div>
-
-        {/* Status de Pagamento + Valor Total */}
-        <div className="text-right shrink-0 flex flex-col items-end gap-1.5">
-          {paid ? (
-            <span className="flex items-center gap-1 text-emerald-400 text-xs font-semibold px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-              <CheckCircle2 size={13} /> Pago
-            </span>
-          ) : (
-            <span className="flex items-center gap-1 text-zinc-400 text-xs font-medium px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800">
-              <Clock3 size={13} /> Não pago
-            </span>
-          )}
-          {totalAmount > 0 && (
-            <span className="text-white font-bold text-xs px-1">
-              R$ {totalAmount.toFixed(2).replace('.', ',')}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Botões de Ação */}
-      {!isCancelled && (
-        <div className="mt-3.5 pt-2.5 border-t border-zinc-800/60 space-y-2">
-          {/* Linha 1: Botão "+ Produto" e Botão "Editar Serviço" coexistindo lado a lado */}
-          {(onAddProduct || onEditService) && (
-            <div className="grid grid-cols-2 gap-2">
-              {onAddProduct && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAddProduct(appointment);
-                  }}
-                  className="flex items-center justify-center gap-1.5 h-9 px-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-amber-500/40 text-xs font-semibold text-amber-300 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
-                >
-                  <ShoppingBag size={13} className="text-amber-400 shrink-0" />
-                  <span className="truncate">+ Produto</span>
-                </button>
-              )}
-
-              {onEditService && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEditService(appointment);
-                  }}
-                  className="flex items-center justify-center gap-1.5 h-9 px-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 text-xs font-semibold text-zinc-200 hover:text-white active:scale-95 transition-all touch-manipulation disabled:opacity-50"
-                >
-                  <Scissors size={13} className="text-accent-light shrink-0" />
-                  <span className="truncate">Editar Serviço</span>
-                </button>
-              )}
             </div>
-          )}
+          </div>
 
-          {/* Linha 2: Botões essenciais do fluxo (Gerenciar, Confirmar, Cobrar, Cancelar, Lembrete) */}
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Botão de Gestão de Pré-Agendamento */}
-            {isPreScheduled && onOpenPreSchedule && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenPreSchedule(appointment);
-                }}
-                className="flex-1 min-w-[110px] flex items-center justify-center gap-1.5 h-9 px-2.5 rounded-xl bg-purple-600/30 hover:bg-purple-600/40 border border-purple-500/50 text-xs font-bold text-purple-200 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
-              >
-                <CalendarClock size={14} className="text-purple-300 shrink-0" />
-                <span>Gerenciar</span>
-              </button>
-            )}
+          {/* Rodapé Enxuto do Bloco: Intervalo de Horário + Duração + Indicador de Produtos */}
+          <div className="mt-2 pt-1.5 border-t border-white/[0.05] flex items-center justify-between gap-2 text-[11px]">
+            <div className="flex items-center gap-1.5 font-mono tabular-nums">
+              <span className={`font-semibold ${timeBadgeClass}`}>
+                {startTime && endTime
+                  ? `${startTime} – ${endTime}`
+                  : startTime || 'Sem horário'}
+              </span>
+              <span className="text-zinc-600">·</span>
+              <span className="text-zinc-400">{durationMin} min</span>
+            </div>
 
-            {isPending && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onChangeStatus(appointment.id, 'confirmado');
-                }}
-                className="flex-1 min-w-[105px] flex items-center justify-center gap-1.5 h-9 px-2.5 rounded-xl bg-zinc-900 border border-zinc-700/80 text-xs font-semibold text-white active:scale-95 active:bg-zinc-800 transition-all touch-manipulation disabled:opacity-50"
-              >
-                <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
-                <span>Confirmar</span>
-              </button>
-            )}
-
-            {!paid && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenPayment(appointment);
-                }}
-                className="flex-1 min-w-[100px] flex items-center justify-center gap-1.5 h-9 px-3 rounded-xl bg-red-600 hover:bg-red-500 text-xs font-bold text-white shadow-sm active:scale-95 active:bg-red-700 transition-all touch-manipulation disabled:opacity-50"
-              >
-                <Wallet size={14} className="shrink-0" />
-                <span>Cobrar</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              disabled={busy}
-              onClick={(e) => {
-                e.stopPropagation();
-                onChangeStatus(appointment.id, 'cancelado');
-              }}
-              className="flex-1 min-w-[95px] flex items-center justify-center gap-1.5 h-9 px-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-medium text-zinc-400 hover:text-zinc-200 active:scale-95 active:bg-zinc-800 transition-all touch-manipulation disabled:opacity-50"
-            >
-              <XCircle size={14} className="shrink-0" />
-              <span>Cancelar</span>
-            </button>
-
-            {hasPhone && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSendWhatsAppReminder(e);
-                }}
-                title={`Enviar lembrete deste agendamento (${time}) via WhatsApp`}
-                className="flex-1 min-w-[100px] sm:flex-initial h-9 px-3 rounded-xl bg-zinc-900/90 border border-zinc-800 hover:border-emerald-500/40 text-zinc-300 hover:text-white text-xs font-medium flex items-center justify-center gap-1.5 active:scale-95 active:bg-zinc-800 transition-all touch-manipulation"
-              >
-                <MessageSquare size={13} className="text-emerald-400 shrink-0" />
-                <span>Lembrete</span>
-              </button>
+            {attachedProducts.length > 0 ? (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-300/90">
+                <ShoppingBag size={10} className="text-amber-400 shrink-0" />
+                +{attachedProducts.length} {attachedProducts.length === 1 ? 'prod.' : 'prods.'}
+              </span>
+            ) : (
+              <span className="text-[10px] font-medium text-zinc-500 group-hover:text-zinc-300 transition-colors">
+                Ver ações
+              </span>
             )}
           </div>
-        </div>
-      )}
+        </button>
+      </div>
     </div>
   );
 }
