@@ -3,19 +3,222 @@
 -- Blindagem de Concorrência (FOR UPDATE + Unique Index) e Isolamento RLS
 -- Projeto: JM Barberclub (Painel do Barbeiro & Chatbot WhatsApp)
 -- ============================================================================
+-- Totalmente idempotente e defensiva (garante tabelas e colunas antes de
+-- aplicar índices, triggers, funções RPC e políticas RLS).
+-- ============================================================================
 
 BEGIN;
+
+-- ============================================================================
+-- 0. GARANTIA DEFENSIVA DE TABELAS E COLUNAS BASE (PREVENÇÃO DE ERRO 42P01/42703)
+-- ============================================================================
+
+-- 0.1. Garante colunas essenciais em `public.barbers`
+ALTER TABLE public.barbers
+  ADD COLUMN IF NOT EXISTS phone text,
+  ADD COLUMN IF NOT EXISTS clean_phone varchar(20),
+  ADD COLUMN IF NOT EXISTS role varchar(30) DEFAULT 'barber',
+  ADD COLUMN IF NOT EXISTS active boolean DEFAULT true,
+  ADD COLUMN IF NOT EXISTS is_active boolean DEFAULT true,
+  ADD COLUMN IF NOT EXISTS auth_user_id uuid,
+  ADD COLUMN IF NOT EXISTS commission_percent numeric(5,2) DEFAULT 50.00,
+  ADD COLUMN IF NOT EXISTS commission_rate numeric(5,2) DEFAULT 50.00,
+  ADD COLUMN IF NOT EXISTS product_commission_percent numeric(5,2) DEFAULT 10.00 NOT NULL,
+  ADD COLUMN IF NOT EXISTS pix_key text,
+  ADD COLUMN IF NOT EXISTS pix_key_type varchar(30) DEFAULT 'cpf_cnpj',
+  ADD COLUMN IF NOT EXISTS permissions jsonb DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS avatar_url text,
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
+
+-- 0.2. Garante colunas essenciais em `public.services`
+ALTER TABLE public.services
+  ADD COLUMN IF NOT EXISTS price numeric(10,2) DEFAULT 0.00,
+  ADD COLUMN IF NOT EXISTS duration_minutes integer DEFAULT 30,
+  ADD COLUMN IF NOT EXISTS default_duration_minutes integer DEFAULT 30,
+  ADD COLUMN IF NOT EXISTS is_active boolean DEFAULT true,
+  ADD COLUMN IF NOT EXISTS active boolean DEFAULT true,
+  ADD COLUMN IF NOT EXISTS display_order integer DEFAULT 0;
+
+-- 0.3. Garante existência da tabela `public.products`
+CREATE TABLE IF NOT EXISTS public.products (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  description text,
+  price numeric(10,2) NOT NULL DEFAULT 0.00,
+  stock_quantity integer NOT NULL DEFAULT 0,
+  image_url text,
+  image_path text,
+  is_active boolean NOT NULL DEFAULT true,
+  display_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- 0.4. Garante existência da tabela `public.barber_services`
+CREATE TABLE IF NOT EXISTS public.barber_services (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  barber_id uuid NOT NULL REFERENCES public.barbers(id) ON DELETE CASCADE,
+  service_id uuid NOT NULL REFERENCES public.services(id) ON DELETE CASCADE,
+  custom_duration integer,
+  custom_duration_minutes integer,
+  custom_price numeric(10,2),
+  is_active boolean DEFAULT true NOT NULL,
+  created_at timestamptz DEFAULT now() NOT NULL,
+  updated_at timestamptz DEFAULT now() NOT NULL,
+  CONSTRAINT barber_services_barber_service_unique UNIQUE (barber_id, service_id)
+);
+
+ALTER TABLE public.barber_services
+  ADD COLUMN IF NOT EXISTS custom_duration integer,
+  ADD COLUMN IF NOT EXISTS custom_duration_minutes integer,
+  ADD COLUMN IF NOT EXISTS custom_price numeric(10,2),
+  ADD COLUMN IF NOT EXISTS is_active boolean DEFAULT true;
+
+-- 0.5. Garante existência das tabelas de expediente, folgas, bloqueios e clientes
+CREATE TABLE IF NOT EXISTS public.barber_schedules (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  barber_id uuid NOT NULL REFERENCES public.barbers(id) ON DELETE CASCADE,
+  day_of_week integer NOT NULL,
+  start_time time NOT NULL DEFAULT '09:00:00',
+  end_time time NOT NULL DEFAULT '19:00:00',
+  break_start_time time,
+  break_end_time time,
+  lunch_start time,
+  lunch_end time,
+  is_working boolean DEFAULT true,
+  is_working_day boolean DEFAULT true,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE public.barber_schedules
+  ADD COLUMN IF NOT EXISTS break_start_time time,
+  ADD COLUMN IF NOT EXISTS break_end_time time,
+  ADD COLUMN IF NOT EXISTS lunch_start time,
+  ADD COLUMN IF NOT EXISTS lunch_end time,
+  ADD COLUMN IF NOT EXISTS is_working boolean DEFAULT true,
+  ADD COLUMN IF NOT EXISTS is_working_day boolean DEFAULT true;
+
+CREATE TABLE IF NOT EXISTS public.barber_exceptions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  barber_id uuid NOT NULL REFERENCES public.barbers(id) ON DELETE CASCADE,
+  exception_date date NOT NULL,
+  is_available boolean DEFAULT false NOT NULL,
+  start_time time,
+  end_time time,
+  reason text,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.barber_leaves (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  barber_id uuid REFERENCES public.barbers(id) ON DELETE CASCADE,
+  date date,
+  start_date date NOT NULL DEFAULT CURRENT_DATE,
+  end_date date NOT NULL DEFAULT CURRENT_DATE,
+  reason text,
+  created_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE public.barber_leaves
+  ADD COLUMN IF NOT EXISTS date date,
+  ADD COLUMN IF NOT EXISTS start_date date,
+  ADD COLUMN IF NOT EXISTS end_date date;
+
+CREATE TABLE IF NOT EXISTS public.blocked_dates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  barber_id uuid REFERENCES public.barbers(id) ON DELETE CASCADE,
+  date date NOT NULL,
+  reason text,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.clients (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  phone text UNIQUE,
+  clean_phone varchar(20),
+  total_visits integer DEFAULT 1,
+  last_visit_at timestamptz DEFAULT now(),
+  notes text,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE public.clients
+  ADD COLUMN IF NOT EXISTS clean_phone varchar(20),
+  ADD COLUMN IF NOT EXISTS total_visits integer DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS last_visit_at timestamptz DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
+
+CREATE TABLE IF NOT EXISTS public.push_subscriptions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  barber_id uuid REFERENCES public.barbers(id) ON DELETE CASCADE,
+  endpoint text NOT NULL UNIQUE,
+  keys jsonb,
+  p256dh text,
+  auth text,
+  subscription jsonb,
+  user_agent text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- 0.6. Garante existência da tabela `public.commission_payouts` (Acertos Financeiros)
+CREATE TABLE IF NOT EXISTS public.commission_payouts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  receipt_code varchar(50) UNIQUE NOT NULL,
+  barber_id uuid NOT NULL REFERENCES public.barbers(id) ON DELETE CASCADE,
+  admin_id uuid REFERENCES public.barbers(id) ON DELETE SET NULL,
+  period_start date NOT NULL,
+  period_end date NOT NULL,
+  period_label varchar(100),
+  total_revenue numeric(10,2) NOT NULL DEFAULT 0.00,
+  service_revenue numeric(10,2) NOT NULL DEFAULT 0.00,
+  product_revenue numeric(10,2) NOT NULL DEFAULT 0.00,
+  commission_amount numeric(10,2) NOT NULL DEFAULT 0.00,
+  service_commission_amount numeric(10,2) NOT NULL DEFAULT 0.00,
+  product_commission_amount numeric(10,2) NOT NULL DEFAULT 0.00,
+  commission_percent numeric(5,2) NOT NULL DEFAULT 50.00,
+  product_commission_percent numeric(5,2) NOT NULL DEFAULT 10.00,
+  pix_key_snapshot text,
+  appointments_count integer NOT NULL DEFAULT 0,
+  payment_method varchar(30) NOT NULL DEFAULT 'pix',
+  status varchar(20) NOT NULL DEFAULT 'paid',
+  notes text,
+  appointment_ids jsonb DEFAULT '[]'::jsonb,
+  metadata jsonb DEFAULT '{}'::jsonb,
+  paid_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- 0.7. Garante existência da tabela `public.cash_flow` (Livro Caixa)
+CREATE TABLE IF NOT EXISTS public.cash_flow (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  appointment_id uuid,
+  barber_id uuid REFERENCES public.barbers(id) ON DELETE SET NULL,
+  type varchar(20) NOT NULL DEFAULT 'income',
+  category varchar(60) NOT NULL DEFAULT 'outros',
+  description text,
+  amount numeric(10,2) NOT NULL DEFAULT 0.00,
+  transaction_date date DEFAULT CURRENT_DATE,
+  occurred_at timestamptz NOT NULL DEFAULT now(),
+  payment_method varchar(30) DEFAULT 'pix',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE public.cash_flow
+  ADD COLUMN IF NOT EXISTS appointment_id uuid,
+  ADD COLUMN IF NOT EXISTS transaction_date date DEFAULT CURRENT_DATE,
+  ADD COLUMN IF NOT EXISTS occurred_at timestamptz DEFAULT now();
+
 
 -- ============================================================================
 -- 1. EVOLUÇÃO DE SCHEMA: CHAVE PIX E COMISSÃO DE PRODUTOS EM `public.barbers`
 --    E DETALHAMENTO AUDITÁVEL EM `public.commission_payouts`
 -- ============================================================================
-
--- 1.1. Adiciona campos de Chave Pix e Comissão de Produtos na tabela `barbers`
-ALTER TABLE public.barbers
-  ADD COLUMN IF NOT EXISTS pix_key text,
-  ADD COLUMN IF NOT EXISTS pix_key_type varchar(30) DEFAULT 'cpf_cnpj',
-  ADD COLUMN IF NOT EXISTS product_commission_percent numeric(5,2) DEFAULT 10.00 NOT NULL;
 
 -- Sincroniza os valores de comissão existentes (Matheus/Admin = 100% integral;
 -- demais colaboradores = 50% serviços e 10% produtos, ou valor salvo em permissions)
@@ -112,11 +315,24 @@ ALTER TABLE public.commission_payouts
   ADD COLUMN IF NOT EXISTS product_commission_percent numeric(5,2) DEFAULT 10.00 NOT NULL,
   ADD COLUMN IF NOT EXISTS pix_key_snapshot text;
 
--- Garante que `appointments` possui vínculo com `commission_payouts`
+-- Garante que `appointments` possui todas as colunas operacionais e vínculo com `commission_payouts`
 ALTER TABLE public.appointments
+  ADD COLUMN IF NOT EXISTS client_id uuid,
+  ADD COLUMN IF NOT EXISTS clean_phone varchar(20),
+  ADD COLUMN IF NOT EXISTS service text,
+  ADD COLUMN IF NOT EXISTS end_time time,
+  ADD COLUMN IF NOT EXISTS duration_minutes integer DEFAULT 30,
+  ADD COLUMN IF NOT EXISTS buffer_minutes integer DEFAULT 10,
+  ADD COLUMN IF NOT EXISTS price numeric(10,2) DEFAULT 0.00,
+  ADD COLUMN IF NOT EXISTS total_price numeric(10,2) DEFAULT 0.00,
+  ADD COLUMN IF NOT EXISTS is_walk_in boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS source text DEFAULT 'chatbot',
+  ADD COLUMN IF NOT EXISTS origin text DEFAULT 'chatbot',
+  ADD COLUMN IF NOT EXISTS notes text,
   ADD COLUMN IF NOT EXISTS commission_payout_id uuid REFERENCES public.commission_payouts(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS barber_commission_amount numeric(10,2),
-  ADD COLUMN IF NOT EXISTS commission_paid boolean DEFAULT false;
+  ADD COLUMN IF NOT EXISTS commission_paid boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
 
 -- Índices otimizados para Acertos Financeiros por Barbeiro (`barber_id`)
 CREATE INDEX IF NOT EXISTS idx_commission_payouts_barber_paid_at
@@ -222,14 +438,14 @@ BEGIN
   FOR UPDATE;
 
   -- 3) Calcula duração efetiva do novo agendamento (respeitando custom_duration de barber_services)
-  SELECT COALESCE(bs.custom_duration, bs.custom_duration_minutes, s.default_duration_minutes, s.duration_minutes, 30)
+  SELECT COALESCE(bs.custom_duration, bs.custom_duration_minutes, s.default_duration_minutes, s.duration_minutes, NEW.duration_minutes, 30)
   INTO v_new_duration
   FROM public.services s
   LEFT JOIN public.barber_services bs
     ON bs.service_id = s.id AND bs.barber_id = NEW.barber_id
   WHERE s.id = NEW.service_id;
 
-  v_new_duration := GREATEST(COALESCE(v_new_duration, 30), 5);
+  v_new_duration := GREATEST(COALESCE(v_new_duration, NEW.duration_minutes, 30), 5);
   v_new_start := NEW.appointment_time;
   v_new_end := (NEW.appointment_time + (v_new_duration || ' minutes')::interval)::time;
 
@@ -251,7 +467,7 @@ BEGIN
         -- Se não for encaixe explícito (is_walk_in = false), bloqueia qualquer sobreposição de janela
         COALESCE(NEW.is_walk_in, false) = false
         AND COALESCE(a.is_walk_in, false) = false
-        AND v_new_start < (a.appointment_time + (COALESCE(bs.custom_duration, bs.custom_duration_minutes, s.default_duration_minutes, s.duration_minutes, 30) || ' minutes')::interval)::time
+        AND v_new_start < (a.appointment_time + (COALESCE(a.duration_minutes, bs.custom_duration, bs.custom_duration_minutes, s.default_duration_minutes, s.duration_minutes, 30) || ' minutes')::interval)::time
         AND v_new_end > a.appointment_time
       )
     )
@@ -275,15 +491,23 @@ FOR EACH ROW
 EXECUTE FUNCTION public.fn_prevent_appointment_overlap();
 
 
--- 2.4. Atualização da RPC Atômica `public.chatbot_create_appointment`
--- Com `SELECT ... FOR UPDATE` explícito, validação de expediente/férias e captura de colisão
+-- 2.4. Atualização da RPC Atômica Canônica `public.chatbot_create_appointment`
+-- Unifica a assinatura (sem ambiguidade PGRST203), utiliza `pg_advisory_xact_lock` +
+-- `SELECT ... FOR UPDATE` explícito e retorna `SLOT_ALREADY_BOOKED` em caso de colisão
+DROP FUNCTION IF EXISTS public.chatbot_create_appointment(text, text, uuid, uuid, date, time without time zone);
+DROP FUNCTION IF EXISTS public.chatbot_create_appointment(text, text, uuid, uuid, uuid[], date, time without time zone, integer, integer, text);
+
 CREATE OR REPLACE FUNCTION public.chatbot_create_appointment(
   p_client_name text,
   p_client_phone text,
   p_barber_id uuid,
-  p_service_id uuid,
-  p_date date,
-  p_time time without time zone
+  p_service_id uuid DEFAULT NULL,
+  p_service_ids uuid[] DEFAULT NULL,
+  p_date date DEFAULT NULL,
+  p_time time without time zone DEFAULT NULL,
+  p_duration_minutes integer DEFAULT 30,
+  p_buffer_minutes integer DEFAULT 10,
+  p_notes text DEFAULT 'Agendamento via Chatbot'
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -294,13 +518,52 @@ DECLARE
   v_barber_id uuid;
   v_barber_name text;
   v_clean_phone text;
-  v_duration integer;
-  v_service_price numeric(10,2);
-  v_end_time time;
-  v_conflict_count integer;
+  v_client_id uuid;
+  v_target_service_ids uuid[] := '{}';
+  v_created_ids uuid[] := '{}';
   v_new_id uuid;
-  v_leave_exists boolean;
+  v_total_duration integer := 0;
+  v_total_price numeric(10,2) := 0.00;
+  v_current_start time;
+  v_item_end time;
+  v_estimated_end time;
+  v_conflict_id uuid;
+  v_conflict_time time;
+  v_is_blocked boolean := false;
+  v_rec record;
 BEGIN
+  IF p_barber_id IS NULL OR p_date IS NULL OR p_time IS NULL THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'code', 'MISSING_PARAMETERS',
+      'error', 'Profissional, data e horário são obrigatórios.',
+      'message', 'Profissional, data e horário são obrigatórios.'
+    );
+  END IF;
+
+  v_clean_phone := regexp_replace(COALESCE(p_client_phone, ''), '\D', '', 'g');
+  IF length(v_clean_phone) < 8 THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'code', 'INVALID_PHONE',
+      'error', 'Número de telefone inválido.',
+      'message', 'Número de telefone inválido.'
+    );
+  END IF;
+
+  IF p_service_ids IS NOT NULL AND array_length(p_service_ids, 1) > 0 THEN
+    v_target_service_ids := p_service_ids;
+  ELSIF p_service_id IS NOT NULL THEN
+    v_target_service_ids := ARRAY[p_service_id];
+  ELSE
+    RETURN jsonb_build_object(
+      'success', false,
+      'code', 'MISSING_SERVICE',
+      'error', 'Nenhum serviço foi informado para o agendamento.',
+      'message', 'Nenhum serviço foi informado para o agendamento.'
+    );
+  END IF;
+
   -- 1. Lock transacional advisory + Lock de linha (`SELECT ... FOR UPDATE`) no barbeiro
   PERFORM pg_advisory_xact_lock(hashtext(p_barber_id::text || ':' || p_date::text));
 
@@ -308,144 +571,232 @@ BEGIN
   INTO v_barber_id, v_barber_name
   FROM public.barbers b
   WHERE b.id = p_barber_id
-    AND (b.active IS NULL OR b.active = true)
-    AND (b.is_active IS NULL OR b.is_active = true)
+    AND COALESCE(b.active, true) = true
+    AND COALESCE(b.is_active, true) = true
   FOR UPDATE;
 
   IF v_barber_id IS NULL THEN
     RETURN jsonb_build_object(
       'success', false,
       'code', 'BARBER_INACTIVE',
+      'error', 'Este profissional não está disponível para agendamentos no momento.',
       'message', 'Este profissional não está disponível para agendamentos no momento.'
     );
   END IF;
 
-  -- 2. Verifica se o barbeiro está em férias/ausência na data solicitada
+  -- 2. Verifica se o barbeiro está em férias/ausência ou data bloqueada
   SELECT EXISTS (
-    SELECT 1
-    FROM public.barber_leaves bl
-    WHERE bl.barber_id = p_barber_id
-      AND p_date BETWEEN bl.start_date AND bl.end_date
-  ) INTO v_leave_exists;
+    SELECT 1 FROM public.blocked_dates bd
+    WHERE bd.date = p_date
+      AND (bd.barber_id = p_barber_id OR bd.barber_id IS NULL)
+    UNION ALL
+    SELECT 1 FROM public.barber_leaves bl
+    WHERE (bl.barber_id = p_barber_id OR bl.barber_id IS NULL)
+      AND (bl.date = p_date OR (bl.start_date <= p_date AND bl.end_date >= p_date))
+    UNION ALL
+    SELECT 1 FROM public.barber_exceptions be
+    WHERE be.barber_id = p_barber_id
+      AND be.exception_date = p_date
+      AND be.is_available = false
+      AND be.start_time IS NULL
+      AND be.end_time IS NULL
+  ) INTO v_is_blocked;
 
-  IF v_leave_exists THEN
+  IF v_is_blocked THEN
     RETURN jsonb_build_object(
       'success', false,
       'code', 'BARBER_ON_LEAVE',
+      'error', 'O profissional selecionado não estará atendendo nesta data.',
       'message', 'O profissional selecionado não estará atendendo nesta data.'
     );
   END IF;
 
-  -- 3. Busca duração efetiva e preço (considerando `barber_services`)
+  -- 3. Calcula duração efetiva e preço (considerando `barber_services`)
   SELECT
-    COALESCE(bs.custom_duration, bs.custom_duration_minutes, s.default_duration_minutes, s.duration_minutes, 30),
-    COALESCE(bs.custom_price, CASE WHEN s.price >= 1000 THEN s.price / 100.0 ELSE s.price END, 0)
-  INTO v_duration, v_service_price
-  FROM public.services s
-  LEFT JOIN public.barber_services bs
-    ON bs.service_id = s.id AND bs.barber_id = p_barber_id
-  WHERE s.id = p_service_id
-    AND (bs.is_active IS NULL OR bs.is_active = true);
+    COALESCE(SUM(COALESCE(bs.custom_duration, bs.custom_duration_minutes, s.duration_minutes, s.default_duration_minutes, 30)), 0)::integer,
+    COALESCE(SUM(COALESCE(bs.custom_price, CASE WHEN s.price >= 1000 THEN s.price / 100.0 ELSE s.price END, 0.00)), 0.00)::numeric(10,2)
+  INTO
+    v_total_duration,
+    v_total_price
+  FROM unnest(v_target_service_ids) WITH ORDINALITY AS u(service_id, ord)
+  LEFT JOIN public.services s ON s.id = u.service_id
+  LEFT JOIN public.barber_services bs ON bs.service_id = s.id AND bs.barber_id = p_barber_id;
 
-  IF v_duration IS NULL THEN
-    v_duration := 30;
+  IF v_total_duration <= 0 THEN
+    v_total_duration := GREATEST(COALESCE(p_duration_minutes, 30), 5);
   END IF;
 
-  v_end_time := (p_time + (v_duration || ' minutes')::interval)::time;
+  v_estimated_end := (p_time + make_interval(mins => v_total_duration))::time;
 
-  -- 4. Lock pessimista (`FOR UPDATE`) nos agendamentos ativos do dia para validar colisão
-  SELECT COUNT(*)
-  INTO v_conflict_count
-  FROM (
-    SELECT a.id
-    FROM public.appointments a
-    LEFT JOIN public.services s ON s.id = a.service_id
-    LEFT JOIN public.barber_services bs ON bs.service_id = a.service_id AND bs.barber_id = a.barber_id
-    WHERE a.barber_id = p_barber_id
-      AND a.appointment_date = p_date
-      AND COALESCE(a.status, 'agendado') NOT IN ('cancelado', 'cancelled')
-      AND p_time < (a.appointment_time + (COALESCE(bs.custom_duration, bs.custom_duration_minutes, s.default_duration_minutes, s.duration_minutes, 30) || ' minutes')::interval)::time
-      AND v_end_time > a.appointment_time
-    FOR UPDATE OF a
-  ) locked_conflicts;
+  -- 4. Lock pessimista (`FOR UPDATE OF a`) nos agendamentos ativos do dia para validar colisão
+  SELECT a.id, a.appointment_time
+  INTO v_conflict_id, v_conflict_time
+  FROM public.appointments a
+  WHERE a.barber_id = p_barber_id
+    AND a.appointment_date = p_date
+    AND COALESCE(a.status, 'agendado') NOT IN ('cancelado', 'cancelled')
+    AND (
+      a.appointment_time = p_time
+      OR (
+        p_time < GREATEST(
+          COALESCE(a.end_time, (a.appointment_time + make_interval(mins => COALESCE(a.duration_minutes, 30)))::time),
+          (a.appointment_time + make_interval(
+            mins => COALESCE(a.duration_minutes, 30) + COALESCE(a.buffer_minutes, 0)
+          ))::time
+        )
+        AND v_estimated_end > a.appointment_time
+      )
+    )
+  LIMIT 1
+  FOR UPDATE OF a;
 
-  IF v_conflict_count > 0 THEN
+  IF v_conflict_id IS NOT NULL THEN
     RETURN jsonb_build_object(
       'success', false,
       'code', 'SLOT_ALREADY_BOOKED',
+      'error', 'Este horário acabou de ser preenchido por outro cliente. Por favor, escolha outro horário.',
       'message', 'Este horário acabou de ser preenchido por outro cliente. Por favor, escolha outro horário.'
     );
   END IF;
 
-  v_clean_phone := regexp_replace(COALESCE(p_client_phone, ''), '\D', '', 'g');
+  -- 5. Atualiza ou insere o cliente no CRM (`clients`) de forma best-effort
+  BEGIN
+    INSERT INTO public.clients (name, phone, clean_phone, total_visits, last_visit_at, updated_at)
+    VALUES (TRIM(COALESCE(NULLIF(p_client_name, ''), 'Cliente')), v_clean_phone, v_clean_phone, 1, now(), now())
+    ON CONFLICT (phone) DO UPDATE
+    SET
+      name = COALESCE(NULLIF(TRIM(EXCLUDED.name), ''), public.clients.name),
+      clean_phone = COALESCE(EXCLUDED.clean_phone, public.clients.clean_phone),
+      total_visits = COALESCE(public.clients.total_visits, 0) + 1,
+      last_visit_at = now(),
+      updated_at = now()
+    RETURNING id INTO v_client_id;
+  EXCEPTION WHEN OTHERS THEN
+    SELECT c.id INTO v_client_id
+    FROM public.clients c
+    WHERE c.phone = v_clean_phone OR c.clean_phone = v_clean_phone
+    LIMIT 1;
+  END;
 
-  -- 5. Inserção atômica protegida pelo índice único `idx_appointments_unique_active_slot`
-  INSERT INTO public.appointments (
-    client_name,
-    client_phone,
-    clean_phone,
-    barber_id,
-    service_id,
-    appointment_date,
-    appointment_time,
-    price,
-    total_price,
-    status,
-    payment_status
-  ) VALUES (
-    TRIM(COALESCE(p_client_name, 'Cliente')),
-    p_client_phone,
-    v_clean_phone,
-    p_barber_id,
-    p_service_id,
-    p_date,
-    p_time,
-    v_service_price,
-    v_service_price,
-    'agendado',
-    'pendente'
-  )
-  RETURNING id INTO v_new_id;
+  -- 6. Inserção atômica protegida pelo índice único `idx_appointments_unique_active_slot`
+  v_current_start := p_time;
 
-  -- 6. Atualiza ou insere o cliente no CRM (`clients`) de forma best-effort
-  IF v_clean_phone <> '' THEN
-    BEGIN
-      INSERT INTO public.clients (name, phone, clean_phone, total_visits, last_visit_at)
-      VALUES (TRIM(COALESCE(p_client_name, 'Cliente')), p_client_phone, v_clean_phone, 1, now())
-      ON CONFLICT (clean_phone) DO UPDATE
-      SET
-        name = COALESCE(NULLIF(EXCLUDED.name, ''), public.clients.name),
-        total_visits = COALESCE(public.clients.total_visits, 0) + 1,
-        last_visit_at = now(),
-        updated_at = now();
-    EXCEPTION WHEN OTHERS THEN
-      NULL;
-    END;
-  END IF;
+  FOR v_rec IN
+    SELECT
+      u.service_id,
+      COALESCE(s.name, 'Serviço') AS item_name,
+      GREATEST(
+        COALESCE(bs.custom_duration, bs.custom_duration_minutes, s.duration_minutes, s.default_duration_minutes, p_duration_minutes, 30)::integer,
+        5
+      ) AS item_duration,
+      COALESCE(
+        bs.custom_price,
+        CASE WHEN s.price >= 1000 THEN s.price / 100.0 ELSE s.price END,
+        0.00
+      )::numeric(10,2) AS item_price
+    FROM unnest(v_target_service_ids) WITH ORDINALITY AS u(service_id, ord)
+    LEFT JOIN public.services s ON s.id = u.service_id
+    LEFT JOIN public.barber_services bs ON bs.service_id = s.id AND bs.barber_id = p_barber_id
+    ORDER BY u.ord ASC
+  LOOP
+    v_item_end := (v_current_start + make_interval(mins => v_rec.item_duration))::time;
+
+    INSERT INTO public.appointments (
+      barber_id,
+      service_id,
+      client_id,
+      client_name,
+      client_phone,
+      clean_phone,
+      service,
+      appointment_date,
+      appointment_time,
+      end_time,
+      duration_minutes,
+      buffer_minutes,
+      status,
+      payment_status,
+      price,
+      total_price,
+      notes,
+      source,
+      origin,
+      created_at,
+      updated_at
+    ) VALUES (
+      p_barber_id,
+      v_rec.service_id,
+      v_client_id,
+      TRIM(COALESCE(NULLIF(p_client_name, ''), 'Cliente')),
+      v_clean_phone,
+      v_clean_phone,
+      v_rec.item_name,
+      p_date,
+      v_current_start,
+      v_item_end,
+      v_rec.item_duration,
+      COALESCE(p_buffer_minutes, 10),
+      'confirmado',
+      'pendente',
+      v_rec.item_price,
+      v_rec.item_price,
+      COALESCE(p_notes, 'Agendamento via WhatsApp Chatbot'),
+      'chatbot',
+      'chatbot',
+      now(),
+      now()
+    )
+    RETURNING id INTO v_new_id;
+
+    v_created_ids := array_append(v_created_ids, v_new_id);
+    v_current_start := v_item_end;
+  END LOOP;
 
   RETURN jsonb_build_object(
     'success', true,
-    'appointment_id', v_new_id,
+    'code', 'APPOINTMENT_CREATED',
+    'appointment_id', v_created_ids[1],
+    'appointment_ids', v_created_ids,
     'barber_id', p_barber_id,
     'barber_name', v_barber_name,
+    'client_id', v_client_id,
+    'date', p_date,
     'appointment_date', p_date,
+    'start_time', to_char(p_time, 'HH24:MI'),
     'appointment_time', to_char(p_time, 'HH24:MI'),
-    'duration_minutes', v_duration,
-    'price', v_service_price,
+    'end_time', to_char(v_estimated_end, 'HH24:MI'),
+    'duration_minutes', v_total_duration,
+    'total_duration', v_total_duration,
+    'price', v_total_price,
+    'total_price', v_total_price,
     'message', 'Agendamento confirmado com sucesso!'
   );
 
 EXCEPTION
-  WHEN unique_violation THEN
+  WHEN unique_violation OR exclusion_violation THEN
     RETURN jsonb_build_object(
       'success', false,
       'code', 'SLOT_ALREADY_BOOKED',
+      'sqlstate', SQLSTATE,
+      'error', 'Este horário acabou de ser reservado simultaneamente por outro cliente. Escolha outro horário disponível.',
       'message', 'Este horário acabou de ser reservado simultaneamente por outro cliente. Escolha outro horário disponível.'
     );
   WHEN OTHERS THEN
+    IF SQLSTATE = '23505' OR SQLERRM ILIKE '%CONFLITO_HORARIO%' OR SQLERRM ILIKE '%idx_appointments_unique_active_slot%' THEN
+      RETURN jsonb_build_object(
+        'success', false,
+        'code', 'SLOT_ALREADY_BOOKED',
+        'sqlstate', '23505',
+        'error', 'Este horário acabou de ser reservado simultaneamente por outro cliente. Escolha outro horário disponível.',
+        'message', 'Este horário acabou de ser reservado simultaneamente por outro cliente. Escolha outro horário disponível.'
+      );
+    END IF;
+
     RETURN jsonb_build_object(
       'success', false,
       'code', 'INTERNAL_ERROR',
+      'sqlstate', SQLSTATE,
+      'error', SQLERRM,
       'message', SQLERRM
     );
 END;
@@ -699,7 +1050,7 @@ END;
 $$;
 
 
--- 3.2. Garantir RLS Habilitado em Todas as Tabelas do Ecossistema
+-- 3.2. Garantir RLS Habilitado em Todas as Tabelas Existentes
 ALTER TABLE public.barbers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.services ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
@@ -712,8 +1063,6 @@ ALTER TABLE public.commission_payouts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cash_flow ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.barber_recovery_codes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.barber_recovery_state ENABLE ROW LEVEL SECURITY;
 
 
 -- 3.3. Políticas RLS para `public.appointments` (Isolamento de Agenda por Barbeiro)
@@ -723,9 +1072,6 @@ DROP POLICY IF EXISTS "appointments_insert_policy" ON public.appointments;
 DROP POLICY IF EXISTS "appointments_update_policy" ON public.appointments;
 DROP POLICY IF EXISTS "appointments_delete_policy" ON public.appointments;
 
--- Leitura: Cada barbeiro autenticado vê apenas a sua própria agenda (`barber_id = current_barber_id()`),
--- exceto se for o Chefe/Admin ou possuir a permissão `view_all_appointments`.
--- (O cálculo público de slots livres pelo Chatbot ocorre via RPC `SECURITY DEFINER`).
 CREATE POLICY "appointments_select_policy"
   ON public.appointments
   FOR SELECT
@@ -736,7 +1082,6 @@ CREATE POLICY "appointments_select_policy"
     OR public.current_barber_has_permission('view_all_appointments')
   );
 
--- Criação: Barbeiro cria encaixes/agendamentos para si mesmo ou Chefe/Gerente cria para a equipe
 CREATE POLICY "appointments_insert_policy"
   ON public.appointments
   FOR INSERT
@@ -747,8 +1092,6 @@ CREATE POLICY "appointments_insert_policy"
     OR public.current_barber_has_permission('manage_schedule_others')
   );
 
--- Atualização: Barbeiro altera apenas os seus próprios atendimentos (status, cobrança, produtos)
--- ou Chefe/Gerente autorizado
 CREATE POLICY "appointments_update_policy"
   ON public.appointments
   FOR UPDATE
@@ -764,7 +1107,6 @@ CREATE POLICY "appointments_update_policy"
     OR public.current_barber_has_permission('manage_schedule_others')
   );
 
--- Exclusão: Apenas o próprio barbeiro do agendamento ou Chefe/Admin
 CREATE POLICY "appointments_delete_policy"
   ON public.appointments
   FOR DELETE
@@ -780,8 +1122,6 @@ DROP POLICY IF EXISTS "Allow all access commission_payouts" ON public.commission
 DROP POLICY IF EXISTS "commission_payouts_select_isolated" ON public.commission_payouts;
 DROP POLICY IF EXISTS "commission_payouts_admin_write" ON public.commission_payouts;
 
--- Leitura: Cada colaborador (ex: William) enxerga EXCLUSIVAMENTE seus próprios recibos de acerto.
--- O Chefe (Matheus / Admin) enxerga os acertos de toda a barbearia.
 CREATE POLICY "commission_payouts_select_isolated"
   ON public.commission_payouts
   FOR SELECT
@@ -791,7 +1131,6 @@ CREATE POLICY "commission_payouts_select_isolated"
     OR public.is_current_barber_admin()
   );
 
--- Escrita (Efetuar Acerto / Alterar / Excluir): Exclusivo para o Chefe / Admin
 CREATE POLICY "commission_payouts_admin_write"
   ON public.commission_payouts
   FOR ALL
@@ -805,9 +1144,8 @@ DROP POLICY IF EXISTS "Allow all access cash_flow" ON public.cash_flow;
 DROP POLICY IF EXISTS "cash_flow_select_isolated" ON public.cash_flow;
 DROP POLICY IF EXISTS "cash_flow_insert_isolated" ON public.cash_flow;
 DROP POLICY IF EXISTS "cash_flow_modify_admin" ON public.cash_flow;
+DROP POLICY IF EXISTS "cash_flow_delete_admin" ON public.cash_flow;
 
--- Leitura: Barbeiro consulta apenas suas próprias entradas financeiras (`barber_id = current_barber_id()`),
--- enquanto o Chefe/Admin (ou quem tem `manage_finance`) visualiza o caixa global e despesas.
 CREATE POLICY "cash_flow_select_isolated"
   ON public.cash_flow
   FOR SELECT
@@ -818,7 +1156,6 @@ CREATE POLICY "cash_flow_select_isolated"
     OR public.current_barber_has_permission('manage_finance')
   );
 
--- Inserção: Barbeiro registra recebimento de atendimento próprio ou Chefe/Admin lança receitas/despesas
 CREATE POLICY "cash_flow_insert_isolated"
   ON public.cash_flow
   FOR INSERT
@@ -829,7 +1166,6 @@ CREATE POLICY "cash_flow_insert_isolated"
     OR public.current_barber_has_permission('manage_finance')
   );
 
--- Edição/Exclusão de lançamentos de caixa: Exclusivo para Chefe/Admin ou `manage_finance`
 CREATE POLICY "cash_flow_modify_admin"
   ON public.cash_flow
   FOR UPDATE
@@ -861,15 +1197,12 @@ DROP POLICY IF EXISTS "barbers_update_own_or_admin" ON public.barbers;
 DROP POLICY IF EXISTS "barbers_insert_admin_only" ON public.barbers;
 DROP POLICY IF EXISTS "barbers_delete_admin_only" ON public.barbers;
 
--- Leitura pública dos profissionais ativos (necessário para listagem de barbeiros no agendamento)
 CREATE POLICY "barbers_select_policy"
   ON public.barbers
   FOR SELECT
   TO anon, authenticated
   USING (true);
 
--- Atualização: O barbeiro pode atualizar apenas seu próprio perfil básico (nome, avatar, pix_key),
--- enquanto o Chefe/Admin pode atualizar qualquer membro (incluindo comissões e permissões).
 CREATE POLICY "barbers_update_own_or_admin"
   ON public.barbers
   FOR UPDATE
@@ -883,7 +1216,6 @@ CREATE POLICY "barbers_update_own_or_admin"
     OR public.is_current_barber_admin()
   );
 
--- Criação e Remoção de Barbeiros: Exclusivo para Chefe/Admin
 CREATE POLICY "barbers_insert_admin_only"
   ON public.barbers
   FOR INSERT
@@ -1052,7 +1384,7 @@ CREATE POLICY "barber_services_write_isolated"
   );
 
 
--- 3.9. Políticas RLS para `push_subscriptions` e Tabelas de Recuperação de Senha
+-- 3.9. Políticas RLS para `push_subscriptions` e proteção defensiva para tabelas opcionais
 DROP POLICY IF EXISTS "Allow all access push_subscriptions" ON public.push_subscriptions;
 DROP POLICY IF EXISTS "push_subscriptions_isolated" ON public.push_subscriptions;
 
@@ -1069,12 +1401,22 @@ CREATE POLICY "push_subscriptions_isolated"
     OR public.is_current_barber_admin()
   );
 
-DROP POLICY IF EXISTS "Allow service_role only recovery_codes" ON public.barber_recovery_codes;
-DROP POLICY IF EXISTS "Allow service_role only recovery_state" ON public.barber_recovery_state;
+-- Bloco condicional seguro para `barber_recovery_codes` e `barber_recovery_state`
+-- (só executa se as tabelas existirem no banco, evitando o erro 42P01)
+DO $$
+BEGIN
+  IF to_regclass('public.barber_recovery_codes') IS NOT NULL THEN
+    EXECUTE 'ALTER TABLE public.barber_recovery_codes ENABLE ROW LEVEL SECURITY';
+    EXECUTE 'DROP POLICY IF EXISTS "Allow service_role only recovery_codes" ON public.barber_recovery_codes';
+    EXECUTE 'REVOKE ALL ON public.barber_recovery_codes FROM anon, authenticated';
+  END IF;
 
--- Tabelas de recuperação de senha permanecem inacessíveis via PostgREST público (apenas service_role)
-REVOKE ALL ON public.barber_recovery_codes FROM anon, authenticated;
-REVOKE ALL ON public.barber_recovery_state FROM anon, authenticated;
+  IF to_regclass('public.barber_recovery_state') IS NOT NULL THEN
+    EXECUTE 'ALTER TABLE public.barber_recovery_state ENABLE ROW LEVEL SECURITY';
+    EXECUTE 'DROP POLICY IF EXISTS "Allow service_role only recovery_state" ON public.barber_recovery_state';
+    EXECUTE 'REVOKE ALL ON public.barber_recovery_state FROM anon, authenticated';
+  END IF;
+END $$;
 
 -- Revoga permissões diretas de escrita da role `anon` em tabelas financeiras e administrativas
 REVOKE INSERT, UPDATE, DELETE ON public.commission_payouts FROM anon;
@@ -1084,11 +1426,13 @@ REVOKE INSERT, UPDATE, DELETE ON public.services FROM anon;
 REVOKE INSERT, UPDATE, DELETE ON public.products FROM anon;
 REVOKE INSERT, UPDATE, DELETE ON public.barber_services FROM anon;
 
--- Garante execução das funções auxiliares para authenticated e service_role
+-- Garante execução das funções auxiliares e RPCs para os perfis corretos
 GRANT EXECUTE ON FUNCTION public.current_barber_id() TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.is_current_barber_admin() TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.current_barber_has_permission(text) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.chatbot_create_appointment(text, text, uuid, uuid, date, time without time zone) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.chatbot_create_appointment(text, text, uuid, uuid, uuid[], date, time without time zone, integer, integer, text) TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.register_payment_atomic(uuid, uuid, text, numeric, text) TO authenticated, service_role;
+
+NOTIFY pgrst, 'reload schema';
 
 COMMIT;

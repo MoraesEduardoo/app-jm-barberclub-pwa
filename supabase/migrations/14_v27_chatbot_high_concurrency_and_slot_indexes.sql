@@ -8,6 +8,114 @@
 BEGIN;
 
 -- ==============================================================================
+-- 0. GARANTIA DEFENSIVA DE TABELAS E COLUNAS PARA OS ÍNDICES COVERING
+-- ==============================================================================
+
+ALTER TABLE public.barbers
+  ADD COLUMN IF NOT EXISTS active boolean DEFAULT true,
+  ADD COLUMN IF NOT EXISTS is_active boolean DEFAULT true,
+  ADD COLUMN IF NOT EXISTS role varchar(30) DEFAULT 'barber',
+  ADD COLUMN IF NOT EXISTS commission_percent numeric(5,2) DEFAULT 50.00,
+  ADD COLUMN IF NOT EXISTS product_commission_percent numeric(5,2) DEFAULT 10.00;
+
+ALTER TABLE public.services
+  ADD COLUMN IF NOT EXISTS price numeric(10,2) DEFAULT 0.00,
+  ADD COLUMN IF NOT EXISTS duration_minutes integer DEFAULT 30,
+  ADD COLUMN IF NOT EXISTS default_duration_minutes integer DEFAULT 30,
+  ADD COLUMN IF NOT EXISTS is_active boolean DEFAULT true,
+  ADD COLUMN IF NOT EXISTS active boolean DEFAULT true;
+
+ALTER TABLE public.appointments
+  ADD COLUMN IF NOT EXISTS duration_minutes integer DEFAULT 30,
+  ADD COLUMN IF NOT EXISTS buffer_minutes integer DEFAULT 10,
+  ADD COLUMN IF NOT EXISTS end_time time,
+  ADD COLUMN IF NOT EXISTS is_walk_in boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS clean_phone varchar(20),
+  ADD COLUMN IF NOT EXISTS service text,
+  ADD COLUMN IF NOT EXISTS price numeric(10,2) DEFAULT 0.00,
+  ADD COLUMN IF NOT EXISTS total_price numeric(10,2) DEFAULT 0.00,
+  ADD COLUMN IF NOT EXISTS source text DEFAULT 'chatbot',
+  ADD COLUMN IF NOT EXISTS origin text DEFAULT 'chatbot',
+  ADD COLUMN IF NOT EXISTS notes text;
+
+CREATE TABLE IF NOT EXISTS public.barber_schedules (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  barber_id uuid NOT NULL REFERENCES public.barbers(id) ON DELETE CASCADE,
+  day_of_week integer NOT NULL,
+  start_time time NOT NULL DEFAULT '09:00:00',
+  end_time time NOT NULL DEFAULT '19:00:00',
+  break_start_time time,
+  break_end_time time,
+  lunch_start time,
+  lunch_end time,
+  is_working boolean DEFAULT true,
+  is_working_day boolean DEFAULT true,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE public.barber_schedules
+  ADD COLUMN IF NOT EXISTS break_start_time time,
+  ADD COLUMN IF NOT EXISTS break_end_time time,
+  ADD COLUMN IF NOT EXISTS lunch_start time,
+  ADD COLUMN IF NOT EXISTS lunch_end time,
+  ADD COLUMN IF NOT EXISTS is_working boolean DEFAULT true,
+  ADD COLUMN IF NOT EXISTS is_working_day boolean DEFAULT true;
+
+CREATE TABLE IF NOT EXISTS public.barber_leaves (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  barber_id uuid REFERENCES public.barbers(id) ON DELETE CASCADE,
+  date date,
+  start_date date NOT NULL DEFAULT CURRENT_DATE,
+  end_date date NOT NULL DEFAULT CURRENT_DATE,
+  reason text,
+  created_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE public.barber_leaves
+  ADD COLUMN IF NOT EXISTS date date,
+  ADD COLUMN IF NOT EXISTS start_date date,
+  ADD COLUMN IF NOT EXISTS end_date date;
+
+CREATE TABLE IF NOT EXISTS public.barber_exceptions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  barber_id uuid NOT NULL REFERENCES public.barbers(id) ON DELETE CASCADE,
+  exception_date date NOT NULL,
+  is_available boolean DEFAULT false NOT NULL,
+  start_time time,
+  end_time time,
+  reason text,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.blocked_dates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  barber_id uuid REFERENCES public.barbers(id) ON DELETE CASCADE,
+  date date NOT NULL,
+  reason text,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.clients (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  phone text UNIQUE,
+  clean_phone varchar(20),
+  total_visits integer DEFAULT 1,
+  last_visit_at timestamptz DEFAULT now(),
+  notes text,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE public.clients
+  ADD COLUMN IF NOT EXISTS clean_phone varchar(20),
+  ADD COLUMN IF NOT EXISTS total_visits integer DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS last_visit_at timestamptz DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
+
+
+-- ==============================================================================
 -- 1. VALIDAÇÃO E REFORÇO DA RESTRIÇÃO FÍSICA DE UNICIDADE DE SLOT ATIVO
 -- ==============================================================================
 
@@ -69,12 +177,6 @@ CREATE INDEX IF NOT EXISTS idx_blocked_dates_lookup
 -- ==============================================================================
 -- 3. OTIMIZAÇÃO DE PERFORMANCE EM MILISSEGUNDOS: `public.chatbot_get_available_slots`
 -- ==============================================================================
--- Melhorias aplicadas:
--- - Verifica se o barbeiro está ativo (`idx_barbers_id_active_covering`).
--- - Usa `COALESCE(a.status, 'agendado') NOT IN ('cancelado', 'cancelled')`, garantindo
---   que agendamentos criados no Painel com status `'agendado'` também bloqueiem o slot
---   e que o planner use `idx_appointments_active_collision_covering` via Index-Only Scan.
--- - Calcula a janela real de ocupação considerando `end_time` gravado ou `duration_minutes + buffer_minutes`.
 
 CREATE OR REPLACE FUNCTION public.chatbot_get_available_slots(
   p_barber_id uuid,
@@ -186,7 +288,7 @@ BEGIN
     RETURN;
   END IF;
 
-  -- 5. Calcula a duração do serviço solicitado (Index-Only Scan em idx_barber_services_lookup_covering + idx_services_id_duration_price_covering)
+  -- 5. Calcula a duração do serviço solicitado
   IF p_service_id IS NOT NULL THEN
     SELECT COALESCE(bs.custom_duration, bs.custom_duration_minutes, s.duration_minutes, s.default_duration_minutes, 30)
     INTO v_service_duration
@@ -246,22 +348,18 @@ BEGIN
   SELECT to_char(cs.c_start, 'HH24:MI') AS slot_time
   FROM candidate_slots cs
   WHERE
-    -- Regra 1: No dia atual, apenas horários estritamente após o minuto atual em America/Fortaleza
     (p_date > v_today_fortaleza OR cs.c_start > v_min_cutoff_time)
-    -- Regra 2: Respeito ao horário de almoço / pausa
     AND (
       v_lunch_start IS NULL
       OR v_lunch_end IS NULL
       OR NOT (cs.c_start < v_lunch_end AND cs.c_end > v_lunch_start)
     )
-    -- Regra 3: Sem colisão com exceções parciais do dia
     AND NOT EXISTS (
       SELECT 1
       FROM busy_exceptions be
       WHERE cs.c_start < be.win_end
         AND cs.c_end > be.win_start
     )
-    -- Regra 4: Sem colisão com agendamentos ativos + buffer_minutes
     AND NOT EXISTS (
       SELECT 1
       FROM busy_appointments ba
@@ -276,8 +374,6 @@ $$;
 -- ==============================================================================
 -- 4. UNIFICAÇÃO E BLINDAGEM DA RPC ATÔMICA: `public.chatbot_create_appointment`
 -- ==============================================================================
--- Remove a sobrecarga ambígua de 6 parâmetros para evitar erro PostgREST `PGRST203`
--- e consolida toda a lógica na assinatura canônica (compatível com 6, 7 ou 10 parâmetros).
 
 DROP FUNCTION IF EXISTS public.chatbot_create_appointment(text, text, uuid, uuid, date, time without time zone);
 DROP FUNCTION IF EXISTS public.chatbot_create_appointment(text, text, uuid, uuid, uuid[], date, time without time zone, integer, integer, text);
@@ -317,7 +413,6 @@ DECLARE
   v_is_blocked boolean := false;
   v_rec record;
 BEGIN
-  -- 1. Validação de parâmetros obrigatórios (data, horário e profissional)
   IF p_barber_id IS NULL OR p_date IS NULL OR p_time IS NULL THEN
     RETURN jsonb_build_object(
       'success', false,
@@ -327,7 +422,6 @@ BEGIN
     );
   END IF;
 
-  -- 2. Higienização e validação do telefone do cliente
   v_clean_phone := regexp_replace(COALESCE(p_client_phone, ''), '\D', '', 'g');
   IF length(v_clean_phone) < 8 THEN
     RETURN jsonb_build_object(
@@ -338,7 +432,6 @@ BEGIN
     );
   END IF;
 
-  -- 3. Montagem da lista de serviços (aceita p_service_ids[] ou p_service_id único)
   IF p_service_ids IS NOT NULL AND array_length(p_service_ids, 1) > 0 THEN
     v_target_service_ids := p_service_ids;
   ELSIF p_service_id IS NOT NULL THEN
@@ -352,13 +445,9 @@ BEGIN
     );
   END IF;
 
-  -- ============================================================================
-  -- 4. BLOQUEIOS TRANSACIONAIS RIGOROSOS DE ALTA CONCORRÊNCIA (ANTI-RACE CONDITION)
-  -- ============================================================================
-  -- 4.1. Lock Advisory exclusivo por (barber_id + appointment_date) durante toda a transação
+  -- Lock Advisory + Lock Pessimista de Linha (`SELECT ... FOR UPDATE`) no Barbeiro
   PERFORM pg_advisory_xact_lock(hashtext(p_barber_id::text || ':' || p_date::text));
 
-  -- 4.2. Lock Pessimista de Linha (`SELECT ... FOR UPDATE`) no registro do Barbeiro
   SELECT b.id, b.name
   INTO v_barber_id, v_barber_name
   FROM public.barbers b
@@ -376,7 +465,6 @@ BEGIN
     );
   END IF;
 
-  -- 5. Verifica se o barbeiro está em férias, folga ou data bloqueada
   SELECT EXISTS (
     SELECT 1 FROM public.blocked_dates bd
     WHERE bd.date = p_date
@@ -403,7 +491,6 @@ BEGIN
     );
   END IF;
 
-  -- 6. Calcula duração total e preço total respeitando `custom_duration` e `custom_price` de `barber_services`
   SELECT
     COALESCE(SUM(COALESCE(bs.custom_duration, bs.custom_duration_minutes, s.duration_minutes, s.default_duration_minutes, 30)), 0)::integer,
     COALESCE(SUM(COALESCE(bs.custom_price, CASE WHEN s.price >= 1000 THEN s.price / 100.0 ELSE s.price END, 0.00)), 0.00)::numeric(10,2)
@@ -420,7 +507,6 @@ BEGIN
 
   v_estimated_end := (p_time + make_interval(mins => v_total_duration))::time;
 
-  -- 7. Verifica se há bloqueio parcial (`barber_exceptions`) colidindo com a janela do agendamento
   IF EXISTS (
     SELECT 1
     FROM public.barber_exceptions be
@@ -440,8 +526,7 @@ BEGIN
     );
   END IF;
 
-  -- 8. Lock Pessimista (`SELECT ... FOR UPDATE OF a`) nos agendamentos ativos do dia
-  --    Impede que qualquer outra transação leia ou modifique os slots concorrentes até o COMMIT
+  -- Lock Pessimista (`SELECT ... FOR UPDATE OF a`) nos agendamentos ativos do dia
   SELECT a.id, a.appointment_time
   INTO v_conflict_id, v_conflict_time
   FROM public.appointments a
@@ -474,7 +559,6 @@ BEGIN
     );
   END IF;
 
-  -- 9. Upsert atômico do Cliente no CRM (`public.clients`)
   BEGIN
     INSERT INTO public.clients (name, phone, clean_phone, total_visits, last_visit_at, updated_at)
     VALUES (
@@ -500,7 +584,6 @@ BEGIN
     LIMIT 1;
   END;
 
-  -- 10. Inserção atômica dos agendamentos na ordem dos serviços selecionados
   v_current_start := p_time;
 
   FOR v_rec IN
