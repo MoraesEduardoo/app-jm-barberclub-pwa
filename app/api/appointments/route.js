@@ -22,15 +22,83 @@ function addMinutesToTimeStr(timeStr, minutesToAdd) {
 }
 
 /**
+ * Identifica se um erro do PostgreSQL/Supabase ou resposta da RPC representa
+ * colisão de horário / violação de unicidade (`SQLSTATE 23505` / `idx_appointments_unique_active_slot`).
+ */
+function isSlotConflict(payloadOrErr) {
+  if (!payloadOrErr) return false;
+  const code = String(payloadOrErr.code || payloadOrErr.sqlstate || '').toUpperCase();
+  const msg = String(
+    payloadOrErr.error || payloadOrErr.message || payloadOrErr.details || ''
+  ).toUpperCase();
+
+  return (
+    code === 'SLOT_ALREADY_BOOKED' ||
+    code === 'SLOT_OCCUPIED' ||
+    code === '23505' ||
+    code === '23P01' ||
+    msg.includes('CONFLITO_HORARIO') ||
+    msg.includes('IDX_APPOINTMENTS_UNIQUE_ACTIVE_SLOT') ||
+    msg.includes('DUPLICATE KEY') ||
+    msg.includes('OCUPADO') ||
+    msg.includes('PREENCHIDO')
+  );
+}
+
+/**
  * GET /api/appointments?date=YYYY-MM-DD&barber_id=<uuid>
- * Endpoint rápido de leitura dos compromissos do dia para o carregamento imediato da Agenda no mount,
- * sem depender da fila sequencial de Server Actions.
+ * Também suporta `?action=available_slots&barber_id=<uuid>&date=YYYY-MM-DD&service_id=<uuid>`
+ * para consulta rápida em milissegundos pelo Chatbot.
  */
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
+    const action = searchParams.get('action') || searchParams.get('mode') || null;
     const date = searchParams.get('date') || todayInShop();
     const rawBarberId = searchParams.get('barber_id') || searchParams.get('barberId') || null;
+    const serviceId = searchParams.get('service_id') || searchParams.get('serviceId') || null;
+
+    // Modo dedicado de consulta de slots disponíveis em milissegundos (Chatbot / Público)
+    if (action === 'available_slots' && rawBarberId) {
+      const admin = createAdminClient();
+      const { data: slotsData, error: slotsErr } = await admin.rpc(
+        'chatbot_get_available_slots',
+        {
+          p_barber_id: rawBarberId,
+          p_date: String(date).slice(0, 10),
+          p_service_id: serviceId || null,
+        }
+      );
+
+      if (slotsErr) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: 'SLOTS_QUERY_ERROR',
+            error: slotsErr.message,
+            slots: [],
+          },
+          { status: 500, headers: CORS_HEADERS }
+        );
+      }
+
+      const slots = (slotsData || []).map((row) =>
+        typeof row === 'string' ? row : row.slot_time
+      );
+
+      return NextResponse.json(
+        {
+          ok: true,
+          success: true,
+          barber_id: rawBarberId,
+          date: String(date).slice(0, 10),
+          service_id: serviceId,
+          slots,
+        },
+        { status: 200, headers: CORS_HEADERS }
+      );
+    }
+
     const scopeBarberId =
       rawBarberId && rawBarberId !== 'all' && rawBarberId !== 'null' ? rawBarberId : null;
 
@@ -56,9 +124,10 @@ export async function GET(request) {
 
 /**
  * POST /api/appointments
- * Endpoint público para Homepage e Chatbot criarem agendamentos respeitando
- * estritamente o `custom_duration` e `custom_price` da tabela `public.barber_services`
- * (ou herdando os valores padrão da tabela `public.services` caso `custom_duration` seja null).
+ * Endpoint transacional de alta concorrência para o Chatbot e Homepage criarem agendamentos
+ * respeitando `custom_duration` e `custom_price` da tabela `public.barber_services`,
+ * com bloqueios pessimistas (`SELECT ... FOR UPDATE` + `pg_advisory_xact_lock`) e captura
+ * limpa de `SQLSTATE 23505` retornando `code: 'SLOT_ALREADY_BOOKED'` (HTTP 409).
  */
 export async function POST(request) {
   try {
@@ -72,19 +141,25 @@ export async function POST(request) {
     const date = String(body?.date || body?.appointment_date || todayInShop()).slice(0, 10);
     const timeRaw = String(body?.time || body?.appointment_time || '09:00').slice(0, 5);
     const formattedTime = `${timeRaw}:00`;
-    const notes = body?.notes || 'Agendamento via Homepage / Chatbot';
+    const notes = body?.notes || 'Agendamento via WhatsApp Chatbot';
     const source = body?.source || body?.origin || 'chatbot';
 
     if (!barberId || serviceIds.length === 0) {
       return NextResponse.json(
-        { ok: false, error: 'Profissional (barber_id) e serviço (service_id) são obrigatórios.' },
+        {
+          ok: false,
+          success: false,
+          code: 'MISSING_PARAMETERS',
+          error: 'Profissional (barber_id) e serviço (service_id) são obrigatórios.',
+          message: 'Profissional (barber_id) e serviço (service_id) são obrigatórios.',
+        },
         { status: 400, headers: CORS_HEADERS }
       );
     }
 
     const admin = createAdminClient();
 
-    // 1. Consulta services e barber_services (filtrando por barber_id e service_id)
+    // 1. Consulta paralela leve de services e barber_services (Index-Only Scan)
     const [svcRes, bsRes] = await Promise.all([
       admin
         .from('services')
@@ -138,7 +213,7 @@ export async function POST(request) {
       });
     }
 
-    // 2. Tenta criar via RPC transacional chatbot_create_appointment e sincroniza a duração personalizada exata
+    // 2. Executa a RPC transacional atômica `chatbot_create_appointment`
     if (clientPhoneRaw.length >= 8) {
       const { data: rpcRes, error: rpcErr } = await admin.rpc('chatbot_create_appointment', {
         p_client_name: clientName,
@@ -153,6 +228,44 @@ export async function POST(request) {
         p_notes: notes,
       });
 
+      // 2.1. Tratamento imediato de conflito de concorrência (SQLSTATE 23505 / SLOT_ALREADY_BOOKED)
+      if (isSlotConflict(rpcErr) || (rpcRes && rpcRes.success === false && isSlotConflict(rpcRes))) {
+        const conflictMsg =
+          rpcRes?.message ||
+          rpcRes?.error ||
+          'Este horário acabou de ser reservado por outro cliente. Por favor, escolha outro horário disponível.';
+        return NextResponse.json(
+          {
+            ok: false,
+            success: false,
+            code: 'SLOT_ALREADY_BOOKED',
+            sqlstate: '23505',
+            error: conflictMsg,
+            message: conflictMsg,
+          },
+          { status: 409, headers: CORS_HEADERS }
+        );
+      }
+
+      // 2.2. Tratamento de outras rejeições de regra de negócio da RPC (ex: BARBER_ON_LEAVE, BARBER_INACTIVE, INVALID_PHONE)
+      //      Não permite cair no fallback de inserção direta!
+      if (rpcRes && rpcRes.success === false) {
+        const businessCode = rpcRes.code || 'BOOKING_REJECTED';
+        const businessMsg =
+          rpcRes.message || rpcRes.error || 'Não foi possível confirmar este horário.';
+        return NextResponse.json(
+          {
+            ok: false,
+            success: false,
+            code: businessCode,
+            error: businessMsg,
+            message: businessMsg,
+          },
+          { status: 422, headers: CORS_HEADERS }
+        );
+      }
+
+      // 2.3. Sucesso atômico via RPC
       if (!rpcErr && rpcRes?.success) {
         const createdIds = Array.isArray(rpcRes.appointment_ids)
           ? rpcRes.appointment_ids
@@ -160,27 +273,7 @@ export async function POST(request) {
           ? [rpcRes.appointment_id]
           : [];
 
-        // Garante que cada agendamento gravado reflita exatamente o duration_minutes e end_time personalizados
-        let currentStart = formattedTime;
-        for (let i = 0; i < createdIds.length; i++) {
-          const apptId = createdIds[i];
-          const item = resolvedItems[i] || resolvedItems[0];
-          const endTime = addMinutesToTimeStr(currentStart, item.duration_minutes);
-          await admin
-            .from('appointments')
-            .update({
-              appointment_time: currentStart,
-              end_time: endTime,
-              duration_minutes: item.duration_minutes,
-              price: item.price,
-              total_price: item.price,
-              source,
-              origin: source,
-            })
-            .eq('id', apptId);
-          currentStart = endTime;
-        }
-
+        // Notificação Push assíncrona (best-effort)
         if (createdIds[0]) {
           try {
             await notifyNewAppointment(createdIds[0]);
@@ -191,27 +284,25 @@ export async function POST(request) {
           {
             ok: true,
             success: true,
+            code: 'APPOINTMENT_CREATED',
             appointment_id: createdIds[0],
             appointment_ids: createdIds,
+            barber_id: barberId,
             date,
             start_time: timeRaw,
-            end_time: addMinutesToTimeStr(formattedTime, totalDuration).slice(0, 5),
-            total_duration: totalDuration,
-            total_price: totalPrice,
+            end_time:
+              rpcRes.end_time || addMinutesToTimeStr(formattedTime, totalDuration).slice(0, 5),
+            total_duration: rpcRes.total_duration || totalDuration,
+            total_price: rpcRes.total_price ?? totalPrice,
+            message: 'Agendamento confirmado com sucesso!',
           },
-          { headers: CORS_HEADERS }
-        );
-      }
-
-      if (rpcRes && rpcRes.success === false && rpcRes.code === 'SLOT_OCCUPIED') {
-        return NextResponse.json(
-          { ok: false, error: rpcRes.error, code: rpcRes.code },
-          { status: 409, headers: CORS_HEADERS }
+          { status: 200, headers: CORS_HEADERS }
         );
       }
     }
 
-    // 3. Fallback direto de inserção em public.appointments com a duração personalizada exata
+    // 3. Fallback direto de inserção em public.appointments (protegido no banco pelo
+    //    índice único `idx_appointments_unique_active_slot` e trigger `trg_prevent_appointment_overlap`)
     const primaryItem = resolvedItems[0];
     const endTime = addMinutesToTimeStr(formattedTime, totalDuration);
 
@@ -223,6 +314,7 @@ export async function POST(request) {
         service: resolvedItems.map((i) => i.name).join(' + '),
         client_name: clientName,
         client_phone: clientPhoneRaw || '00000000000',
+        clean_phone: clientPhoneRaw || '00000000000',
         appointment_date: date,
         appointment_time: formattedTime,
         end_time: endTime,
@@ -240,8 +332,30 @@ export async function POST(request) {
       .single();
 
     if (insErr) {
+      if (isSlotConflict(insErr)) {
+        const conflictMsg =
+          'Este horário acabou de ser reservado simultaneamente por outro cliente. Por favor, escolha outro horário disponível.';
+        return NextResponse.json(
+          {
+            ok: false,
+            success: false,
+            code: 'SLOT_ALREADY_BOOKED',
+            sqlstate: '23505',
+            error: conflictMsg,
+            message: conflictMsg,
+          },
+          { status: 409, headers: CORS_HEADERS }
+        );
+      }
+
       return NextResponse.json(
-        { ok: false, error: insErr.message },
+        {
+          ok: false,
+          success: false,
+          code: insErr.code || 'INSERT_ERROR',
+          error: insErr.message,
+          message: insErr.message,
+        },
         { status: 500, headers: CORS_HEADERS }
       );
     }
@@ -254,18 +368,43 @@ export async function POST(request) {
       {
         ok: true,
         success: true,
+        code: 'APPOINTMENT_CREATED',
         appointment_id: created.id,
+        barber_id: barberId,
         date,
         start_time: timeRaw,
         end_time: endTime.slice(0, 5),
         total_duration: totalDuration,
         total_price: totalPrice,
+        message: 'Agendamento confirmado com sucesso!',
       },
-      { headers: CORS_HEADERS }
+      { status: 200, headers: CORS_HEADERS }
     );
   } catch (err) {
+    if (isSlotConflict(err)) {
+      const conflictMsg =
+        'Este horário acabou de ser reservado simultaneamente por outro cliente. Por favor, escolha outro horário disponível.';
+      return NextResponse.json(
+        {
+          ok: false,
+          success: false,
+          code: 'SLOT_ALREADY_BOOKED',
+          sqlstate: '23505',
+          error: conflictMsg,
+          message: conflictMsg,
+        },
+        { status: 409, headers: CORS_HEADERS }
+      );
+    }
+
     return NextResponse.json(
-      { ok: false, error: err.message || 'Erro ao criar agendamento.' },
+      {
+        ok: false,
+        success: false,
+        code: 'INTERNAL_ERROR',
+        error: err.message || 'Erro ao criar agendamento.',
+        message: err.message || 'Erro ao criar agendamento.',
+      },
       { status: 500, headers: CORS_HEADERS }
     );
   }
