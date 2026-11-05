@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { endSession } from "@/lib/session";
 import { hasPermission, PERMISSION_KEYS } from "@/lib/auth";
@@ -16,15 +16,50 @@ import ToastStack from "@/components/admin/ToastStack";
 import HamburgerDrawer from "@/components/admin/HamburgerDrawer";
 import ClientCyclesSheet from "@/components/admin/ClientCyclesSheet";
 import CommissionSettlementSheet from "@/components/admin/CommissionSettlementSheet";
+import AgendaPage from "./agenda/page";
+
+function resolveTabFromPathname(pathname) {
+  if (!pathname || pathname === "/" || pathname === "/admin" || pathname.startsWith("/admin/agenda")) {
+    return "agenda";
+  }
+  if (pathname.startsWith("/admin/servicos")) return "servicos";
+  if (pathname.startsWith("/admin/expediente")) return "expediente";
+  if (pathname.startsWith("/admin/equipe")) return "equipe";
+  if (pathname.startsWith("/admin/financeiro")) return "financeiro";
+  if (pathname.startsWith("/admin/clientes")) return "clientes";
+  if (pathname.startsWith("/admin/cancelados")) return "cancelados";
+  if (pathname.startsWith("/admin/galeria")) return "galeria";
+  return "agenda";
+}
 
 // Vive DENTRO do BarberProvider para poder usar useBarber().
 function AdminShell({ children, onProfileUpdated }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [profileOpen, setProfileOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [recorrenciasOpen, setRecorrenciasOpen] = useState(false);
   const [settlementOpen, setSettlementOpen] = useState(false);
-  const { barber, isChefe, isLeadership, selectedBarberId, selectBarber } = useBarber();
+  const {
+    barber,
+    isChefe,
+    isLeadership,
+    selectedBarberId,
+    selectBarber,
+    setActiveTab,
+  } = useBarber();
+
+  const isDefaultRoot = !pathname || pathname === "/" || pathname === "/admin";
+  const effectivePathname = isDefaultRoot ? "/admin/agenda" : pathname;
+
+  // Garante que a aba ativa inicial seja obrigatoriamente 'agenda' assim que o painel monta
+  useEffect(() => {
+    const resolvedTab = resolveTabFromPathname(pathname);
+    setActiveTab(resolvedTab);
+    if (isDefaultRoot) {
+      router.replace("/admin/agenda");
+    }
+  }, [pathname, isDefaultRoot, router, setActiveTab]);
 
   // Notificações seguem SEMPRE quem está logado, não quem está a ser visualizado.
   const scopeAllNotifications = hasPermission(barber, PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS);
@@ -33,12 +68,14 @@ function AdminShell({ children, onProfileUpdated }) {
     <NotificationProvider barberId={barber.id} scopeAll={scopeAllNotifications}>
       <div className="min-h-screen bg-black flex flex-col">
         <Header
-          pathname={pathname}
+          pathname={effectivePathname}
           onOpenProfile={() => setProfileOpen(true)}
           onOpenMenu={() => setDrawerOpen(true)}
         />
         <ToastStack />
-        <main className="flex-1 pb-[calc(env(safe-area-inset-bottom,0px)+84px)]">{children}</main>
+        <main className="flex-1 pb-[calc(env(safe-area-inset-bottom,0px)+84px)]">
+          {isDefaultRoot ? <AgendaPage /> : children}
+        </main>
         <BottomNav />
       </div>
 

@@ -15,13 +15,18 @@ export async function middleware(request) {
     return NextResponse.redirect(url);
   }
 
+  // Raiz (/) ou /admin exato -> direciona imediatamente para /admin/agenda (se logado) ou /login
+  if (!isServerAction && (pathname === "/" || pathname === "/admin")) {
+    return redirectTo(hasSession ? "/admin/agenda" : "/login");
+  }
+
   // Sem sessão ativa tentando abrir o painel administrativo -> redireciona para /login
   if (!hasSession && pathname.startsWith("/admin") && !isServerAction) {
     return redirectTo("/login");
   }
 
   // Já logado tentando abrir a tela de /login -> redireciona direto para a agenda
-  if (hasSession && pathname === "/login") {
+  if (hasSession && pathname === "/login" && !isServerAction) {
     return redirectTo("/admin/agenda");
   }
 

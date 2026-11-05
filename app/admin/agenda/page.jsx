@@ -113,8 +113,45 @@ function buildTimelineItems(appointmentsList) {
   return items;
 }
 
+/**
+ * Busca os agendamentos do dia via HTTP GET rápido (/api/appointments)
+ * com fallback imediato para Server Action e proteção de timeout (8s).
+ */
+async function fetchAppointmentsImmediate(date, scopeBarberId) {
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("TIMEOUT_APPOINTMENTS")), 8000)
+  );
+
+  const fetchTask = (async () => {
+    try {
+      const params = new URLSearchParams({ date: String(date || "") });
+      if (scopeBarberId) params.set("barber_id", String(scopeBarberId));
+      const res = await fetch(`/api/appointments?${params.toString()}`, {
+        method: "GET",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+      if (res.status === 401) {
+        return { error: "AUTH_EXPIRED" };
+      }
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.ok && Array.isArray(json.data)) {
+          return { data: json.data };
+        }
+      }
+    } catch {
+      // Fallback imediato para Server Action
+    }
+    return await listAppointmentsByDate(date, scopeBarberId);
+  })();
+
+  return Promise.race([fetchTask, timeoutPromise]);
+}
+
 export default function AgendaPage() {
   const {
+    barber,
     can,
     scopeBarberId,
     selectedBarberId,
@@ -122,6 +159,7 @@ export default function AgendaPage() {
     viewedBarber,
     team,
     refreshTeam,
+    setActiveTab,
   } = useBarber();
   const { notifications } = useNotifications();
   const canViewAll = can(PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS);
@@ -129,11 +167,15 @@ export default function AgendaPage() {
   const [date, setDate] = useState(() => todayInShop());
   const apptCacheKey = cacheKeys.appointments(date, scopeBarberId);
 
-  // Inicializa sincronamente do cache em memória para renderização em 0ms ao trocar de aba
-  const [appointments, setAppointments] = useState(
-    () => getCache(apptCacheKey) || []
-  );
-  const [loading, setLoading] = useState(() => !hasCache(apptCacheKey));
+  // Inicializa sincronamente do cache em memória caso já possua registros carregados
+  const [appointments, setAppointments] = useState(() => {
+    const cached = getCache(apptCacheKey);
+    return Array.isArray(cached) ? cached : [];
+  });
+  const [loading, setLoading] = useState(() => {
+    const cached = getCache(apptCacheKey);
+    return !(Array.isArray(cached) && cached.length > 0);
+  });
   const [loadError, setLoadError] = useState("");
   const [actionError, setActionError] = useState("");
   const [busyId, setBusyId] = useState(null);
@@ -146,6 +188,15 @@ export default function AgendaPage() {
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [cyclesOpen, setCyclesOpen] = useState(false);
   const requestIdRef = useRef(0);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    setActiveTab("agenda");
+    return () => {
+      mountedRef.current = false;
+    };
+  }, [setActiveTab]);
 
   /**
    * Atualiza estado local e sincroniza imediatamente o cache em memória da data/escopo atual.
@@ -162,17 +213,16 @@ export default function AgendaPage() {
   );
 
   /**
-   * Busca os agendamentos do dia selecionado.
-   * Quando já existe cache em memória, exibe os dados instantaneamente (0ms) e revalida com silent = true.
+   * Busca os agendamentos do dia selecionado imediatamente no mount e a cada troca de data/barbeiro.
    */
   const load = useCallback(
     async ({ silent = false } = {}) => {
       const requestId = ++requestIdRef.current;
       const currentKey = cacheKeys.appointments(date, scopeBarberId);
       const cachedList = getCache(currentKey);
-      const hasCachedData = Array.isArray(cachedList);
+      const hasNonEmptyCache = Array.isArray(cachedList) && cachedList.length > 0;
 
-      if (hasCachedData) {
+      if (hasNonEmptyCache) {
         setAppointments(cachedList);
         setLoading(false);
       } else if (!silent) {
@@ -181,9 +231,9 @@ export default function AgendaPage() {
       }
 
       try {
-        const response = await listAppointmentsByDate(date, scopeBarberId);
+        const response = await fetchAppointmentsImmediate(date, scopeBarberId);
 
-        if (requestId !== requestIdRef.current) return;
+        if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
         if (response?.error === "AUTH_EXPIRED") {
           endSession();
@@ -191,40 +241,46 @@ export default function AgendaPage() {
         }
 
         if (response?.error) {
-          if (!silent && !hasCachedData) {
+          if (!hasNonEmptyCache) {
             setAppointments([]);
             setLoadError(response.error);
           }
           return;
         }
 
-        const freshData = response?.data || [];
+        const freshData = Array.isArray(response?.data) ? response.data : [];
         setCache(currentKey, freshData);
         setAppointments(freshData);
         setLoadError("");
       } catch {
-        if (requestId !== requestIdRef.current) return;
-        if (!silent && !hasCachedData) {
+        if (!mountedRef.current || requestId !== requestIdRef.current) return;
+        if (!hasNonEmptyCache) {
           setAppointments([]);
           setLoadError("Sem conexão. Verifique a internet e tente de novo.");
         }
       } finally {
-        if (requestId === requestIdRef.current) setLoading(false);
+        if (mountedRef.current && requestId === requestIdRef.current) {
+          setLoading(false);
+        }
       }
     },
     [date, scopeBarberId]
   );
 
+  // Disparo automático imediato no mount e ao alterar data ou barbeiro selecionado
   useEffect(() => {
+    if (!barber?.id) return;
     const cached = getCache(apptCacheKey);
-    if (Array.isArray(cached)) {
+    const hasNonEmptyCache = Array.isArray(cached) && cached.length > 0;
+
+    if (hasNonEmptyCache) {
       setAppointments(cached);
       setLoading(false);
       load({ silent: true });
     } else {
       load({ silent: false });
     }
-  }, [apptCacheKey, load]);
+  }, [barber?.id, apptCacheKey, load]);
 
   const loadRef = useRef(load);
   loadRef.current = load;

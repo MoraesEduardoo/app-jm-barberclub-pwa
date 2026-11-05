@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { notifyNewAppointment } from '@/lib/push';
 import { todayInShop } from '@/lib/dates';
+import { listAppointmentsByDate } from '@/lib/actions/appointments';
+
+export const dynamic = 'force-dynamic';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -16,6 +19,39 @@ function addMinutesToTimeStr(timeStr, minutesToAdd) {
   const h = Math.floor(totalMin / 60) % 24;
   const m = totalMin % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
+}
+
+/**
+ * GET /api/appointments?date=YYYY-MM-DD&barber_id=<uuid>
+ * Endpoint rápido de leitura dos compromissos do dia para o carregamento imediato da Agenda no mount,
+ * sem depender da fila sequencial de Server Actions.
+ */
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const date = searchParams.get('date') || todayInShop();
+    const rawBarberId = searchParams.get('barber_id') || searchParams.get('barberId') || null;
+    const scopeBarberId =
+      rawBarberId && rawBarberId !== 'all' && rawBarberId !== 'null' ? rawBarberId : null;
+
+    const res = await listAppointmentsByDate(date, scopeBarberId);
+    if (res?.error) {
+      return NextResponse.json(
+        { ok: false, error: res.error, data: [] },
+        { status: res.error === 'AUTH_EXPIRED' ? 401 : 200, headers: CORS_HEADERS }
+      );
+    }
+
+    return NextResponse.json(
+      { ok: true, date, data: Array.isArray(res?.data) ? res.data : [] },
+      { status: 200, headers: CORS_HEADERS }
+    );
+  } catch (err) {
+    return NextResponse.json(
+      { ok: false, error: err?.message || 'Erro ao buscar agendamentos.', data: [] },
+      { status: 200, headers: CORS_HEADERS }
+    );
+  }
 }
 
 /**

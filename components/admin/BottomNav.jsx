@@ -13,17 +13,25 @@ import { PERMISSION_KEYS } from '@/lib/auth';
  * Agenda, Serviços, Expediente e Equipe (para o Chefe).
  */
 const BASE_TABS = [
-  { href: '/admin/agenda', label: 'Agenda', icon: CalendarDays },
-  { href: '/admin/servicos', label: 'Serviços', icon: Scissors },
-  { href: '/admin/expediente', label: 'Expediente', icon: Clock },
+  { key: 'agenda', href: '/admin/agenda', label: 'Agenda', icon: CalendarDays },
+  { key: 'servicos', href: '/admin/servicos', label: 'Serviços', icon: Scissors },
+  { key: 'expediente', href: '/admin/expediente', label: 'Expediente', icon: Clock },
 ];
 
-const CHEFE_TAB = { href: '/admin/equipe', label: 'Equipe', icon: Users2 };
+const CHEFE_TAB = { key: 'equipe', href: '/admin/equipe', label: 'Equipe', icon: Users2 };
 
 export default function BottomNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const { barber, isChefe, isLeadership, scopeBarberId, can } = useBarber();
+  const {
+    barber,
+    isChefe,
+    isLeadership,
+    scopeBarberId,
+    can,
+    activeTab,
+    setActiveTab,
+  } = useBarber();
 
   const tabs = isChefe ? [...BASE_TABS, CHEFE_TAB] : BASE_TABS;
 
@@ -63,13 +71,20 @@ export default function BottomNav() {
       aria-label="Navegação principal do painel"
     >
       <ul className="flex items-stretch justify-around">
-        {tabs.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(`${href}/`);
+        {tabs.map(({ key, href, label, icon: Icon }) => {
+          const isRootDefault =
+            !pathname || pathname === '/' || pathname === '/admin';
+          const active =
+            pathname === href ||
+            pathname?.startsWith(`${href}/`) ||
+            (key === 'agenda' && (isRootDefault || activeTab === 'agenda') && !pathname?.startsWith('/admin/servicos') && !pathname?.startsWith('/admin/expediente') && !pathname?.startsWith('/admin/equipe') && !pathname?.startsWith('/admin/financeiro') && !pathname?.startsWith('/admin/clientes') && !pathname?.startsWith('/admin/cancelados') && !pathname?.startsWith('/admin/galeria'));
+
           return (
             <li key={href} className="flex-1">
               <Link
                 href={href}
                 prefetch={true}
+                onClick={() => setActiveTab(key)}
                 onPointerEnter={handleWarmupInteraction}
                 onTouchStart={handleWarmupInteraction}
                 className="relative flex flex-col items-center justify-center gap-1 py-2 min-h-[52px] active:scale-95 active:opacity-75 transition-all touch-manipulation"

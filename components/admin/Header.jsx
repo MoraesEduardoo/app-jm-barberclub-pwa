@@ -14,12 +14,14 @@ const TITLES = {
   '/admin/galeria': 'Galeria de Cortes',
   '/admin/clientes': 'Clientes',
   '/admin/cancelados': 'Cancelados',
+  '/admin': 'Agenda',
 };
 
 function isScopedPath(pathname) {
-  if (!pathname) return false;
+  if (!pathname) return true;
   if (pathname.startsWith('/admin/financeiro/completo')) return false;
   return (
+    pathname === '/admin' ||
     pathname.startsWith('/admin/agenda') ||
     pathname.startsWith('/admin/expediente') ||
     pathname.startsWith('/admin/financeiro')
@@ -36,7 +38,7 @@ export default function Header({ pathname, onOpenProfile, onOpenMenu }) {
   const viewedIsSelf = viewedBarber?.id === barber?.id;
 
   const title =
-    Object.entries(TITLES).find(([path]) => pathname?.startsWith(path))?.[1] ?? 'Painel';
+    Object.entries(TITLES).find(([path]) => pathname?.startsWith(path))?.[1] ?? 'Agenda';
 
   return (
     <header className="sticky top-0 z-30 safe-top bg-black/95 backdrop-blur-md border-b border-zinc-800 select-none">
@@ -54,7 +56,7 @@ export default function Header({ pathname, onOpenProfile, onOpenMenu }) {
           <div className="flex flex-col leading-tight min-w-0">
             <span className="text-white font-semibold text-base truncate">{title}</span>
             <span className="text-zinc-500 text-xs truncate">
-              {isChefe ? 'Acesso total' : isManager ? 'Gerência e agenda' : 'Meus atendimentos'} • v2.6
+              {isChefe ? 'Acesso total' : isManager ? 'Gerência e agenda' : 'Meus atendimentos'} • v2.7
             </span>
           </div>
         </div>
