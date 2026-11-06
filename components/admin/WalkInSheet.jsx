@@ -41,6 +41,50 @@ function formatShortDDMM(dateStr) {
   return `${d}/${m}`;
 }
 
+function parseHHMMToMinutes(timeStr) {
+  if (!timeStr) return null;
+  const parts = String(timeStr).slice(0, 5).split(":").map(Number);
+  if (parts.length < 2 || Number.isNaN(parts[0]) || Number.isNaN(parts[1])) return null;
+  return parts[0] * 60 + parts[1];
+}
+
+function formatMinutesToHHMM(totalMinutes) {
+  const mins = Math.max(0, Math.round(Number(totalMinutes) || 0));
+  const h = Math.floor(mins / 60) % 24;
+  const m = mins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/**
+ * Gera os horários que cabem especificamente dentro da janela livre clicada na timeline
+ * (ex: janela das 09:55 às 10:20 -> prioriza 09:55 e sub-slots de 5 em 5 min que comportem o serviço).
+ */
+function buildSlotsForClickedWindow(windowCtx, serviceDurationMinutes) {
+  if (!windowCtx?.startTime) return [];
+  const startTime = String(windowCtx.startTime).slice(0, 5);
+  const startMin = parseHHMMToMinutes(startTime);
+  if (startMin === null) return [startTime];
+
+  const rawEndMin = windowCtx.endTime ? parseHHMMToMinutes(windowCtx.endTime) : null;
+  const gapMin = Number(windowCtx.gapMinutes) || (rawEndMin !== null ? rawEndMin - startMin : 30);
+  const endMin = rawEndMin !== null && rawEndMin > startMin ? rawEndMin : startMin + Math.max(15, gapMin);
+
+  const dur = Number(serviceDurationMinutes) > 0 ? Number(serviceDurationMinutes) : Math.min(20, gapMin);
+  const slots = [startTime];
+
+  // Gera opções de encaixe a cada 5 minutos dentro do intervalo [startMin, endMin)
+  for (let cursor = startMin + 5; cursor < endMin; cursor += 5) {
+    if (cursor + dur <= endMin || (slots.length < 3 && cursor + 10 <= endMin)) {
+      const candidate = formatMinutesToHHMM(cursor);
+      if (!slots.includes(candidate)) {
+        slots.push(candidate);
+      }
+    }
+  }
+
+  return slots;
+}
+
 export default function WalkInSheet({
   open,
   onClose,
@@ -50,6 +94,7 @@ export default function WalkInSheet({
   existingAppointments,
   initialDate = null,
   initialTime = null,
+  initialWindow = null,
 }) {
   const today = todayInShop();
 
@@ -62,6 +107,7 @@ export default function WalkInSheet({
   const [timingMode, setTimingMode] = useState("now");
   const [selectedDate, setSelectedDate] = useState(() => addDaysStr(todayInShop(), 1));
   const [manualTime, setManualTime] = useState("");
+  const [focusWindowOnly, setFocusWindowOnly] = useState(false);
   const [rpcSlots, setRpcSlots] = useState(null);
   const [isDayOff, setIsDayOff] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
@@ -76,23 +122,40 @@ export default function WalkInSheet({
     existingAppointmentsRef.current = existingAppointments;
   }, [existingAppointments]);
 
+  // Normaliza o contexto da janela livre clicada na timeline
+  const windowContext = useMemo(() => {
+    const rawStart = initialWindow?.startTime || initialTime || "";
+    if (!rawStart) return null;
+    const startTime = String(rawStart).slice(0, 5);
+    const endTime = initialWindow?.endTime ? String(initialWindow.endTime).slice(0, 5) : null;
+    const gapMinutes = Number(initialWindow?.gapMinutes) || null;
+    const targetBarberId = initialWindow?.barberId || barber?.id || null;
+    const targetDate = initialWindow?.date
+      ? String(initialWindow.date).slice(0, 10)
+      : initialDate
+      ? String(initialDate).slice(0, 10)
+      : todayInShop();
+
+    return {
+      startTime,
+      endTime,
+      gapMinutes,
+      barberId: targetBarberId,
+      date: targetDate,
+    };
+  }, [initialWindow, initialTime, initialDate, barber?.id]);
+
   useEffect(() => {
     if (open) {
       const currentToday = todayInShop();
-      listServices()
-        .then((data) =>
-          setServices((data || []).filter((s) => s && s.active !== false && s.is_active !== false))
-        )
-        .catch(() => {
-          setServices([]);
-        });
-      setBarberId(barber.id);
+      const targetBarber = windowContext?.barberId || barber.id;
+      setBarberId(targetBarber);
       setServiceId("");
       setClientName("");
       setClientPhone("");
 
-      if (initialTime) {
-        const cleanDate = initialDate ? String(initialDate).slice(0, 10) : currentToday;
+      if (windowContext?.startTime) {
+        const cleanDate = windowContext.date || currentToday;
         if (cleanDate !== currentToday) {
           setTimingMode("future_date");
           setSelectedDate(cleanDate);
@@ -100,34 +163,73 @@ export default function WalkInSheet({
           setTimingMode("today_slot");
           setSelectedDate(addDaysStr(currentToday, 1));
         }
-        setManualTime(String(initialTime).slice(0, 5));
+        setManualTime(windowContext.startTime);
+        setFocusWindowOnly(true);
       } else {
         setTimingMode("now");
         setSelectedDate(addDaysStr(currentToday, 1));
         setManualTime("");
+        setFocusWindowOnly(false);
       }
+
+      listServices()
+        .then((data) => {
+          const activeList = (data || []).filter(
+            (s) => s && s.active !== false && s.is_active !== false
+          );
+          setServices(activeList);
+        })
+        .catch(() => {
+          setServices([]);
+        });
 
       setRpcSlots(null);
       setResolvedConfig(null);
       setIsDayOff(false);
       setError("");
     }
-  }, [open, barber.id, initialDate, initialTime]);
+  }, [open, barber.id, windowContext]);
 
   const effectiveDate = useMemo(() => {
     if (timingMode === "future_date") return selectedDate || today;
     return today;
   }, [timingMode, selectedDate, today]);
 
-  // Filtra serviços habilitados para o barbeiro selecionado
+  // Verifica se o modal continua focado na mesma data da janela livre clicada
+  const isMatchingWindowDate = useMemo(() => {
+    if (!windowContext?.startTime) return false;
+    return effectiveDate === windowContext.date && timingMode !== "now";
+  }, [windowContext, effectiveDate, timingMode]);
+
+  // Filtra e ordena serviços habilitados para o barbeiro selecionado
+  // (priorizando os serviços que cabem na duração da janela livre quando aplicável)
   const availableServicesForBarber = useMemo(() => {
-    return services.filter((s) => {
+    const filtered = services.filter((s) => {
       const cfg = s.barber_durations?.[barberId];
       if (cfg && cfg.is_active === false) return false;
       if (s.barber_id && String(s.barber_id) !== String(barberId)) return false;
       return true;
     });
-  }, [services, barberId]);
+
+    if (!windowContext?.gapMinutes) return filtered;
+
+    return [...filtered].sort((a, b) => {
+      const durA =
+        a.barber_durations?.[barberId]?.effective_duration ??
+        a.duration_minutes ??
+        a.default_duration_minutes ??
+        30;
+      const durB =
+        b.barber_durations?.[barberId]?.effective_duration ??
+        b.duration_minutes ??
+        b.default_duration_minutes ??
+        30;
+      const fitsA = durA <= windowContext.gapMinutes ? 0 : 1;
+      const fitsB = durB <= windowContext.gapMinutes ? 0 : 1;
+      if (fitsA !== fitsB) return fitsA - fitsB;
+      return durA - durB;
+    });
+  }, [services, barberId, windowContext?.gapMinutes]);
 
   const selectedService = useMemo(
     () => services.find((s) => s.id === serviceId) || null,
@@ -194,11 +296,6 @@ export default function WalkInSheet({
       };
     });
   }, [open]);
-
-  // Limpa horário manual selecionado quando mudar data, barbeiro, serviço ou modo
-  useEffect(() => {
-    setManualTime("");
-  }, [timingMode, effectiveDate, barberId, serviceId]);
 
   // No momento exato em que o barbeiro seleciona o serviço e o profissional,
   // consulta barber_services (barber_id + service_id) para buscar custom_duration
@@ -306,27 +403,57 @@ export default function WalkInSheet({
     return scheduleRows.find((r) => r.day_of_week === dow) || null;
   }, [scheduleRows, effectiveDate]);
 
-  const availableSlots = useMemo(() => {
-    if (timingMode === "now" || !selectedService) return [];
-    if (isDayOff) return [];
-    if (Array.isArray(rpcSlots) && rpcSlots.length > 0) {
-      return rpcSlots;
-    }
-    if (!daySchedule || !daySchedule.active) return [];
-
-    const sourceAppointments =
-      effectiveDate === todayInShop() ? existingAppointments : targetDateAppointments;
-    const busyRanges = extractBusyRangesFromAppointments(sourceAppointments, barberId);
+  // Slots específicos da janela livre clicada (ex: 09:55 às 10:20)
+  const windowSpecificSlots = useMemo(() => {
+    if (!isMatchingWindowDate || !windowContext?.startTime) return [];
     const serviceDur =
       effectiveServiceInfo?.durationMinutes ??
-      selectedService.duration_minutes ??
-      selectedService.default_duration_minutes ??
-      30;
-    const isTargetToday = effectiveDate === todayInShop();
+      selectedService?.duration_minutes ??
+      selectedService?.default_duration_minutes ??
+      null;
+    return buildSlotsForClickedWindow(windowContext, serviceDur);
+  }, [isMatchingWindowDate, windowContext, effectiveServiceInfo, selectedService]);
 
-    return generateAvailableSlots(daySchedule, busyRanges, serviceDur, {
-      nowTime: isTargetToday ? roundUpToNextSlot() : null,
-    });
+  // Mantém o horário de início da janela pré-selecionado quando em modo de encaixe de janela
+  useEffect(() => {
+    if (isMatchingWindowDate && windowSpecificSlots.length > 0) {
+      setManualTime((prev) =>
+        prev && windowSpecificSlots.includes(prev) ? prev : windowSpecificSlots[0]
+      );
+    }
+  }, [isMatchingWindowDate, windowSpecificSlots]);
+
+  // Todos os slots disponíveis do dia (motor geral)
+  const allDaySlots = useMemo(() => {
+    if (timingMode === "now" || !selectedService) return [];
+    if (isDayOff) return [];
+    let baseSlots = [];
+    if (Array.isArray(rpcSlots) && rpcSlots.length > 0) {
+      baseSlots = rpcSlots;
+    } else if (daySchedule && daySchedule.active) {
+      const sourceAppointments =
+        effectiveDate === todayInShop() ? existingAppointments : targetDateAppointments;
+      const busyRanges = extractBusyRangesFromAppointments(sourceAppointments, barberId);
+      const serviceDur =
+        effectiveServiceInfo?.durationMinutes ??
+        selectedService.duration_minutes ??
+        selectedService.default_duration_minutes ??
+        30;
+      const isTargetToday = effectiveDate === todayInShop();
+
+      baseSlots = generateAvailableSlots(daySchedule, busyRanges, serviceDur, {
+        nowTime: isTargetToday && !isMatchingWindowDate ? roundUpToNextSlot() : null,
+      });
+    }
+
+    if (windowSpecificSlots.length > 0) {
+      const merged = [...windowSpecificSlots];
+      baseSlots.forEach((s) => {
+        if (!merged.includes(s)) merged.push(s);
+      });
+      return merged;
+    }
+    return baseSlots;
   }, [
     timingMode,
     selectedService,
@@ -338,13 +465,25 @@ export default function WalkInSheet({
     existingAppointments,
     targetDateAppointments,
     barberId,
+    isMatchingWindowDate,
+    windowSpecificSlots,
   ]);
+
+  // Slots exibidos no seletor: filtra prioritariamente para a janela clicada quando focusWindowOnly está ativo
+  const availableSlots = useMemo(() => {
+    if (isMatchingWindowDate && focusWindowOnly && windowSpecificSlots.length > 0) {
+      return windowSpecificSlots;
+    }
+    return allDaySlots;
+  }, [isMatchingWindowDate, focusWindowOnly, windowSpecificSlots, allDaySlots]);
 
   function handleStepDate(deltaDays) {
     const minDate = todayInShop();
     const next = addDaysStr(selectedDate || minDate, deltaDays);
     if (next < minDate) return;
     setSelectedDate(next);
+    setFocusWindowOnly(false);
+    setManualTime("");
   }
 
   async function handleSubmit(e) {
@@ -405,9 +544,37 @@ export default function WalkInSheet({
     <BottomSheet
       open={open}
       onClose={() => onClose()}
-      title={timingMode === "future_date" ? "Agendar atendimento" : "Novo atendimento"}
+      title={
+        isMatchingWindowDate && windowContext?.startTime
+          ? `Encaixe às ${windowContext.startTime}`
+          : timingMode === "future_date"
+          ? "Agendar atendimento"
+          : "Novo atendimento"
+      }
     >
       <form onSubmit={handleSubmit}>
+        {/* Banner de Contexto da Janela Livre Clicada */}
+        {isMatchingWindowDate && windowContext?.startTime && (
+          <div className="mb-3.5 flex items-center justify-between gap-2 rounded-xl border border-emerald-500/30 bg-emerald-950/20 px-3 py-2.5">
+            <div className="flex items-center gap-2 min-w-0">
+              <Clock size={14} className="text-emerald-400 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-emerald-200 truncate">
+                  Janela selecionada: {windowContext.startTime}
+                  {windowContext.endTime ? ` às ${windowContext.endTime}` : ""}
+                  {windowContext.gapMinutes ? ` (${windowContext.gapMinutes} min livres)` : ""}
+                </p>
+                <p className="text-[11px] text-zinc-400 truncate">
+                  Profissional: <strong className="text-zinc-200">{selectedBarberName}</strong>
+                </p>
+              </div>
+            </div>
+            <span className="shrink-0 font-mono tabular-nums text-xs font-bold text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-2 py-1 rounded-lg">
+              {manualTime || windowContext.startTime}
+            </span>
+          </div>
+        )}
+
         {canPickBarber && team.length > 0 && (
           <FormField label="Barbeiro">
             <select
@@ -452,9 +619,15 @@ export default function WalkInSheet({
                     s.default_duration_minutes ??
                     30;
                   const prc = bCfg?.effective_price ?? Number(s.price || 0);
+                  const fitsWindow =
+                    isMatchingWindowDate &&
+                    windowContext?.gapMinutes &&
+                    Number(dur) <= Number(windowContext.gapMinutes);
                   return (
                     <option key={s.id} value={s.id}>
-                      {s.name} — R$ {Number(prc).toFixed(2).replace(".", ",")} ({dur} min)
+                      {fitsWindow ? "✓ " : ""}
+                      {s.name} — R$ {Number(prc).toFixed(2).replace(".", ",")} ({dur} min
+                      {fitsWindow ? " • cabe na janela" : ""})
                     </option>
                   );
                 })}
@@ -506,7 +679,10 @@ export default function WalkInSheet({
           <div className="grid grid-cols-3 gap-1.5 mb-3">
             <button
               type="button"
-              onClick={() => setTimingMode("now")}
+              onClick={() => {
+                setTimingMode("now");
+                setManualTime("");
+              }}
               className={`h-11 px-2 rounded-xl text-xs font-semibold border transition-all touch-manipulation select-none active:scale-95 flex items-center justify-center gap-1.5 ${
                 timingMode === "now"
                   ? "bg-accent border-accent text-white shadow-sm"
@@ -519,7 +695,12 @@ export default function WalkInSheet({
 
             <button
               type="button"
-              onClick={() => setTimingMode("today_slot")}
+              onClick={() => {
+                setTimingMode("today_slot");
+                if (windowContext?.startTime && windowContext.date === today) {
+                  setManualTime((prev) => prev || windowContext.startTime);
+                }
+              }}
               className={`h-11 px-2 rounded-xl text-xs font-semibold border transition-all touch-manipulation select-none active:scale-95 flex items-center justify-center gap-1.5 ${
                 timingMode === "today_slot"
                   ? "bg-accent border-accent text-white shadow-sm"
@@ -570,7 +751,11 @@ export default function WalkInSheet({
                     min={today}
                     value={selectedDate}
                     onChange={(e) => {
-                      if (e.target.value) setSelectedDate(e.target.value);
+                      if (e.target.value) {
+                        setSelectedDate(e.target.value);
+                        setFocusWindowOnly(false);
+                        setManualTime("");
+                      }
                     }}
                     className="h-8 rounded-lg bg-[#0d0d0d] border border-zinc-800 px-2 text-xs font-medium text-zinc-200 focus:outline-none focus:border-accent [color-scheme:dark]"
                   />
@@ -593,7 +778,13 @@ export default function WalkInSheet({
                     <button
                       key={d.iso}
                       type="button"
-                      onClick={() => setSelectedDate(d.iso)}
+                      onClick={() => {
+                        setSelectedDate(d.iso);
+                        if (d.iso !== windowContext?.date) {
+                          setFocusWindowOnly(false);
+                          setManualTime("");
+                        }
+                      }}
                       className={`shrink-0 min-w-[58px] py-2 px-2.5 rounded-xl border text-center transition-all touch-manipulation active:scale-95 ${
                         isSelected
                           ? "bg-accent border-accent text-white shadow-sm"
@@ -627,23 +818,42 @@ export default function WalkInSheet({
           {/* Seletor de Horários Disponíveis (para "Escolher horário" hoje ou "Marcar dia") */}
           {timingMode !== "now" && (
             <div className="rounded-2xl bg-[#050505] border border-zinc-800/80 p-3">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between gap-2 mb-2">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-                  Horários disponíveis ({formatShortDDMM(effectiveDate)})
+                  {isMatchingWindowDate && focusWindowOnly
+                    ? `Horários na janela (${windowContext.startTime}${
+                        windowContext.endTime ? `–${windowContext.endTime}` : ""
+                      })`
+                    : `Horários disponíveis (${formatShortDDMM(effectiveDate)})`}
                 </span>
-                {selectedService && !loadingSlots && availableSlots.length > 0 && (
-                  <span className="text-[11px] font-medium text-zinc-500">
-                    {availableSlots.length} {availableSlots.length === 1 ? "vaga" : "vagas"} (
-                    {effectiveServiceInfo?.durationMinutes ?? 30} min)
-                  </span>
+
+                {isMatchingWindowDate && selectedService ? (
+                  <button
+                    type="button"
+                    onClick={() => setFocusWindowOnly((prev) => !prev)}
+                    className="text-[11px] font-semibold text-accent-light hover:underline shrink-0"
+                  >
+                    {focusWindowOnly
+                      ? "Ver todos do dia"
+                      : `Focar janela (${windowContext.startTime})`}
+                  </button>
+                ) : (
+                  selectedService &&
+                  !loadingSlots &&
+                  availableSlots.length > 0 && (
+                    <span className="text-[11px] font-medium text-zinc-500">
+                      {availableSlots.length} {availableSlots.length === 1 ? "vaga" : "vagas"} (
+                      {effectiveServiceInfo?.durationMinutes ?? 30} min)
+                    </span>
+                  )
                 )}
               </div>
 
-              {!selectedService ? (
+              {!selectedService && !isMatchingWindowDate ? (
                 <p className="text-zinc-500 text-xs py-2">
                   Selecione o serviço acima para consultar os horários livres.
                 </p>
-              ) : loadingSlots ? (
+              ) : loadingSlots && !focusWindowOnly ? (
                 <div className="flex items-center gap-2 text-xs text-zinc-400 py-3">
                   <Loader2 size={14} className="animate-spin text-accent" />
                   <span>Consultando disponibilidade na agenda…</span>
@@ -658,20 +868,26 @@ export default function WalkInSheet({
                 </p>
               ) : (
                 <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5 max-h-48 overflow-y-auto pr-0.5">
-                  {availableSlots.map((slot) => (
-                    <button
-                      key={slot}
-                      type="button"
-                      onClick={() => setManualTime(slot)}
-                      className={`py-2 px-2 rounded-lg text-xs font-semibold border transition-all touch-manipulation select-none active:scale-95 text-center ${
-                        manualTime === slot
-                          ? "bg-accent border-accent text-white shadow-sm"
-                          : "bg-[#0b0b0b] border-zinc-800 text-zinc-300 active:bg-zinc-800"
-                      }`}
-                    >
-                      {slot}
-                    </button>
-                  ))}
+                  {availableSlots.map((slot) => {
+                    const isWindowSlot = windowSpecificSlots.includes(slot);
+                    const isSelected = manualTime === slot;
+                    return (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() => setManualTime(slot)}
+                        className={`py-2 px-2 rounded-lg text-xs font-mono tabular-nums font-semibold border transition-all touch-manipulation select-none active:scale-95 text-center ${
+                          isSelected
+                            ? "bg-accent border-accent text-white shadow-sm"
+                            : isWindowSlot
+                            ? "bg-emerald-950/30 border-emerald-500/40 text-emerald-200 hover:border-emerald-400"
+                            : "bg-[#0b0b0b] border-zinc-800 text-zinc-300 active:bg-zinc-800"
+                        }`}
+                      >
+                        {slot}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -687,6 +903,8 @@ export default function WalkInSheet({
             ? manualTime
               ? `Agendar para ${formatShortDDMM(effectiveDate)} às ${manualTime}`
               : "Agendar atendimento"
+            : manualTime && timingMode !== "now"
+            ? `Confirmar encaixe às ${manualTime}`
             : "Registrar atendimento"}
         </PrimaryButton>
       </form>

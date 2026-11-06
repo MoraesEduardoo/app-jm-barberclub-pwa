@@ -97,6 +97,7 @@ function buildTimelineItems(appointmentsList) {
 
   const items = [];
   let prevEndMin = null;
+  let prevBarberId = null;
 
   sorted.forEach((appt, idx) => {
     const startStr = getAppointmentStartTime(appt);
@@ -104,6 +105,7 @@ function buildTimelineItems(appointmentsList) {
     const durationMin = getAppointmentDuration(appt);
     const endStr = getAppointmentEndTime(appt, startStr, durationMin);
     const endMin = timeStrToMinutes(endStr);
+    const currentBarberId = appt.barbers?.id || appt.barber_id || null;
 
     // Qualquer janela livre >= 10 min entre o término anterior e o próximo início
     // é exibida com destaque proporcional e indicador de encaixe rápido
@@ -124,6 +126,7 @@ function buildTimelineItems(appointmentsList) {
         gapMinutes,
         fromTime: minutesToTimeStr(prevEndMin),
         toTime: startStr,
+        barberId: prevBarberId || currentBarberId,
         durationLabel: formatAvailableGapDuration(gapMinutes),
         fluidLabel: formatFluidGapLabel(gapMinutes),
       });
@@ -136,7 +139,10 @@ function buildTimelineItems(appointmentsList) {
     });
 
     if (endMin !== null) {
-      prevEndMin = prevEndMin === null ? endMin : Math.max(prevEndMin, endMin);
+      if (prevEndMin === null || endMin >= prevEndMin) {
+        prevEndMin = endMin;
+        prevBarberId = currentBarberId || prevBarberId;
+      }
     }
   });
 
@@ -217,6 +223,7 @@ export default function AgendaPage() {
   const [filterMode, setFilterMode] = useState("all"); // 'all' | 'confirmado' | 'concluido' | 'pre_scheduled'
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [walkInInitialTime, setWalkInInitialTime] = useState("");
+  const [walkInWindowContext, setWalkInWindowContext] = useState(null);
   const [cyclesOpen, setCyclesOpen] = useState(false);
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);
@@ -381,6 +388,7 @@ export default function AgendaPage() {
   function handleCloseWalkIn(result) {
     setWalkInOpen(false);
     setWalkInInitialTime("");
+    setWalkInWindowContext(null);
     if (result?.created) {
       invalidateCache("appointments:");
       invalidateCache("finance:");
@@ -749,7 +757,20 @@ export default function AgendaPage() {
                         <button
                           type="button"
                           onClick={() => {
+                            const targetBarberId =
+                              scopeBarberId ||
+                              item.barberId ||
+                              viewedBarber?.id ||
+                              barber?.id ||
+                              null;
                             setWalkInInitialTime(item.fromTime);
+                            setWalkInWindowContext({
+                              startTime: item.fromTime,
+                              endTime: item.toTime,
+                              gapMinutes: item.gapMinutes,
+                              barberId: targetBarberId,
+                              date,
+                            });
                             setWalkInOpen(true);
                           }}
                           style={{ minHeight: `${gapMinHeight}px` }}
@@ -899,6 +920,7 @@ export default function AgendaPage() {
         type="button"
         onClick={() => {
           setWalkInInitialTime("");
+          setWalkInWindowContext(null);
           setWalkInOpen(true);
         }}
         className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+72px)] right-4 z-30 flex items-center gap-2 h-12 pl-4 pr-5 rounded-full bg-accent text-white text-sm font-semibold shadow-accent-glow active:scale-95 active:bg-accent-dark transition-all touch-manipulation select-none"
@@ -916,6 +938,7 @@ export default function AgendaPage() {
         existingAppointments={appointments}
         initialDate={date}
         initialTime={walkInInitialTime}
+        initialWindow={walkInWindowContext}
       />
 
       <ClientCyclesSheet
