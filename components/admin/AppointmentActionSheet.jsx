@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   CheckCircle2,
   XCircle,
@@ -18,12 +18,15 @@ import {
   X,
   Scissors,
   Sparkles,
+  Copy,
+  Check,
 } from 'lucide-react';
 import BottomSheet from './BottomSheet';
 import { toast } from '@/lib/toast';
 import {
   buildAppointmentReminderWhatsAppMessage,
   getWhatsAppClickToChatUrl,
+  formatPhoneBR,
 } from '@/lib/whatsapp';
 import { isPreScheduledAppointment } from '@/lib/pre-scheduled';
 import { parseAppointmentNotes } from './AddProductSheet';
@@ -98,6 +101,25 @@ export default function AppointmentActionSheet({
   onProductRemoved,
 }) {
   const [removingKey, setRemovingKey] = useState(null);
+  const [copiedPhone, setCopiedPhone] = useState(false);
+  const copyTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) {
+      setCopiedPhone(false);
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+      }
+    }
+  }, [open, appointment?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
 
   if (!appointment) return null;
 
@@ -141,6 +163,38 @@ export default function AppointmentActionSheet({
   const serviceName =
     appointment.services?.name || appointment.service || 'Serviço';
   const barberName = appointment.barbers?.name || '';
+  const formattedPhone = formatPhoneBR(appointment.client_phone) || appointment.client_phone;
+
+  async function handleCopyPhone() {
+    const textToCopy = formattedPhone || String(appointment.client_phone || '').trim();
+    if (!textToCopy) return;
+
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(textToCopy);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = textToCopy;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+    } catch {
+      // Fallback silencioso
+    }
+
+    setCopiedPhone(true);
+    if (copyTimerRef.current) {
+      clearTimeout(copyTimerRef.current);
+    }
+    copyTimerRef.current = setTimeout(() => {
+      setCopiedPhone(false);
+    }, 1500);
+  }
 
   function handleSendWhatsAppReminder() {
     if (!appointment.client_phone) {
@@ -232,10 +286,33 @@ export default function AppointmentActionSheet({
                 </h3>
               </div>
               {appointment.client_phone && (
-                <p className="text-xs text-zinc-400 font-mono tabular-nums mt-1 flex items-center gap-1.5">
-                  <Phone size={12} className="text-zinc-500" />
-                  {appointment.client_phone}
-                </p>
+                <button
+                  type="button"
+                  onClick={handleCopyPhone}
+                  title="Clique para copiar o telefone"
+                  aria-label={`Copiar telefone ${formattedPhone}`}
+                  className={`mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 -ml-2 rounded-lg text-xs font-mono tabular-nums transition-all active:scale-95 touch-manipulation select-none group ${
+                    copiedPhone
+                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold'
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/70 border border-transparent'
+                  }`}
+                >
+                  {copiedPhone ? (
+                    <>
+                      <Check size={12} className="text-emerald-400 shrink-0" />
+                      <span>Copiado!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Phone size={12} className="text-zinc-500 group-hover:text-zinc-300 shrink-0" />
+                      <span>{formattedPhone}</span>
+                      <Copy
+                        size={11}
+                        className="text-zinc-500 group-hover:text-zinc-300 transition-colors shrink-0"
+                      />
+                    </>
+                  )}
+                </button>
               )}
             </div>
 

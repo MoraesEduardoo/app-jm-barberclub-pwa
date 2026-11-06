@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Calendar,
   Clock,
@@ -9,6 +9,8 @@ import {
   Trash2,
   AlertTriangle,
   Loader2,
+  Copy,
+  Check,
 } from 'lucide-react';
 import BottomSheet from './BottomSheet';
 import { formatPhoneBR } from '@/lib/whatsapp';
@@ -22,15 +24,62 @@ function formatBRL(val) {
 export default function ClientDetailSheet({ client, open, onClose, onWhatsApp, onDeleted }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [copiedPhone, setCopiedPhone] = useState(false);
+  const copyTimerRef = useRef(null);
 
   useEffect(() => {
     if (!open) {
       setConfirmingDelete(false);
       setDeleting(false);
+      setCopiedPhone(false);
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+      }
     }
   }, [open, client?.id]);
 
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
+
   if (!client) return null;
+
+  const formattedPhone = formatPhoneBR(client.phone);
+
+  async function handleCopyPhone() {
+    const textToCopy = formattedPhone || String(client.phone || '').trim();
+    if (!textToCopy) return;
+
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(textToCopy);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = textToCopy;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+    } catch {
+      // Fallback silencioso
+    }
+
+    setCopiedPhone(true);
+    if (copyTimerRef.current) {
+      clearTimeout(copyTimerRef.current);
+    }
+    copyTimerRef.current = setTimeout(() => {
+      setCopiedPhone(false);
+    }, 1500);
+  }
 
   async function handleConfirmDelete() {
     if (deleting) return;
@@ -59,21 +108,48 @@ export default function ClientDetailSheet({ client, open, onClose, onWhatsApp, o
     <BottomSheet open={open} onClose={onClose} title={client.name}>
       <div className="space-y-4">
         {/* Cabeçalho do Cliente */}
-        <div className="flex items-center justify-between bg-elevated/70 p-3.5 rounded-2xl border border-zinc-800">
-          <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-full bg-accent/20 border border-accent/40 flex items-center justify-center text-accent font-bold text-base">
+        <div className="flex items-center justify-between bg-elevated/70 p-3.5 rounded-2xl border border-zinc-800 gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="h-12 w-12 rounded-full bg-accent/20 border border-accent/40 flex items-center justify-center text-accent font-bold text-base shrink-0">
               {client.name?.charAt(0)?.toUpperCase() || 'C'}
             </div>
-            <div>
-              <p className="text-white font-bold text-sm leading-tight">{client.name}</p>
-              <p className="text-zinc-400 text-xs mt-0.5">{formatPhoneBR(client.phone)}</p>
+            <div className="min-w-0">
+              <p className="text-white font-bold text-sm leading-tight truncate">{client.name}</p>
+              {formattedPhone && (
+                <button
+                  type="button"
+                  onClick={handleCopyPhone}
+                  title="Clique para copiar o telefone"
+                  aria-label={`Copiar telefone ${formattedPhone}`}
+                  className={`mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 -ml-2 rounded-lg text-xs font-mono tabular-nums transition-all active:scale-95 touch-manipulation select-none group ${
+                    copiedPhone
+                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold'
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/70 border border-transparent'
+                  }`}
+                >
+                  {copiedPhone ? (
+                    <>
+                      <Check size={12} className="text-emerald-400 shrink-0" />
+                      <span>Copiado!</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{formattedPhone}</span>
+                      <Copy
+                        size={11}
+                        className="text-zinc-500 group-hover:text-zinc-300 transition-colors shrink-0"
+                      />
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
 
           <button
             type="button"
             onClick={() => onWhatsApp(client)}
-            className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-black font-semibold text-xs py-2 px-3 rounded-xl transition-transform active:scale-95 touch-manipulation"
+            className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-black font-semibold text-xs py-2 px-3 rounded-xl transition-transform active:scale-95 touch-manipulation shrink-0"
           >
             <MessageSquare size={14} />
             <span>WhatsApp</span>
