@@ -99,6 +99,7 @@ export default function AppointmentCard({
   appointment,
   onSelect,
   isLast = false,
+  closingTime = '20:30',
   busy = false,
 }) {
   const isPreScheduled = isPreScheduledAppointment(appointment);
@@ -119,6 +120,11 @@ export default function AppointmentCard({
   const endTime = getAppointmentEndTime(appointment, startTime, durationMin);
   const intermediateTicks = getIntermediateTicks(startTime, durationMin);
 
+  const endMin = timeStrToMinutes(endTime);
+  const closeMin = timeStrToMinutes(closingTime) ?? 20 * 60 + 30;
+  const reachesClosingTime = endMin !== null && endMin >= closeMin;
+  const showEndOfShiftHighlight = isLast || reachesClosingTime;
+
   const serviceName =
     appointment.services?.name || appointment.service || 'Serviço';
   const barberName = appointment.barbers?.name || '';
@@ -131,7 +137,7 @@ export default function AppointmentCard({
   // Altura proporcional à duração na linha do tempo (ex: 30min -> 78px, 60min -> 118px)
   const blockMinHeight = Math.max(76, Math.min(164, Math.round(durationMin * 1.95 + 18)));
 
-  // Estilização OLED Dark com acentos em Azul Profundo, Vermelho Escarlate e Branco
+  // Estilização OLED Dark com acentos em Azul Profundo, Vermelho Escarlate, Zinco e Esmeralda
   let cardSurfaceClass =
     'bg-[#080d18] border-blue-500/35 hover:border-blue-400/60 hover:bg-[#0b1222]';
   let nodeDotClass = 'bg-accent border-black ring-2 ring-accent/30';
@@ -162,6 +168,13 @@ export default function AppointmentCard({
     statusTextClass = 'text-accent-light';
   }
 
+  // Destaque especial no último agendamento / fecho do expediente
+  if (showEndOfShiftHighlight && !isPreScheduled) {
+    cardSurfaceClass = isCompleted
+      ? 'bg-gradient-to-br from-[#070b12] via-[#090d14] to-[#120709] border-emerald-500/40 hover:border-emerald-400/65'
+      : 'bg-gradient-to-br from-[#090d18] via-[#0c0a12] to-[#16070a] border-accent/50 hover:border-accent-light/75';
+  }
+
   return (
     <div className="relative flex items-stretch gap-3 sm:gap-4 select-none">
       {/* Coluna Esquerda: Eixo Vertical de Horários da Timeline */}
@@ -169,7 +182,9 @@ export default function AppointmentCard({
         {/* Linha Conectora Vertical */}
         <div
           className={`absolute right-0 top-2.5 w-px ${
-            isLast ? 'bottom-3 bg-gradient-to-b from-zinc-800 to-transparent' : '-bottom-3 bg-zinc-800/90'
+            isLast
+              ? 'bottom-2 bg-gradient-to-b from-zinc-700 via-accent/40 to-transparent'
+              : '-bottom-3 bg-zinc-800/90'
           }`}
         />
 
@@ -197,9 +212,15 @@ export default function AppointmentCard({
           </div>
         )}
 
-        {/* Horário de Término discreto na base do bloco */}
+        {/* Horário de Término na base do bloco (destacado quando encerra o expediente) */}
         {endTime && (
-          <span className="mt-auto pb-1.5 font-mono tabular-nums text-[10px] font-medium text-zinc-500 leading-none">
+          <span
+            className={`mt-auto pb-1.5 font-mono tabular-nums text-[10px] leading-none ${
+              showEndOfShiftHighlight
+                ? 'font-bold text-accent-light'
+                : 'font-medium text-zinc-500'
+            }`}
+          >
             {endTime}
           </span>
         )}
@@ -271,7 +292,7 @@ export default function AppointmentCard({
           </div>
 
           {/* Rodapé Enxuto do Bloco: Intervalo de Horário + Duração + Indicador de Produtos */}
-          <div className="mt-2 pt-1.5 border-t border-white/[0.05] flex items-center justify-between gap-2 text-[11px]">
+          <div className="mt-2 pt-1.5 border-t border-white/[0.06] flex items-center justify-between gap-2 text-[11px]">
             <div className="flex items-center gap-1.5 font-mono tabular-nums">
               <span className={`font-semibold ${timeBadgeClass}`}>
                 {startTime && endTime
@@ -293,6 +314,21 @@ export default function AppointmentCard({
               </span>
             )}
           </div>
+
+          {/* Rodapé Especial de Fecho do Expediente no Último Atendimento */}
+          {showEndOfShiftHighlight && endTime && (
+            <div className="mt-2 pt-2 border-t border-accent/20 flex items-center justify-between gap-2">
+              <span className="text-[11px] font-semibold text-zinc-200 tracking-tight truncate">
+                🏁 Fim do Expediente • Encerrado às{' '}
+                <span className="font-mono tabular-nums text-accent-light font-bold">
+                  {endTime}
+                </span>
+              </span>
+              <span className="shrink-0 text-[10px] font-mono tabular-nums text-zinc-400">
+                {reachesClosingTime ? 'Fecho da barbearia' : 'Último do dia'}
+              </span>
+            </div>
+          )}
         </button>
       </div>
     </div>

@@ -48,38 +48,49 @@ const STATUS_FILTERS = [
 
 /**
  * Formata a duração total de uma janela livre para leitura rápida na timeline
- * Ex: 65 -> "1h05 disponíveis", 20 -> "20 min disponíveis", 60 -> "1h disponíveis"
+ * Ex: 65 -> "1h05", 25 -> "25 min", 60 -> "1h"
  */
 function formatAvailableGapDuration(totalMinutes) {
   const mins = Math.max(0, Math.round(Number(totalMinutes) || 0));
   if (mins < 60) {
-    return `${mins} min disponíveis`;
+    return `${mins} min`;
   }
   const hours = Math.floor(mins / 60);
   const rem = mins % 60;
   if (rem === 0) {
-    return `${hours}h disponíveis`;
+    return `${hours}h`;
   }
-  return `${hours}h${String(rem).padStart(2, "0")} disponíveis`;
+  return `${hours}h${String(rem).padStart(2, "0")}`;
 }
 
 /**
- * Monta o texto fluido e discreto exibido na faixa de intervalo livre
- * Ex: "Intervalo livre • 25 min disponíveis para encaixe rápido"
- * Ex: "Intervalo livre • 1h05 disponíveis para encaixe"
+ * Monta o texto limpo, direto e elegante exibido na faixa de intervalo livre
+ * Ex: "⏱️ Intervalo livre • 25 min"
+ * Ex: "⏱️ Intervalo livre • 1h05"
  */
 function formatFluidGapLabel(totalMinutes) {
   const mins = Math.max(0, Math.round(Number(totalMinutes) || 0));
   const durationText = formatAvailableGapDuration(mins);
-  if (mins <= 30) {
-    return `Intervalo livre • ${durationText} para encaixe rápido`;
+  return `⏱️ Intervalo livre • ${durationText}`;
+}
+
+/**
+ * Determina o horário padrão de fecho da barbearia para a data selecionada
+ * (Domingo: 12:30 | Segunda a Sábado: 20:30)
+ */
+function getShopClosingTimeForDate(dateStr) {
+  if (!dateStr) return "20:30";
+  const parts = String(dateStr).slice(0, 10).split("-").map(Number);
+  if (parts.length === 3 && parts.every(Number.isFinite)) {
+    const dt = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+    if (dt.getDay() === 0) return "12:30";
   }
-  return `Intervalo livre • ${durationText} para encaixe`;
+  return "20:30";
 }
 
 /**
  * Monta os itens da Linha do Tempo Vertical intercalando agendamentos ordenados
- * e blocos destacados de Janela Livre nos intervalos disponíveis.
+ * e faixas subtis de Intervalo Livre nos intervalos disponíveis.
  */
 function buildTimelineItems(appointmentsList) {
   if (!Array.isArray(appointmentsList) || appointmentsList.length === 0) {
@@ -108,7 +119,7 @@ function buildTimelineItems(appointmentsList) {
     const currentBarberId = appt.barbers?.id || appt.barber_id || null;
 
     // Qualquer janela livre >= 10 min entre o término anterior e o próximo início
-    // é exibida com destaque proporcional e indicador de encaixe rápido
+    // é exibida como faixa subtil e proporcional com atalho de encaixe rápido
     if (prevEndMin !== null && startMin !== null && startMin - prevEndMin >= 10) {
       const gapMinutes = startMin - prevEndMin;
       const firstTick = Math.ceil((prevEndMin + 10) / 30) * 30;
@@ -136,6 +147,7 @@ function buildTimelineItems(appointmentsList) {
       type: "appointment",
       key: appt.id,
       appointment: appt,
+      endTime: endStr,
     });
 
     if (endMin !== null) {
@@ -515,6 +527,17 @@ export default function AgendaPage() {
     [displayedAppointments]
   );
 
+  const shopClosingTime = useMemo(() => getShopClosingTimeForDate(date), [date]);
+
+  const lastTimelineAppointment = useMemo(() => {
+    for (let i = timelineItems.length - 1; i >= 0; i--) {
+      if (timelineItems[i].type === "appointment") {
+        return timelineItems[i];
+      }
+    }
+    return null;
+  }, [timelineItems]);
+
   const selectedAppointment = useMemo(
     () => appointments.find((a) => a.id === selectedAppointmentId) || null,
     [appointments, selectedAppointmentId]
@@ -714,10 +737,10 @@ export default function AgendaPage() {
             <div className="relative">
               {timelineItems.map((item, index) => {
                 if (item.type === "gap") {
-                  // Altura proporcional ao tamanho do intervalo livre (respiro visual limpo entre agendamentos)
+                  // Altura proporcional ao tamanho do intervalo livre (respiro visual limpo e subtil)
                   const gapMinHeight = Math.max(
-                    48,
-                    Math.min(132, Math.round(item.gapMinutes * 0.9 + 26))
+                    44,
+                    Math.min(112, Math.round(item.gapMinutes * 0.75 + 24))
                   );
 
                   return (
@@ -726,20 +749,20 @@ export default function AgendaPage() {
                       className="relative flex items-stretch gap-3 sm:gap-4 select-none"
                     >
                       {/* Coluna Esquerda: Eixo Cronológico Discreto com Hora de Início e Fim */}
-                      <div className="w-14 sm:w-16 shrink-0 flex flex-col justify-between items-end pr-2 py-2 relative">
-                        <div className="absolute right-0 -top-1 -bottom-1 w-px border-r border-dashed border-zinc-800/90" />
-                        <span className="absolute -right-[3px] top-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full bg-zinc-700/80" />
+                      <div className="w-14 sm:w-16 shrink-0 flex flex-col justify-between items-end pr-2 py-1.5 relative">
+                        <div className="absolute right-0 -top-1 -bottom-1 w-px border-r border-dashed border-zinc-800/80" />
+                        <span className="absolute -right-[2.5px] top-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full bg-zinc-700/70" />
 
                         <span className="font-mono tabular-nums text-[10px] font-medium text-zinc-500 leading-none">
                           {item.fromTime}
                         </span>
 
-                        {item.ticks.length > 0 && item.gapMinutes >= 50 && (
+                        {item.ticks.length > 0 && item.gapMinutes >= 60 && (
                           <div className="flex flex-col items-end gap-0.5 my-0.5">
                             {item.ticks.slice(0, 2).map((t) => (
                               <span
                                 key={t}
-                                className="font-mono tabular-nums text-[9px] text-zinc-600/80 leading-none"
+                                className="font-mono tabular-nums text-[9px] text-zinc-600/75 leading-none"
                               >
                                 {t}
                               </span>
@@ -752,7 +775,7 @@ export default function AgendaPage() {
                         </span>
                       </div>
 
-                      {/* Coluna Direita: Faixa de Intervalo Limpa e Subtil (Clicável para Encaixe) */}
+                      {/* Coluna Direita: Faixa de Intervalo Limpa, Elegante e Subtil (Atalho Fluido de Encaixe) */}
                       <div className="flex-1 min-w-0 pb-2.5">
                         <button
                           type="button"
@@ -774,20 +797,19 @@ export default function AgendaPage() {
                             setWalkInOpen(true);
                           }}
                           style={{ minHeight: `${gapMinHeight}px` }}
-                          className="w-full text-left rounded-xl border border-dashed border-zinc-800/70 bg-zinc-950/35 bg-[repeating-linear-gradient(-45deg,rgba(255,255,255,0.015)_0px,rgba(255,255,255,0.015)_6px,transparent_6px,transparent_12px)] hover:border-zinc-700/90 hover:bg-zinc-900/40 active:scale-[0.995] transition-all px-3.5 py-2 flex items-center justify-between gap-3 group touch-manipulation"
+                          className="w-full text-left rounded-xl border border-dashed border-zinc-800/80 bg-[#050507]/75 bg-[repeating-linear-gradient(-45deg,rgba(255,255,255,0.016)_0px,rgba(255,255,255,0.016)_5px,transparent_5px,transparent_11px)] hover:border-accent/40 hover:bg-zinc-900/45 active:scale-[0.995] transition-all px-3.5 py-2 flex items-center justify-between gap-2.5 group touch-manipulation"
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <Clock
-                              size={12}
-                              className="text-zinc-500 group-hover:text-emerald-400/80 transition-colors shrink-0"
-                            />
                             <span className="text-[11px] sm:text-xs font-medium text-zinc-400 group-hover:text-zinc-200 transition-colors truncate">
                               {item.fluidLabel}
                             </span>
+                            <span className="hidden xs:inline font-mono tabular-nums text-[10px] text-zinc-600 group-hover:text-zinc-400 transition-colors shrink-0">
+                              ({item.fromTime}–{item.toTime})
+                            </span>
                           </div>
 
-                          <span className="shrink-0 text-[10px] font-medium text-zinc-600 group-hover:text-emerald-400/90 transition-colors whitespace-nowrap">
-                            + encaixar
+                          <span className="shrink-0 text-[10px] font-semibold text-zinc-500 group-hover:text-accent-light transition-colors whitespace-nowrap">
+                            + Encaixar
                           </span>
                         </button>
                       </div>
@@ -801,11 +823,38 @@ export default function AgendaPage() {
                     key={item.key}
                     appointment={item.appointment}
                     isLast={isLastItem}
+                    closingTime={shopClosingTime}
                     busy={busyId === item.appointment.id}
                     onSelect={(appt) => setSelectedAppointmentId(appt.id)}
                   />
                 );
               })}
+
+              {/* Marco Visual de Encerramento do Expediente na Base da Timeline */}
+              {lastTimelineAppointment && (
+                <div className="relative flex items-center gap-3 sm:gap-4 pt-0.5 select-none">
+                  <div className="w-14 sm:w-16 shrink-0 flex items-center justify-end pr-2 relative">
+                    <span className="absolute -right-[4.5px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-accent/90 border border-black ring-2 ring-accent/25 z-10" />
+                    <span className="font-mono tabular-nums text-[10px] font-bold text-accent-light leading-none">
+                      {lastTimelineAppointment.endTime || shopClosingTime}
+                    </span>
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="rounded-xl border border-accent/25 bg-gradient-to-r from-[#130608]/90 via-[#09090b] to-[#050507] px-3.5 py-2 flex items-center justify-between gap-2">
+                      <span className="text-[11px] sm:text-xs font-semibold text-zinc-200 truncate">
+                        🏁 Fim do Expediente • Encerrado às{" "}
+                        <span className="font-mono tabular-nums text-accent-light font-bold">
+                          {lastTimelineAppointment.endTime || shopClosingTime}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-[10px] font-medium text-zinc-500 whitespace-nowrap">
+                        Agenda concluída
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
