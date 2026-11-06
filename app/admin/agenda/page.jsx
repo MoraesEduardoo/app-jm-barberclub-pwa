@@ -89,10 +89,11 @@ function getShopClosingTimeForDate(dateStr) {
 }
 
 /**
- * Monta os itens da Linha do Tempo Vertical intercalando agendamentos ordenados
- * e faixas subtis de Intervalo Livre nos intervalos disponíveis.
+ * Monta os itens da Linha do Tempo Vertical em Blocos Estruturados,
+ * intercalando agendamentos confirmados/concluídos e faixas minimalistas
+ * de Janela Livre nos períodos disponíveis.
  */
-function buildTimelineItems(appointmentsList) {
+function buildTimelineItems(appointmentsList, { closingTime = "20:30", includeTrailingGap = true } = {}) {
   if (!Array.isArray(appointmentsList) || appointmentsList.length === 0) {
     return [];
   }
@@ -119,7 +120,7 @@ function buildTimelineItems(appointmentsList) {
     const currentBarberId = appt.barbers?.id || appt.barber_id || null;
 
     // Qualquer janela livre >= 10 min entre o término anterior e o próximo início
-    // é exibida como faixa subtil e proporcional com atalho de encaixe rápido
+    // é exibida como faixa minimalista com espaçamento definido e atalho de encaixe
     if (prevEndMin !== null && startMin !== null && startMin - prevEndMin >= 10) {
       const gapMinutes = startMin - prevEndMin;
       const firstTick = Math.ceil((prevEndMin + 10) / 30) * 30;
@@ -157,6 +158,37 @@ function buildTimelineItems(appointmentsList) {
       }
     }
   });
+
+  // Se o último atendimento terminar antes do fecho do expediente (>= 20 min livres),
+  // exibe a janela livre final até o horário de fecho para facilitar encaixes no fim do dia
+  const closeMin = timeStrToMinutes(closingTime);
+  if (
+    includeTrailingGap &&
+    prevEndMin !== null &&
+    closeMin !== null &&
+    closeMin - prevEndMin >= 20
+  ) {
+    const gapMinutes = closeMin - prevEndMin;
+    const firstTick = Math.ceil((prevEndMin + 10) / 30) * 30;
+    const ticks = [];
+    let cursor = firstTick;
+    while (cursor <= closeMin - 10 && ticks.length < 3) {
+      ticks.push(minutesToTimeStr(cursor));
+      cursor += 30;
+    }
+
+    items.push({
+      type: "gap",
+      key: `gap-trailing-${prevEndMin}-${closeMin}`,
+      ticks,
+      gapMinutes,
+      fromTime: minutesToTimeStr(prevEndMin),
+      toTime: closingTime,
+      barberId: prevBarberId,
+      durationLabel: formatAvailableGapDuration(gapMinutes),
+      fluidLabel: formatFluidGapLabel(gapMinutes),
+    });
+  }
 
   return items;
 }
@@ -522,12 +554,16 @@ export default function AgendaPage() {
     return true;
   });
 
-  const timelineItems = useMemo(
-    () => buildTimelineItems(displayedAppointments),
-    [displayedAppointments]
-  );
-
   const shopClosingTime = useMemo(() => getShopClosingTimeForDate(date), [date]);
+
+  const timelineItems = useMemo(
+    () =>
+      buildTimelineItems(displayedAppointments, {
+        closingTime: shopClosingTime,
+        includeTrailingGap: filterMode === "all",
+      }),
+    [displayedAppointments, shopClosingTime, filterMode]
+  );
 
   const lastTimelineAppointment = useMemo(() => {
     for (let i = timelineItems.length - 1; i >= 0; i--) {
@@ -680,16 +716,16 @@ export default function AgendaPage() {
         </div>
       )}
 
-      {/* Visualização em Linha do Tempo Vertical */}
+      {/* Visualização em Linha do Tempo Vertical em Blocos (v2.8) */}
       <div className="mt-4">
         {loading ? (
           <div className="space-y-3">
             {[...Array(4)].map((_, i) => (
               <div key={i} className="flex items-stretch gap-3">
-                <div className="w-14 shrink-0 flex flex-col items-end pr-2 pt-2">
+                <div className="w-14 shrink-0 flex flex-col items-end pr-3 pt-2">
                   <div className="h-3.5 w-10 rounded bg-surface animate-pulse" />
                 </div>
-                <div className="flex-1 h-[84px] rounded-2xl bg-surface animate-pulse" />
+                <div className="flex-1 h-[88px] rounded-2xl bg-surface animate-pulse" />
               </div>
             ))}
           </div>
@@ -723,24 +759,24 @@ export default function AgendaPage() {
           </div>
         ) : (
           <div>
-            {/* Cabeçalho discreto da Timeline */}
+            {/* Cabeçalho da Linha do Tempo em Blocos */}
             <div className="flex items-center justify-between mb-3 px-1">
-              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
                 <Clock size={12} className="text-accent-light" />
                 <span>Linha do Tempo</span>
               </div>
               <span className="text-[11px] text-zinc-500">
-                Toque no horário para abrir ações
+                Vagas livres e ocupações do dia
               </span>
             </div>
 
             <div className="relative">
               {timelineItems.map((item, index) => {
                 if (item.type === "gap") {
-                  // Altura proporcional ao tamanho do intervalo livre (respiro visual limpo e subtil)
+                  // Altura proporcional ao tamanho do período livre com espaçamento claro
                   const gapMinHeight = Math.max(
-                    44,
-                    Math.min(112, Math.round(item.gapMinutes * 0.75 + 24))
+                    48,
+                    Math.min(116, Math.round(item.gapMinutes * 0.72 + 28))
                   );
 
                   return (
@@ -748,10 +784,10 @@ export default function AgendaPage() {
                       key={item.key}
                       className="relative flex items-stretch gap-3 sm:gap-4 select-none"
                     >
-                      {/* Coluna Esquerda: Eixo Cronológico Discreto com Hora de Início e Fim */}
-                      <div className="w-14 sm:w-16 shrink-0 flex flex-col justify-between items-end pr-2 py-1.5 relative">
-                        <div className="absolute right-0 -top-1 -bottom-1 w-px border-r border-dashed border-zinc-800/80" />
-                        <span className="absolute -right-[2.5px] top-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full bg-zinc-700/70" />
+                      {/* Coluna Esquerda: Eixo Cronológico do Período Livre */}
+                      <div className="w-14 sm:w-16 shrink-0 flex flex-col justify-between items-end pr-3 py-2 relative">
+                        <div className="absolute right-0 top-0 bottom-0 w-px border-r border-dashed border-zinc-800/85" />
+                        <span className="absolute -right-[3.5px] top-1/2 -translate-y-1/2 h-2 w-2 rounded-full border border-zinc-600 bg-oled z-10" />
 
                         <span className="font-mono tabular-nums text-[10px] font-medium text-zinc-500 leading-none">
                           {item.fromTime}
@@ -762,7 +798,7 @@ export default function AgendaPage() {
                             {item.ticks.slice(0, 2).map((t) => (
                               <span
                                 key={t}
-                                className="font-mono tabular-nums text-[9px] text-zinc-600/75 leading-none"
+                                className="font-mono tabular-nums text-[9px] text-zinc-600/80 leading-none"
                               >
                                 {t}
                               </span>
@@ -775,8 +811,8 @@ export default function AgendaPage() {
                         </span>
                       </div>
 
-                      {/* Coluna Direita: Faixa de Intervalo Limpa, Elegante e Subtil (Atalho Fluido de Encaixe) */}
-                      <div className="flex-1 min-w-0 pb-2.5">
+                      {/* Coluna Direita: Faixa Minimalista de Período Livre (Atalho Fluido de Encaixe) */}
+                      <div className="flex-1 min-w-0 py-1.5">
                         <button
                           type="button"
                           onClick={() => {
@@ -797,18 +833,20 @@ export default function AgendaPage() {
                             setWalkInOpen(true);
                           }}
                           style={{ minHeight: `${gapMinHeight}px` }}
-                          className="w-full text-left rounded-xl border border-dashed border-zinc-800/80 bg-[#050507]/75 bg-[repeating-linear-gradient(-45deg,rgba(255,255,255,0.016)_0px,rgba(255,255,255,0.016)_5px,transparent_5px,transparent_11px)] hover:border-accent/40 hover:bg-zinc-900/45 active:scale-[0.995] transition-all px-3.5 py-2 flex items-center justify-between gap-2.5 group touch-manipulation"
+                          className="w-full text-left rounded-xl border border-dashed border-zinc-800/90 bg-[#050507]/85 bg-[repeating-linear-gradient(-45deg,rgba(255,255,255,0.015)_0px,rgba(255,255,255,0.015)_5px,transparent_5px,transparent_11px)] hover:border-zinc-700 hover:bg-[#0a0a0e] active:scale-[0.995] transition-all px-3.5 py-2.5 flex items-center justify-between gap-3 group touch-manipulation"
                         >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-[11px] sm:text-xs font-medium text-zinc-400 group-hover:text-zinc-200 transition-colors truncate">
-                              {item.fluidLabel}
-                            </span>
-                            <span className="hidden xs:inline font-mono tabular-nums text-[10px] text-zinc-600 group-hover:text-zinc-400 transition-colors shrink-0">
-                              ({item.fromTime}–{item.toTime})
+                          <div className="flex flex-col justify-center min-w-0">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-[11px] sm:text-xs font-semibold text-zinc-300 group-hover:text-white transition-colors truncate">
+                                {item.fluidLabel}
+                              </span>
+                            </div>
+                            <span className="font-mono tabular-nums text-[10px] text-zinc-500 mt-0.5">
+                              {item.fromTime} – {item.toTime} · vaga disponível
                             </span>
                           </div>
 
-                          <span className="shrink-0 text-[10px] font-semibold text-zinc-500 group-hover:text-accent-light transition-colors whitespace-nowrap">
+                          <span className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-900/90 border border-zinc-800 text-[11px] font-semibold text-zinc-300 group-hover:border-accent/50 group-hover:bg-accent/10 group-hover:text-accent-light transition-all whitespace-nowrap">
                             + Encaixar
                           </span>
                         </button>
