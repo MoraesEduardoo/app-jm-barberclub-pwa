@@ -194,8 +194,6 @@ DECLARE
   v_dow integer;
   v_start_time time;
   v_end_time time;
-  v_lunch_start time;
-  v_lunch_end time;
   v_is_working boolean := true;
   v_service_duration integer := 30;
   v_now_fortaleza timestamp;
@@ -249,37 +247,34 @@ BEGIN
   -- 4. Identifica dia da semana (0=Domingo, 1=Segunda, ..., 6=Sábado)
   v_dow := EXTRACT(DOW FROM p_date)::integer;
 
-  -- Busca expediente configurado para o profissional (Index-Only Scan em idx_barber_schedules_day_covering)
+  -- Busca expediente configurado para o profissional (sem bloqueio de almoço hardcoded)
   SELECT
     bs.start_time,
     bs.end_time,
-    COALESCE(bs.break_start_time, bs.lunch_start),
-    COALESCE(bs.break_end_time, bs.lunch_end),
     COALESCE(bs.is_working, bs.is_working_day, true)
   INTO
     v_start_time,
     v_end_time,
-    v_lunch_start,
-    v_lunch_end,
     v_is_working
   FROM public.barber_schedules bs
   WHERE bs.barber_id = p_barber_id
     AND bs.day_of_week = v_dow
+  ORDER BY bs.updated_at DESC NULLS LAST, bs.end_time DESC
   LIMIT 1;
 
   -- Escala padrão JM BarberClub caso não haja escala individual cadastrada
   IF v_start_time IS NULL THEN
     IF v_dow = 0 THEN -- Domingo: 09:00 - 12:30
-      v_start_time := '09:00'::time;
-      v_end_time := '12:30'::time;
+      v_start_time := '09:00:00'::time;
+      v_end_time := '12:30:00'::time;
       v_is_working := true;
-    ELSIF v_dow = 1 THEN -- Segunda-feira: 14:30 - 19:00
-      v_start_time := '14:30'::time;
-      v_end_time := '19:00'::time;
+    ELSIF v_dow = 1 THEN -- Segunda-feira: 14:30 - 20:30
+      v_start_time := '14:30:00'::time;
+      v_end_time := '20:30:00'::time;
       v_is_working := true;
-    ELSE -- Terça a Sábado: 09:00 - 19:00
-      v_start_time := '09:00'::time;
-      v_end_time := '19:00'::time;
+    ELSE -- Terça a Sábado: 09:00 - 20:30 (corrido)
+      v_start_time := '09:00:00'::time;
+      v_end_time := '20:30:00'::time;
       v_is_working := true;
     END IF;
   END IF;
@@ -288,7 +283,7 @@ BEGIN
     RETURN;
   END IF;
 
-  -- 5. Calcula a duração do serviço solicitado
+  -- 5. Calcula a duração do serviço solicitado (sem margem/buffer artificial)
   IF p_service_id IS NOT NULL THEN
     SELECT COALESCE(bs.custom_duration, bs.custom_duration_minutes, s.duration_minutes, s.default_duration_minutes, 30)
     INTO v_service_duration
@@ -308,16 +303,14 @@ BEGIN
 
   v_min_cutoff_time := date_trunc('minute', v_time_now_fortaleza);
 
-  -- 6. Geração e filtragem Set-Based em uma única passagem (Zero N+1 queries)
+  -- 6. Geração e filtragem Set-Based de 10 em 10 min (abertura ao fecho, sem almoço nem buffer artificial)
   RETURN QUERY
   WITH busy_appointments AS MATERIALIZED (
     SELECT
       a.appointment_time AS win_start,
-      GREATEST(
-        COALESCE(a.end_time, (a.appointment_time + make_interval(mins => COALESCE(a.duration_minutes, 30)))::time),
-        (a.appointment_time + make_interval(
-          mins => COALESCE(a.duration_minutes, 30) + COALESCE(a.buffer_minutes, 0)
-        ))::time
+      COALESCE(
+        a.end_time,
+        (a.appointment_time + make_interval(mins => COALESCE(a.duration_minutes, 30)))::time
       ) AS win_end
     FROM public.appointments a
     WHERE a.barber_id = p_barber_id
@@ -349,11 +342,6 @@ BEGIN
   FROM candidate_slots cs
   WHERE
     (p_date > v_today_fortaleza OR cs.c_start > v_min_cutoff_time)
-    AND (
-      v_lunch_start IS NULL
-      OR v_lunch_end IS NULL
-      OR NOT (cs.c_start < v_lunch_end AND cs.c_end > v_lunch_start)
-    )
     AND NOT EXISTS (
       SELECT 1
       FROM busy_exceptions be
