@@ -176,12 +176,26 @@ async function computeAvailableSlots({ barberId, date, serviceIds }) {
     .or(`appointment_date.eq.${targetDate},and(appointment_date.gte.${start},appointment_date.lt.${end})`);
 
   const busyRanges = extractBusyRangesFromAppointments(appts || [], barberId);
+  if (Array.isArray(exceptions)) {
+    exceptions.forEach((ex) => {
+      const exDate = String(ex.exception_date || ex.override_date || '').slice(0, 10);
+      if (exDate === targetDate && ex.is_available === false && ex.start_time && ex.end_time) {
+        busyRanges.push({
+          start: String(ex.start_time).slice(0, 5),
+          end: String(ex.end_time).slice(0, 5),
+          bufferMinutes: 0,
+        });
+      }
+    });
+  }
+
   const nowFortaleza = new Date(
     new Date().toLocaleString('en-US', { timeZone: 'America/Fortaleza' })
   );
 
   const engineSlots = generateAvailableSlots(daySchedule, busyRanges, serviceDur, {
     nowTime: isToday ? roundUpToNextSlot(nowFortaleza) : null,
+    bufferMinutes: 0,
   });
 
   if (!rpcRes?.error && Array.isArray(rpcRes?.data) && rpcRes.data.length > 0) {
@@ -192,8 +206,6 @@ async function computeAvailableSlots({ barberId, date, serviceIds }) {
       const minSlot = roundUpToNextSlot(nowFortaleza);
       rpcSlots = rpcSlots.filter((s) => s >= minSlot);
     }
-    const engineSet = new Set(engineSlots);
-    const validSlots = engineSet.size > 0 ? rpcSlots.filter((s) => engineSet.has(s)) : rpcSlots;
 
     return {
       ok: true,
@@ -205,7 +217,7 @@ async function computeAvailableSlots({ barberId, date, serviceIds }) {
       default_duration: resolved.services[0]?.default_duration ?? 30,
       price: resolved.totalPrice,
       services: resolved.services,
-      slots: validSlots.length > 0 ? validSlots : engineSlots,
+      slots: rpcSlots,
     };
   }
 

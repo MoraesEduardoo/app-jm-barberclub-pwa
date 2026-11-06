@@ -224,7 +224,7 @@ export async function POST(request) {
         p_date: date,
         p_time: formattedTime,
         p_duration_minutes: totalDuration,
-        p_buffer_minutes: 10,
+        p_buffer_minutes: 0,
         p_notes: notes,
       });
 
@@ -319,7 +319,7 @@ export async function POST(request) {
         appointment_time: formattedTime,
         end_time: endTime,
         duration_minutes: totalDuration,
-        buffer_minutes: 10,
+        buffer_minutes: 0,
         status: 'confirmado',
         payment_status: 'pendente',
         price: totalPrice,
