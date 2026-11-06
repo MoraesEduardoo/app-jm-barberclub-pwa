@@ -48,6 +48,8 @@ export default function WalkInSheet({
   team,
   canPickBarber,
   existingAppointments,
+  initialDate = null,
+  initialTime = null,
 }) {
   const today = todayInShop();
 
@@ -88,15 +90,29 @@ export default function WalkInSheet({
       setServiceId("");
       setClientName("");
       setClientPhone("");
-      setTimingMode("now");
-      setSelectedDate(addDaysStr(currentToday, 1));
-      setManualTime("");
+
+      if (initialTime) {
+        const cleanDate = initialDate ? String(initialDate).slice(0, 10) : currentToday;
+        if (cleanDate !== currentToday) {
+          setTimingMode("future_date");
+          setSelectedDate(cleanDate);
+        } else {
+          setTimingMode("today_slot");
+          setSelectedDate(addDaysStr(currentToday, 1));
+        }
+        setManualTime(String(initialTime).slice(0, 5));
+      } else {
+        setTimingMode("now");
+        setSelectedDate(addDaysStr(currentToday, 1));
+        setManualTime("");
+      }
+
       setRpcSlots(null);
       setResolvedConfig(null);
       setIsDayOff(false);
       setError("");
     }
-  }, [open, barber.id]);
+  }, [open, barber.id, initialDate, initialTime]);
 
   const effectiveDate = useMemo(() => {
     if (timingMode === "future_date") return selectedDate || today;

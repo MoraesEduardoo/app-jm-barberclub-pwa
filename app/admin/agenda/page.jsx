@@ -47,8 +47,46 @@ const STATUS_FILTERS = [
 ];
 
 /**
+ * Formata a duração total de uma janela livre para leitura rápida na timeline
+ * Ex: 65 -> "1h05 disponíveis", 20 -> "20 min disponíveis", 60 -> "1h disponíveis"
+ */
+function formatAvailableGapDuration(totalMinutes) {
+  const mins = Math.max(0, Math.round(Number(totalMinutes) || 0));
+  if (mins < 60) {
+    return `${mins} min disponíveis`;
+  }
+  const hours = Math.floor(mins / 60);
+  const rem = mins % 60;
+  if (rem === 0) {
+    return `${hours}h disponíveis`;
+  }
+  return `${hours}h${String(rem).padStart(2, "0")} disponíveis`;
+}
+
+/**
+ * Sugere instantaneamente ao barbeiro qual tipo de serviço cabe na janela livre
+ */
+function getGapFitSuggestion(totalMinutes) {
+  const mins = Math.max(0, Math.round(Number(totalMinutes) || 0));
+  if (mins < 20) {
+    return "Cabe acabamento ou sobrancelha";
+  }
+  if (mins < 30) {
+    return "Cabe barba rápida ou acabamento";
+  }
+  if (mins < 50) {
+    return "Cabe 1 corte ou barba completa";
+  }
+  if (mins < 90) {
+    return "Cabe corte + barba (combo)";
+  }
+  const slotsCount = Math.max(2, Math.floor(mins / 35));
+  return `Cabe combo ou até ${slotsCount} encaixes`;
+}
+
+/**
  * Monta os itens da Linha do Tempo Vertical intercalando agendamentos ordenados
- * e marcadores de horário (de 30 em 30 min) nos intervalos livres.
+ * e blocos destacados de Janela Livre nos intervalos disponíveis.
  */
 function buildTimelineItems(appointmentsList) {
   if (!Array.isArray(appointmentsList) || appointmentsList.length === 0) {
@@ -74,19 +112,16 @@ function buildTimelineItems(appointmentsList) {
     const endStr = getAppointmentEndTime(appt, startStr, durationMin);
     const endMin = timeStrToMinutes(endStr);
 
-    // Se houver janela livre >= 20 min entre o término anterior e o próximo início,
-    // insere marcadores de referência de 30 em 30 min (ex: 14:30, 15:00, 15:30)
-    if (prevEndMin !== null && startMin !== null && startMin - prevEndMin >= 20) {
+    // Qualquer janela livre >= 10 min entre o término anterior e o próximo início
+    // é exibida com destaque proporcional e indicador de encaixe rápido
+    if (prevEndMin !== null && startMin !== null && startMin - prevEndMin >= 10) {
       const gapMinutes = startMin - prevEndMin;
-      const firstTick = Math.ceil(prevEndMin / 30) * 30;
+      const firstTick = Math.ceil((prevEndMin + 10) / 30) * 30;
       const ticks = [];
       let cursor = firstTick;
-      while (cursor < startMin - 5 && ticks.length < 3) {
+      while (cursor <= startMin - 10 && ticks.length < 3) {
         ticks.push(minutesToTimeStr(cursor));
         cursor += 30;
-      }
-      if (ticks.length === 0) {
-        ticks.push(minutesToTimeStr(prevEndMin));
       }
 
       items.push({
@@ -96,6 +131,8 @@ function buildTimelineItems(appointmentsList) {
         gapMinutes,
         fromTime: minutesToTimeStr(prevEndMin),
         toTime: startStr,
+        durationLabel: formatAvailableGapDuration(gapMinutes),
+        fitSuggestion: getGapFitSuggestion(gapMinutes),
       });
     }
 
@@ -186,6 +223,7 @@ export default function AgendaPage() {
   const [preScheduleTarget, setPreScheduleTarget] = useState(null);
   const [filterMode, setFilterMode] = useState("all"); // 'all' | 'confirmado' | 'concluido' | 'pre_scheduled'
   const [walkInOpen, setWalkInOpen] = useState(false);
+  const [walkInInitialTime, setWalkInInitialTime] = useState("");
   const [cyclesOpen, setCyclesOpen] = useState(false);
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);
@@ -349,6 +387,7 @@ export default function AgendaPage() {
 
   function handleCloseWalkIn(result) {
     setWalkInOpen(false);
+    setWalkInInitialTime("");
     if (result?.created) {
       invalidateCache("appointments:");
       invalidateCache("finance:");
@@ -674,31 +713,82 @@ export default function AgendaPage() {
             <div className="relative">
               {timelineItems.map((item, index) => {
                 if (item.type === "gap") {
+                  // Altura proporcional ao tempo livre (de 76px para janelas curtas até 168px para janelas amplas)
+                  const gapMinHeight = Math.max(
+                    76,
+                    Math.min(168, Math.round(item.gapMinutes * 1.15 + 44))
+                  );
+
                   return (
                     <div
                       key={item.key}
-                      className="relative flex items-center gap-3 sm:gap-4 py-1.5 select-none"
+                      className="relative flex items-stretch gap-3 sm:gap-4 select-none"
                     >
-                      <div className="w-14 sm:w-16 shrink-0 flex flex-col items-end pr-2 relative">
-                        <div className="absolute right-0 -top-2 -bottom-2 w-px border-r border-dashed border-zinc-800" />
-                        <span className="absolute -right-[3px] top-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full bg-zinc-700" />
-                        <div className="flex flex-col items-end gap-1">
-                          {item.ticks.map((t) => (
-                            <span
-                              key={t}
-                              className="font-mono tabular-nums text-[10px] font-medium text-zinc-600 leading-none"
-                            >
-                              {t}
-                            </span>
-                          ))}
-                        </div>
+                      {/* Coluna Esquerda: Eixo Cronológico Alinhado com os Cards de Agendamento */}
+                      <div className="w-14 sm:w-16 shrink-0 flex flex-col justify-between items-end pr-2 py-3 relative">
+                        <div className="absolute right-0 -top-1 -bottom-1 w-px border-r border-dashed border-emerald-500/35" />
+                        <span className="absolute -right-[3.5px] top-3.5 h-2 w-2 rounded-full border border-emerald-400/70 bg-[#05080f]" />
+                        <span className="absolute -right-[3.5px] bottom-3.5 h-2 w-2 rounded-full border border-emerald-400/50 bg-[#05080f]" />
+
+                        <span className="font-mono tabular-nums text-[11px] font-bold text-emerald-400/90 leading-none">
+                          {item.fromTime}
+                        </span>
+
+                        {item.ticks.length > 0 && (
+                          <div className="flex flex-col items-end gap-1 my-1">
+                            {item.ticks.map((t) => (
+                              <span
+                                key={t}
+                                className="font-mono tabular-nums text-[10px] font-medium text-zinc-600 leading-none"
+                              >
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        <span className="font-mono tabular-nums text-[10px] font-semibold text-zinc-500 leading-none">
+                          {item.toTime}
+                        </span>
                       </div>
-                      <div className="flex-1 min-w-0 py-1">
-                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-dashed border-zinc-900 bg-zinc-950/40">
-                          <span className="text-[11px] text-zinc-600 font-medium">
-                            Janela livre ({item.fromTime} – {item.toTime})
-                          </span>
-                        </div>
+
+                      {/* Coluna Direita: Card de Janela Livre Proporcional com Indicador de Encaixe */}
+                      <div className="flex-1 min-w-0 pb-2.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setWalkInInitialTime(item.fromTime);
+                            setWalkInOpen(true);
+                          }}
+                          style={{ minHeight: `${gapMinHeight}px` }}
+                          className="w-full text-left rounded-2xl border border-dashed border-emerald-500/30 bg-gradient-to-r from-emerald-950/20 via-[#070d14]/90 to-[#05080f] hover:border-emerald-400/55 hover:from-emerald-950/30 active:scale-[0.99] transition-all px-3.5 py-3 sm:px-4 sm:py-3.5 flex flex-col justify-between gap-2 group touch-manipulation"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-xs sm:text-[13px] font-bold text-emerald-300 tracking-tight">
+                                  Janela livre • {item.durationLabel}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-zinc-400 mt-0.5 truncate">
+                                {item.fitSuggestion}
+                              </p>
+                            </div>
+
+                            <span className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] font-semibold text-emerald-300 group-hover:bg-emerald-500/20 transition-colors">
+                              + Encaixar
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-zinc-800/70">
+                            <span className="font-mono tabular-nums text-[11px] font-semibold text-zinc-400">
+                              Intervalo: {item.fromTime} às {item.toTime}
+                            </span>
+                            <span className="font-mono tabular-nums text-[10px] font-medium text-emerald-400/80">
+                              {item.gapMinutes} min livres
+                            </span>
+                          </div>
+                        </button>
                       </div>
                     </div>
                   );
@@ -827,7 +917,10 @@ export default function AgendaPage() {
 
       <button
         type="button"
-        onClick={() => setWalkInOpen(true)}
+        onClick={() => {
+          setWalkInInitialTime("");
+          setWalkInOpen(true);
+        }}
         className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+72px)] right-4 z-30 flex items-center gap-2 h-12 pl-4 pr-5 rounded-full bg-accent text-white text-sm font-semibold shadow-accent-glow active:scale-95 active:bg-accent-dark transition-all touch-manipulation select-none"
       >
         <UserPlus size={18} />
@@ -841,6 +934,8 @@ export default function AgendaPage() {
         team={team}
         canPickBarber={canViewAll}
         existingAppointments={appointments}
+        initialDate={date}
+        initialTime={walkInInitialTime}
       />
 
       <ClientCyclesSheet
