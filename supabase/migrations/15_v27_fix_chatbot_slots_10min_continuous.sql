@@ -26,27 +26,40 @@ BEGIN;
 -- ==============================================================================
 
 ALTER TABLE public.barber_schedules
-  ADD COLUMN IF NOT EXISTS has_lunch_break boolean DEFAULT false;
+  ADD COLUMN IF NOT EXISTS has_lunch_break boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS break_start time,
+  ADD COLUMN IF NOT EXISTS break_end time,
+  ADD COLUMN IF NOT EXISTS break_start_time time,
+  ADD COLUMN IF NOT EXISTS break_end_time time,
+  ADD COLUMN IF NOT EXISTS lunch_start time,
+  ADD COLUMN IF NOT EXISTS lunch_end time;
 
 -- Limpa intervalos de almoço residuais/hardcoded para garantir expediente corrido
 UPDATE public.barber_schedules
 SET
   has_lunch_break = false,
+  break_start = NULL,
+  break_end = NULL,
   break_start_time = NULL,
   break_end_time = NULL,
   lunch_start = NULL,
   lunch_end = NULL
 WHERE COALESCE(has_lunch_break, false) = false
+   OR break_start IS NOT NULL
    OR break_start_time IS NOT NULL
    OR lunch_start IS NOT NULL;
 
--- Remove margem artificial padrão de 10 min nos novos agendamentos
+-- Remove margem artificial padrão de 10 min nos agendamentos e recalcula end_time real
 ALTER TABLE public.appointments
   ALTER COLUMN buffer_minutes SET DEFAULT 0;
 
 UPDATE public.appointments
-SET buffer_minutes = 0
-WHERE COALESCE(buffer_minutes, 0) > 0;
+SET
+  buffer_minutes = 0,
+  end_time = (appointment_time + make_interval(mins => COALESCE(NULLIF(duration_minutes, 0), 30)))::time
+WHERE COALESCE(buffer_minutes, 0) > 0
+   OR end_time IS NULL
+   OR end_time > (appointment_time + make_interval(mins => COALESCE(NULLIF(duration_minutes, 0), 30)))::time;
 
 
 -- ==============================================================================
@@ -82,6 +95,9 @@ DECLARE
   v_dow integer;
   v_start_time time;
   v_end_time time;
+  v_has_lunch boolean := false;
+  v_break_start time := NULL;
+  v_break_end time := NULL;
   v_is_working boolean := true;
   v_service_duration integer := 30;
   v_now_fortaleza timestamp;
@@ -140,10 +156,22 @@ BEGIN
   SELECT
     bs.start_time,
     bs.end_time,
+    COALESCE(bs.has_lunch_break, false),
+    CASE
+      WHEN COALESCE(bs.has_lunch_break, false) = true THEN COALESCE(bs.break_start_time, bs.lunch_start, bs.break_start)
+      ELSE NULL
+    END,
+    CASE
+      WHEN COALESCE(bs.has_lunch_break, false) = true THEN COALESCE(bs.break_end_time, bs.lunch_end, bs.break_end)
+      ELSE NULL
+    END,
     COALESCE(bs.is_working, bs.is_working_day, true)
   INTO
     v_start_time,
     v_end_time,
+    v_has_lunch,
+    v_break_start,
+    v_break_end,
     v_is_working
   FROM public.barber_schedules bs
   WHERE bs.barber_id = p_barber_id
@@ -161,15 +189,24 @@ BEGIN
       v_start_time := '14:30:00'::time;
       v_end_time := '20:30:00'::time;
       v_is_working := true;
-    ELSE -- Terça a Sábado: 09:00 - 20:30 (corrido)
+    ELSE -- Terça a Sábado: 09:00 - 20:30 (corrido, sem almoço)
       v_start_time := '09:00:00'::time;
       v_end_time := '20:30:00'::time;
       v_is_working := true;
     END IF;
+    v_has_lunch := false;
+    v_break_start := NULL;
+    v_break_end := NULL;
   END IF;
 
   IF v_is_working = false OR v_start_time IS NULL OR v_end_time IS NULL THEN
     RETURN;
+  END IF;
+
+  -- Ignora pausa de almoço se o expediente for corrido ou se o intervalo for inválido
+  IF NOT v_has_lunch OR v_break_start IS NULL OR v_break_end IS NULL OR v_break_start >= v_break_end THEN
+    v_break_start := NULL;
+    v_break_end := NULL;
   END IF;
 
   -- 5. Resolve a duração estimada do serviço (sem adicionar margem/buffer artificial)
@@ -200,15 +237,12 @@ BEGIN
   v_min_cutoff_time := date_trunc('minute', v_time_now_fortaleza);
 
   -- 6. Geração Set-Based estritamente de 10 em 10 minutos desde start_time até end_time - duração
-  --    Sem bloqueio de almoço hardcoded e sem buffer_minutes artificial nos agendamentos
+  --    Sem bloqueio de almoço indevido e sem buffer_minutes artificial nos agendamentos
   RETURN QUERY
   WITH busy_appointments AS MATERIALIZED (
     SELECT
       a.appointment_time AS win_start,
-      COALESCE(
-        a.end_time,
-        (a.appointment_time + make_interval(mins => COALESCE(a.duration_minutes, 30)))::time
-      ) AS win_end
+      (a.appointment_time + make_interval(mins => COALESCE(NULLIF(a.duration_minutes, 0), 30)))::time AS win_end
     FROM public.appointments a
     WHERE a.barber_id = p_barber_id
       AND a.appointment_date = p_date
@@ -240,6 +274,13 @@ BEGIN
   WHERE
     -- No dia de hoje, exibe apenas horários futuros em relação ao relógio atual (America/Fortaleza)
     (p_date > v_today_fortaleza OR cs.c_start > v_min_cutoff_time)
+    -- Só aplica pausa de almoço se estiver explicitamente ativa no expediente (has_lunch_break = true)
+    AND (
+      v_break_start IS NULL
+      OR v_break_end IS NULL
+      OR cs.c_end <= v_break_start
+      OR cs.c_start >= v_break_end
+    )
     -- Filtra exceções parciais pontuais cadastradas para a data
     AND NOT EXISTS (
       SELECT 1
@@ -247,7 +288,7 @@ BEGIN
       WHERE cs.c_start < be.win_end
         AND cs.c_end > be.win_start
     )
-    -- Filtra apenas conflitos reais com agendamentos ativos [win_start, win_end)
+    -- Filtra apenas conflitos reais com agendamentos ativos [win_start, win_end) sem buffer artificial
     AND NOT EXISTS (
       SELECT 1
       FROM busy_appointments ba
