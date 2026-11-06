@@ -64,24 +64,17 @@ function formatAvailableGapDuration(totalMinutes) {
 }
 
 /**
- * Sugere instantaneamente ao barbeiro qual tipo de serviço cabe na janela livre
+ * Monta o texto fluido e discreto exibido na faixa de intervalo livre
+ * Ex: "Intervalo livre • 25 min disponíveis para encaixe rápido"
+ * Ex: "Intervalo livre • 1h05 disponíveis para encaixe"
  */
-function getGapFitSuggestion(totalMinutes) {
+function formatFluidGapLabel(totalMinutes) {
   const mins = Math.max(0, Math.round(Number(totalMinutes) || 0));
-  if (mins < 20) {
-    return "Cabe acabamento ou sobrancelha";
+  const durationText = formatAvailableGapDuration(mins);
+  if (mins <= 30) {
+    return `Intervalo livre • ${durationText} para encaixe rápido`;
   }
-  if (mins < 30) {
-    return "Cabe barba rápida ou acabamento";
-  }
-  if (mins < 50) {
-    return "Cabe 1 corte ou barba completa";
-  }
-  if (mins < 90) {
-    return "Cabe corte + barba (combo)";
-  }
-  const slotsCount = Math.max(2, Math.floor(mins / 35));
-  return `Cabe combo ou até ${slotsCount} encaixes`;
+  return `Intervalo livre • ${durationText} para encaixe`;
 }
 
 /**
@@ -132,7 +125,7 @@ function buildTimelineItems(appointmentsList) {
         fromTime: minutesToTimeStr(prevEndMin),
         toTime: startStr,
         durationLabel: formatAvailableGapDuration(gapMinutes),
-        fitSuggestion: getGapFitSuggestion(gapMinutes),
+        fluidLabel: formatFluidGapLabel(gapMinutes),
       });
     }
 
@@ -713,10 +706,10 @@ export default function AgendaPage() {
             <div className="relative">
               {timelineItems.map((item, index) => {
                 if (item.type === "gap") {
-                  // Altura proporcional ao tempo livre (de 76px para janelas curtas até 168px para janelas amplas)
+                  // Altura proporcional ao tamanho do intervalo livre (respiro visual limpo entre agendamentos)
                   const gapMinHeight = Math.max(
-                    76,
-                    Math.min(168, Math.round(item.gapMinutes * 1.15 + 44))
+                    48,
+                    Math.min(132, Math.round(item.gapMinutes * 0.9 + 26))
                   );
 
                   return (
@@ -724,22 +717,21 @@ export default function AgendaPage() {
                       key={item.key}
                       className="relative flex items-stretch gap-3 sm:gap-4 select-none"
                     >
-                      {/* Coluna Esquerda: Eixo Cronológico Alinhado com os Cards de Agendamento */}
-                      <div className="w-14 sm:w-16 shrink-0 flex flex-col justify-between items-end pr-2 py-3 relative">
-                        <div className="absolute right-0 -top-1 -bottom-1 w-px border-r border-dashed border-emerald-500/35" />
-                        <span className="absolute -right-[3.5px] top-3.5 h-2 w-2 rounded-full border border-emerald-400/70 bg-[#05080f]" />
-                        <span className="absolute -right-[3.5px] bottom-3.5 h-2 w-2 rounded-full border border-emerald-400/50 bg-[#05080f]" />
+                      {/* Coluna Esquerda: Eixo Cronológico Discreto com Hora de Início e Fim */}
+                      <div className="w-14 sm:w-16 shrink-0 flex flex-col justify-between items-end pr-2 py-2 relative">
+                        <div className="absolute right-0 -top-1 -bottom-1 w-px border-r border-dashed border-zinc-800/90" />
+                        <span className="absolute -right-[3px] top-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full bg-zinc-700/80" />
 
-                        <span className="font-mono tabular-nums text-[11px] font-bold text-emerald-400/90 leading-none">
+                        <span className="font-mono tabular-nums text-[10px] font-medium text-zinc-500 leading-none">
                           {item.fromTime}
                         </span>
 
-                        {item.ticks.length > 0 && (
-                          <div className="flex flex-col items-end gap-1 my-1">
-                            {item.ticks.map((t) => (
+                        {item.ticks.length > 0 && item.gapMinutes >= 50 && (
+                          <div className="flex flex-col items-end gap-0.5 my-0.5">
+                            {item.ticks.slice(0, 2).map((t) => (
                               <span
                                 key={t}
-                                className="font-mono tabular-nums text-[10px] font-medium text-zinc-600 leading-none"
+                                className="font-mono tabular-nums text-[9px] text-zinc-600/80 leading-none"
                               >
                                 {t}
                               </span>
@@ -747,12 +739,12 @@ export default function AgendaPage() {
                           </div>
                         )}
 
-                        <span className="font-mono tabular-nums text-[10px] font-semibold text-zinc-500 leading-none">
+                        <span className="font-mono tabular-nums text-[10px] font-medium text-zinc-600 leading-none">
                           {item.toTime}
                         </span>
                       </div>
 
-                      {/* Coluna Direita: Card de Janela Livre Proporcional com Indicador de Encaixe */}
+                      {/* Coluna Direita: Faixa de Intervalo Limpa e Subtil (Clicável para Encaixe) */}
                       <div className="flex-1 min-w-0 pb-2.5">
                         <button
                           type="button"
@@ -761,33 +753,21 @@ export default function AgendaPage() {
                             setWalkInOpen(true);
                           }}
                           style={{ minHeight: `${gapMinHeight}px` }}
-                          className="w-full text-left rounded-2xl border border-dashed border-emerald-500/30 bg-gradient-to-r from-emerald-950/20 via-[#070d14]/90 to-[#05080f] hover:border-emerald-400/55 hover:from-emerald-950/30 active:scale-[0.99] transition-all px-3.5 py-3 sm:px-4 sm:py-3.5 flex flex-col justify-between gap-2 group touch-manipulation"
+                          className="w-full text-left rounded-xl border border-dashed border-zinc-800/70 bg-zinc-950/35 bg-[repeating-linear-gradient(-45deg,rgba(255,255,255,0.015)_0px,rgba(255,255,255,0.015)_6px,transparent_6px,transparent_12px)] hover:border-zinc-700/90 hover:bg-zinc-900/40 active:scale-[0.995] transition-all px-3.5 py-2 flex items-center justify-between gap-3 group touch-manipulation"
                         >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="text-xs sm:text-[13px] font-bold text-emerald-300 tracking-tight">
-                                  Janela livre • {item.durationLabel}
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-zinc-400 mt-0.5 truncate">
-                                {item.fitSuggestion}
-                              </p>
-                            </div>
-
-                            <span className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] font-semibold text-emerald-300 group-hover:bg-emerald-500/20 transition-colors">
-                              + Encaixar
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Clock
+                              size={12}
+                              className="text-zinc-500 group-hover:text-emerald-400/80 transition-colors shrink-0"
+                            />
+                            <span className="text-[11px] sm:text-xs font-medium text-zinc-400 group-hover:text-zinc-200 transition-colors truncate">
+                              {item.fluidLabel}
                             </span>
                           </div>
 
-                          <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-zinc-800/70">
-                            <span className="font-mono tabular-nums text-[11px] font-semibold text-zinc-400">
-                              Intervalo: {item.fromTime} às {item.toTime}
-                            </span>
-                            <span className="font-mono tabular-nums text-[10px] font-medium text-emerald-400/80">
-                              {item.gapMinutes} min livres
-                            </span>
-                          </div>
+                          <span className="shrink-0 text-[10px] font-medium text-zinc-600 group-hover:text-emerald-400/90 transition-colors whitespace-nowrap">
+                            + encaixar
+                          </span>
                         </button>
                       </div>
                     </div>
