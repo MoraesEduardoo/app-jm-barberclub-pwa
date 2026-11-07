@@ -556,6 +556,29 @@ export default function AgendaPage() {
 
   const shopClosingTime = useMemo(() => getShopClosingTimeForDate(date), [date]);
 
+  // Ordena dinamicamente os profissionais do filtro de topo:
+  // 1º Utilizador logado ativo (Matheus ou William), 2º O outro profissional, 3º Todos
+  const orderedTeamMembers = useMemo(() => {
+    if (!Array.isArray(team) || team.length === 0) return [];
+    const activeId = barber?.id ? String(barber.id) : "";
+    const activeFirstName = (barber?.name || "").trim().split(/\s+/)[0]?.toLowerCase() || "";
+
+    return [...team].sort((a, b) => {
+      const aIsSelf =
+        (activeId && String(a.id) === activeId) ||
+        (activeFirstName &&
+          (a.name || "").trim().split(/\s+/)[0]?.toLowerCase() === activeFirstName);
+      const bIsSelf =
+        (activeId && String(b.id) === activeId) ||
+        (activeFirstName &&
+          (b.name || "").trim().split(/\s+/)[0]?.toLowerCase() === activeFirstName);
+
+      if (aIsSelf && !bIsSelf) return -1;
+      if (!aIsSelf && bIsSelf) return 1;
+      return 0;
+    });
+  }, [team, barber?.id, barber?.name]);
+
   const timelineItems = useMemo(
     () =>
       buildTimelineItems(displayedAppointments, {
@@ -574,6 +597,15 @@ export default function AgendaPage() {
     return null;
   }, [timelineItems]);
 
+  // Verifica se o último agendamento coincide com o fecho real do expediente (ex: 20:30)
+  const hasReachedEndOfShift = useMemo(() => {
+    if (!lastTimelineAppointment?.endTime) return false;
+    const endMin = timeStrToMinutes(lastTimelineAppointment.endTime);
+    const closeMin = timeStrToMinutes(shopClosingTime);
+    if (endMin === null || closeMin === null) return false;
+    return endMin >= closeMin;
+  }, [lastTimelineAppointment, shopClosingTime]);
+
   const selectedAppointment = useMemo(
     () => appointments.find((a) => a.id === selectedAppointmentId) || null,
     [appointments, selectedAppointmentId]
@@ -589,39 +621,38 @@ export default function AgendaPage() {
         }}
       />
 
-      {/* Seletor Rápido de Equipe para Liderança (Chefe e Gerente) */}
-      {canViewAll && team.length > 0 && (
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-1 no-scrollbar select-none">
-          <button
-            type="button"
-            onClick={() => selectBarber(null)}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all touch-manipulation ${
-              !selectedBarberId
-                ? "bg-accent text-black shadow-sm ring-1 ring-accent"
-                : "bg-surface border border-zinc-800 text-zinc-400 hover:text-white"
-            }`}
-          >
-            Toda a equipe
-          </button>
-          {team.map((m) => {
-            const isSelected = selectedBarberId === m.id;
+      {/* Seletor Rápido de Equipa (Ordem Dinâmica: 1º Logado, 2º Colega, 3º Todos) */}
+      {canViewAll && orderedTeamMembers.length > 0 && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-2.5 mb-1 no-scrollbar select-none">
+          {orderedTeamMembers.map((m) => {
+            const isSelected = String(selectedBarberId) === String(m.id);
+            const shortName = (m.name || "").trim().split(/\s+/)[0] || m.name;
             return (
               <button
                 key={m.id}
                 type="button"
                 onClick={() => selectBarber(m.id)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all touch-manipulation flex items-center gap-1.5 ${
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all touch-manipulation ${
                   isSelected
-                    ? "bg-accent text-black shadow-sm ring-1 ring-accent"
-                    : "bg-surface border border-zinc-800 text-zinc-400 hover:text-white"
+                    ? "bg-accent text-white shadow-sm ring-1 ring-accent"
+                    : "bg-zinc-900/90 border border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700"
                 }`}
               >
-                <span>{m.name.split(" ")[0]}</span>
-                {m.role === "admin" && <span className="text-[10px]">Chefe</span>}
-                {m.role === "manager" && <span className="text-[10px]">Ger.</span>}
+                {shortName}
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={() => selectBarber(null)}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all touch-manipulation ${
+              !selectedBarberId
+                ? "bg-accent text-white shadow-sm ring-1 ring-accent"
+                : "bg-zinc-900/90 border border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700"
+            }`}
+          >
+            Todos
+          </button>
         </div>
       )}
 
@@ -731,7 +762,7 @@ export default function AgendaPage() {
           </div>
         ) : loadError ? (
           <div className="mt-12 flex flex-col items-center gap-3 text-center">
-            <p className="text-zinc-400 text-sm max-w-xs">{loadError}</p>
+            <p className="text-zinc-300 text-sm max-w-xs">{loadError}</p>
             <button
               type="button"
               onClick={() => load()}
@@ -741,19 +772,42 @@ export default function AgendaPage() {
             </button>
           </div>
         ) : displayedAppointments.length === 0 ? (
-          <div className="text-center py-14 space-y-2">
-            <p className="text-zinc-500 text-sm">
-              {filterMode === "all"
-                ? "Nenhum agendamento para essa data."
-                : "Nenhum agendamento encontrado neste filtro."}
-            </p>
-            {filterMode !== "all" && (
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 px-5 py-10 text-center space-y-3">
+            <div className="mx-auto h-10 w-10 rounded-xl bg-zinc-800/90 border border-zinc-700 flex items-center justify-center text-zinc-200">
+              <Clock size={18} className="text-accent-light" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-zinc-100 text-sm font-bold">
+                {filterMode === "all"
+                  ? "Nenhum agendamento registrado para esta data"
+                  : "Nenhum agendamento encontrado neste filtro"}
+              </p>
+              <p className="text-zinc-300 text-xs">
+                {filterMode === "all"
+                  ? `Todos os horários (${shopClosingTime === "12:30" ? "08:00 às 12:30" : "09:00 às 20:30"}) estão livres para encaixe.`
+                  : "Altere o filtro acima para visualizar os demais atendimentos do dia."}
+              </p>
+            </div>
+            {filterMode !== "all" ? (
               <button
                 type="button"
                 onClick={() => setFilterMode("all")}
-                className="text-xs text-accent-light hover:underline font-semibold"
+                className="inline-flex items-center justify-center px-3.5 py-1.5 rounded-xl bg-zinc-800 border border-zinc-700 text-xs text-white hover:border-zinc-600 font-semibold transition-all"
               >
                 Mostrar todos os horários do dia
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setWalkInInitialTime("");
+                  setWalkInWindowContext(null);
+                  setWalkInOpen(true);
+                }}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-accent/15 border border-accent/40 text-xs text-accent-light hover:bg-accent/25 font-bold transition-all"
+              >
+                <UserPlus size={14} />
+                + Encaixar atendimento
               </button>
             )}
           </div>
@@ -761,21 +815,21 @@ export default function AgendaPage() {
           <div>
             {/* Cabeçalho da Linha do Tempo em Blocos */}
             <div className="flex items-center justify-between mb-3 px-1">
-              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
                 <Clock size={12} className="text-accent-light" />
                 <span>Linha do Tempo</span>
               </div>
-              <span className="text-[11px] text-zinc-500">
+              <span className="text-[11px] text-zinc-400">
                 Vagas livres e ocupações do dia
               </span>
             </div>
 
-            <div className="relative">
+            <div className="relative space-y-1">
               {timelineItems.map((item, index) => {
                 if (item.type === "gap") {
                   // Altura proporcional ao tamanho do período livre com espaçamento claro
                   const gapMinHeight = Math.max(
-                    48,
+                    50,
                     Math.min(116, Math.round(item.gapMinutes * 0.72 + 28))
                   );
 
@@ -789,7 +843,7 @@ export default function AgendaPage() {
                         <div className="absolute right-0 top-0 bottom-0 w-px border-r border-dashed border-zinc-800/85" />
                         <span className="absolute -right-[3.5px] top-1/2 -translate-y-1/2 h-2 w-2 rounded-full border border-zinc-600 bg-oled z-10" />
 
-                        <span className="font-mono tabular-nums text-[10px] font-medium text-zinc-500 leading-none">
+                        <span className="font-mono tabular-nums text-[10px] font-medium text-zinc-400 leading-none">
                           {item.fromTime}
                         </span>
 
@@ -798,7 +852,7 @@ export default function AgendaPage() {
                             {item.ticks.slice(0, 2).map((t) => (
                               <span
                                 key={t}
-                                className="font-mono tabular-nums text-[9px] text-zinc-600/80 leading-none"
+                                className="font-mono tabular-nums text-[9px] text-zinc-500 leading-none"
                               >
                                 {t}
                               </span>
@@ -806,7 +860,7 @@ export default function AgendaPage() {
                           </div>
                         )}
 
-                        <span className="font-mono tabular-nums text-[10px] font-medium text-zinc-600 leading-none">
+                        <span className="font-mono tabular-nums text-[10px] font-medium text-zinc-500 leading-none">
                           {item.toTime}
                         </span>
                       </div>
@@ -833,20 +887,20 @@ export default function AgendaPage() {
                             setWalkInOpen(true);
                           }}
                           style={{ minHeight: `${gapMinHeight}px` }}
-                          className="w-full text-left rounded-xl border border-dashed border-zinc-800/90 bg-[#050507]/85 bg-[repeating-linear-gradient(-45deg,rgba(255,255,255,0.015)_0px,rgba(255,255,255,0.015)_5px,transparent_5px,transparent_11px)] hover:border-zinc-700 hover:bg-[#0a0a0e] active:scale-[0.995] transition-all px-3.5 py-2.5 flex items-center justify-between gap-3 group touch-manipulation"
+                          className="w-full text-left rounded-xl border border-dashed border-zinc-800/95 bg-[#07070a]/90 bg-[repeating-linear-gradient(-45deg,rgba(255,255,255,0.018)_0px,rgba(255,255,255,0.018)_5px,transparent_5px,transparent_11px)] hover:border-zinc-700 hover:bg-[#0c0c12] active:scale-[0.995] transition-all px-3.5 py-2.5 flex items-center justify-between gap-3 group touch-manipulation"
                         >
                           <div className="flex flex-col justify-center min-w-0">
                             <div className="flex items-center gap-2 min-w-0">
-                              <span className="text-[11px] sm:text-xs font-semibold text-zinc-300 group-hover:text-white transition-colors truncate">
+                              <span className="text-[11px] sm:text-xs font-semibold text-zinc-200 group-hover:text-white transition-colors truncate">
                                 {item.fluidLabel}
                               </span>
                             </div>
-                            <span className="font-mono tabular-nums text-[10px] text-zinc-500 mt-0.5">
+                            <span className="font-mono tabular-nums text-[10px] text-zinc-400 mt-0.5">
                               {item.fromTime} – {item.toTime} · vaga disponível
                             </span>
                           </div>
 
-                          <span className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-900/90 border border-zinc-800 text-[11px] font-semibold text-zinc-300 group-hover:border-accent/50 group-hover:bg-accent/10 group-hover:text-accent-light transition-all whitespace-nowrap">
+                          <span className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700/90 text-[11px] font-semibold text-zinc-200 group-hover:border-accent/50 group-hover:bg-accent/15 group-hover:text-accent-light transition-all whitespace-nowrap">
                             + Encaixar
                           </span>
                         </button>
@@ -868,26 +922,26 @@ export default function AgendaPage() {
                 );
               })}
 
-              {/* Marco Visual de Encerramento do Expediente na Base da Timeline */}
-              {lastTimelineAppointment && (
-                <div className="relative flex items-center gap-3 sm:gap-4 pt-0.5 select-none">
+              {/* Marco Visual de Encerramento do Expediente na Base da Timeline (Exclusivo ao Fecho Real ex: 20:30) */}
+              {lastTimelineAppointment && hasReachedEndOfShift && (
+                <div className="relative flex items-center gap-3 sm:gap-4 pt-1 select-none">
                   <div className="w-14 sm:w-16 shrink-0 flex items-center justify-end pr-2 relative">
-                    <span className="absolute -right-[4.5px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-accent/90 border border-black ring-2 ring-accent/25 z-10" />
+                    <span className="absolute -right-[4.5px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-accent border border-black ring-2 ring-accent/30 z-10" />
                     <span className="font-mono tabular-nums text-[10px] font-bold text-accent-light leading-none">
                       {lastTimelineAppointment.endTime || shopClosingTime}
                     </span>
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="rounded-xl border border-accent/25 bg-gradient-to-r from-[#130608]/90 via-[#09090b] to-[#050507] px-3.5 py-2 flex items-center justify-between gap-2">
-                      <span className="text-[11px] sm:text-xs font-semibold text-zinc-200 truncate">
+                    <div className="rounded-xl border border-accent/35 bg-gradient-to-r from-[#170609] via-[#0c0a0d] to-[#070709] px-3.5 py-2.5 flex items-center justify-between gap-2 shadow-[0_6px_20px_-6px_rgba(225,29,72,0.22)]">
+                      <span className="text-[11px] sm:text-xs font-semibold text-zinc-100 truncate">
                         🏁 Fim do Expediente • Encerrado às{" "}
                         <span className="font-mono tabular-nums text-accent-light font-bold">
                           {lastTimelineAppointment.endTime || shopClosingTime}
                         </span>
                       </span>
-                      <span className="shrink-0 text-[10px] font-medium text-zinc-500 whitespace-nowrap">
-                        Agenda concluída
+                      <span className="shrink-0 text-[10px] font-semibold text-accent-light/90 whitespace-nowrap">
+                        Turno encerrado
                       </span>
                     </div>
                   </div>

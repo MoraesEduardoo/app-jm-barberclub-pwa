@@ -123,7 +123,10 @@ export default function AppointmentCard({
   const endMin = timeStrToMinutes(endTime);
   const closeMin = timeStrToMinutes(closingTime) ?? 20 * 60 + 30;
   const reachesClosingTime = endMin !== null && endMin >= closeMin;
-  const showEndOfShiftHighlight = isLast && reachesClosingTime;
+  // Reservado exclusivamente para o último agendamento que coincide com o fecho real do expediente (ex: 20:30)
+  const showEndOfShiftHighlight = Boolean(isLast && reachesClosingTime);
+  // Corte individual concluído: destaca o horário final em azul (ex: 08:30)
+  const showCompletedEndTimeBlue = Boolean(isCompleted && !showEndOfShiftHighlight);
 
   const serviceName =
     appointment.services?.name || appointment.service || 'Serviço';
@@ -137,28 +140,28 @@ export default function AppointmentCard({
   // Altura proporcional à duração na linha do tempo vertical (ex: 30min -> 88px, 60min -> 128px)
   const blockMinHeight = Math.max(86, Math.min(168, Math.round(durationMin * 1.85 + 30)));
 
-  // Paleta rigorosa OLED Dark: Preto dominante, Zinco refinado e Acentos da marca (Vermelho/Esmeralda)
+  // Paleta OLED Dark (Preto predominante, Zinco refinado e Acentos Vermelho/Azul/Esmeralda)
   let cardSurfaceClass =
     'bg-[#0b0b0e] border-zinc-800/95 hover:border-zinc-700 hover:bg-[#101015] shadow-[0_2px_12px_rgba(0,0,0,0.65)]';
   let nodeDotClass = 'bg-accent border-black ring-2 ring-accent/30';
-  let timeRangeClass = 'text-zinc-200';
+  let startTimeClass = 'text-zinc-200';
   let statusLabel = 'Confirmado';
   let statusTextClass = 'text-zinc-300';
   let statusDotColor = 'bg-accent';
 
   if (isCompleted) {
     cardSurfaceClass =
-      'bg-[#080c0a] border-emerald-900/50 hover:border-emerald-700/60 hover:bg-[#0b110e] shadow-[0_2px_12px_rgba(0,0,0,0.65)]';
-    nodeDotClass = 'bg-emerald-400 border-black ring-2 ring-emerald-500/25';
-    timeRangeClass = 'text-emerald-300/95';
+      'bg-[#080b10] border-blue-900/45 hover:border-blue-500/50 hover:bg-[#0b1018] shadow-[0_2px_12px_rgba(0,0,0,0.65)]';
+    nodeDotClass = 'bg-blue-400 border-black ring-2 ring-blue-500/25';
+    startTimeClass = 'text-zinc-200';
     statusLabel = paid ? 'Pago' : 'Concluído';
-    statusTextClass = 'text-emerald-400';
-    statusDotColor = 'bg-emerald-400';
+    statusTextClass = 'text-blue-400';
+    statusDotColor = 'bg-blue-400';
   } else if (isPreScheduled) {
     cardSurfaceClass =
       'bg-[#0d0914] border-purple-500/35 hover:border-purple-400/60 hover:bg-[#120d1c] shadow-[0_2px_12px_rgba(0,0,0,0.65)]';
     nodeDotClass = 'bg-purple-400 border-black ring-2 ring-purple-500/25';
-    timeRangeClass = 'text-purple-300/95';
+    startTimeClass = 'text-purple-300/95';
     statusLabel = 'Pré-agendado';
     statusTextClass = 'text-purple-300';
     statusDotColor = 'bg-purple-400';
@@ -166,10 +169,15 @@ export default function AppointmentCard({
     cardSurfaceClass =
       'bg-[#110809] border-accent/45 hover:border-accent-light/70 hover:bg-[#170b0d] shadow-[0_2px_12px_rgba(0,0,0,0.65)]';
     nodeDotClass = 'bg-accent-light border-black ring-2 ring-accent/35';
-    timeRangeClass = 'text-accent-light';
+    startTimeClass = 'text-accent-light';
     statusLabel = 'Pendente';
     statusTextClass = 'text-accent-light';
     statusDotColor = 'bg-accent-light';
+  }
+
+  if (showEndOfShiftHighlight) {
+    cardSurfaceClass =
+      'bg-gradient-to-br from-[#0b0b0e] via-[#100a0c] to-[#18070a] border-accent/55 hover:border-accent-light/80 shadow-[0_2px_14px_rgba(220,38,38,0.18)]';
   }
 
   return (
@@ -179,16 +187,31 @@ export default function AppointmentCard({
         {/* Linha Conectora Contínua do Bloco Ocupado */}
         <div
           className={`absolute right-0 top-0 w-px ${
-            isLast
+            showEndOfShiftHighlight
+              ? 'bottom-2 bg-gradient-to-b from-zinc-700 via-accent/60 to-accent'
+              : showCompletedEndTimeBlue
+              ? 'bottom-0 bg-gradient-to-b from-zinc-800 via-blue-500/40 to-blue-500/70'
+              : isLast
               ? 'bottom-2 bg-gradient-to-b from-zinc-700 via-zinc-800 to-transparent'
               : 'bottom-0 bg-zinc-800'
           }`}
         />
 
-        {/* Nó Principal do Agendamento no Eixo */}
+        {/* Nó de Início do Agendamento no Eixo */}
         <span
           className={`absolute -right-[4.5px] top-3.5 h-2.5 w-2.5 rounded-full border ${nodeDotClass} z-10`}
         />
+
+        {/* Nó de Encerramento no Eixo (Azul para corte concluído | Vermelho para fecho do expediente) */}
+        {(showCompletedEndTimeBlue || showEndOfShiftHighlight) && (
+          <span
+            className={`absolute -right-[4px] bottom-3 h-2 w-2 rounded-full border border-black z-10 ${
+              showEndOfShiftHighlight
+                ? 'bg-accent-light ring-2 ring-accent/35'
+                : 'bg-blue-400 ring-2 ring-blue-500/30'
+            }`}
+          />
+        )}
 
         {/* Horário de Início */}
         <span className="font-mono tabular-nums text-xs sm:text-[13px] font-bold text-white leading-none pt-1">
@@ -209,13 +232,17 @@ export default function AppointmentCard({
           </div>
         )}
 
-        {/* Horário de Término na base do bloco */}
+        {/* Horário Final na base do bloco:
+            - Azul quando o corte individual está concluído (ex: 08:30)
+            - Vermelho exclusivamente quando coincide com o fecho do expediente (ex: 20:30) */}
         {endTime && (
           <span
-            className={`font-mono tabular-nums text-[10px] leading-none pb-1 ${
+            className={`font-mono tabular-nums text-[10px] leading-none ${
               showEndOfShiftHighlight
-                ? 'font-bold text-accent-light'
-                : 'font-medium text-zinc-500'
+                ? 'font-bold text-accent-light bg-accent/15 border border-accent/40 px-1.5 py-0.5 rounded-md shadow-[0_0_8px_rgba(220,38,38,0.2)]'
+                : showCompletedEndTimeBlue
+                ? 'font-bold text-blue-400 bg-blue-500/15 border border-blue-500/35 px-1.5 py-0.5 rounded-md shadow-[0_0_8px_rgba(59,130,246,0.18)]'
+                : 'font-medium text-zinc-500 pb-1'
             }`}
           >
             {endTime}
@@ -224,7 +251,7 @@ export default function AppointmentCard({
       </div>
 
       {/* Coluna Direita: Bloco Vertical Estruturado do Agendamento */}
-      <div className="flex-1 min-w-0 py-1">
+      <div className="flex-1 min-w-0 py-1.5">
         <button
           type="button"
           disabled={busy}
@@ -237,11 +264,29 @@ export default function AppointmentCard({
           {/* Linha 1: Faixa de Horário + Duração (Esquerda) e Status do Atendimento (Direita) */}
           <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-800/70">
             <div className="flex items-center gap-1.5 font-mono tabular-nums text-[11px]">
-              <span className={`font-bold ${timeRangeClass}`}>
-                {startTime && endTime
-                  ? `${startTime} – ${endTime}`
-                  : startTime || 'Sem horário'}
-              </span>
+              {startTime && endTime ? (
+                <span className="font-bold">
+                  <span className={startTimeClass}>{startTime}</span>
+                  <span className="text-zinc-600 mx-1">–</span>
+                  <span
+                    className={
+                      showEndOfShiftHighlight
+                        ? 'text-accent-light font-extrabold'
+                        : showCompletedEndTimeBlue
+                        ? 'text-blue-400 font-extrabold'
+                        : startTimeClass
+                    }
+                  >
+                    {endTime}
+                  </span>
+                </span>
+              ) : startTime ? (
+                <span className={`font-bold ${startTimeClass}`}>{startTime}</span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-md bg-zinc-800/95 border border-zinc-700 text-zinc-200 font-semibold text-[10px]">
+                  Sem horário definido
+                </span>
+              )}
               <span className="text-zinc-600">·</span>
               <span className="text-zinc-400 font-medium">{durationMin} min</span>
             </div>
@@ -254,8 +299,8 @@ export default function AppointmentCard({
                 </span>
               )}
               <div className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${statusTextClass}`}>
-                {paid ? (
-                  <CheckCircle2 size={11} className="text-emerald-400 shrink-0" />
+                {isCompleted ? (
+                  <CheckCircle2 size={11} className="text-blue-400 shrink-0" />
                 ) : (
                   <span className={`h-1.5 w-1.5 rounded-full ${statusDotColor} shrink-0`} />
                 )}
@@ -303,29 +348,29 @@ export default function AppointmentCard({
                   <div className="font-mono tabular-nums text-sm sm:text-[15px] font-bold text-white leading-none">
                     R$ {totalAmount.toFixed(2).replace('.', ',')}
                   </div>
-                  <span className="text-[10px] text-zinc-500 group-hover:text-zinc-300 transition-colors">
+                  <span className="text-[10px] text-zinc-400 group-hover:text-zinc-200 transition-colors">
                     Detalhes
                   </span>
                 </div>
               )}
               <ChevronRight
                 size={16}
-                className="text-zinc-600 group-hover:text-zinc-300 transition-colors shrink-0"
+                className="text-zinc-500 group-hover:text-zinc-200 transition-colors shrink-0"
               />
             </div>
           </div>
 
-          {/* Linha 3 (Condicional): Destaque Especial de Fecho quando o último atendimento encerra o expediente */}
+          {/* Linha 3 (Exclusiva para o Fecho Real do Expediente, ex: 20:30) */}
           {showEndOfShiftHighlight && endTime && (
-            <div className="mt-2.5 pt-2 border-t border-accent/20 flex items-center justify-between gap-2">
+            <div className="mt-2.5 pt-2 border-t border-accent/25 flex items-center justify-between gap-2">
               <span className="text-[11px] font-semibold text-zinc-200 tracking-tight truncate">
                 🏁 Fim do Expediente • Encerrado às{' '}
                 <span className="font-mono tabular-nums text-accent-light font-bold">
                   {endTime}
                 </span>
               </span>
-              <span className="shrink-0 text-[10px] font-mono tabular-nums text-zinc-400">
-                Fecho do dia
+              <span className="shrink-0 text-[10px] font-mono tabular-nums font-semibold text-accent-light">
+                Último do dia
               </span>
             </div>
           )}

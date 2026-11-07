@@ -2,7 +2,7 @@
 
 import { endSession } from "@/lib/session";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, Clock, Zap, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { CalendarDays, Clock, Zap, ChevronLeft, ChevronRight, Loader2, AlertCircle } from "lucide-react";
 import BottomSheet from "./BottomSheet";
 import { todayInShop, addDaysStr } from "@/lib/dates";
 import { FormField, TextInput, PrimaryButton } from "./FormField";
@@ -850,22 +850,30 @@ export default function WalkInSheet({
               </div>
 
               {!selectedService && !isMatchingWindowDate ? (
-                <p className="text-zinc-500 text-xs py-2">
+                <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/90 px-3.5 py-3 text-xs text-zinc-200 font-medium">
                   Selecione o serviço acima para consultar os horários livres.
-                </p>
+                </div>
               ) : loadingSlots && !focusWindowOnly ? (
-                <div className="flex items-center gap-2 text-xs text-zinc-400 py-3">
-                  <Loader2 size={14} className="animate-spin text-accent" />
+                <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/70 px-3.5 py-3 text-xs text-zinc-200 font-medium">
+                  <Loader2 size={14} className="animate-spin text-accent-light" />
                   <span>Consultando disponibilidade na agenda…</span>
                 </div>
               ) : availableSlots.length === 0 ? (
-                <p className="text-zinc-500 text-xs py-2">
-                  {isDayOff || (daySchedule && !daySchedule.active)
-                    ? "O profissional selecionado não possui expediente ativo nesta data."
-                    : timingMode === "future_date"
-                    ? "Nenhum horário livre disponível para esta data e serviço."
-                    : "Nenhum horário livre hoje para este serviço."}
-                </p>
+                <div className="rounded-xl border border-amber-500/35 bg-zinc-900/95 px-3.5 py-3 flex items-start gap-2.5">
+                  <AlertCircle size={15} className="text-amber-400 shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-zinc-100">
+                      Sem horário disponível
+                    </p>
+                    <p className="text-[11px] text-zinc-300 mt-0.5 leading-relaxed">
+                      {isDayOff || (daySchedule && !daySchedule.active)
+                        ? "O profissional selecionado não possui expediente ativo nesta data."
+                        : timingMode === "future_date"
+                        ? "Nenhum horário livre disponível para esta data e duração de serviço."
+                        : "Nenhum horário livre restante hoje para a duração deste serviço."}
+                    </p>
+                  </div>
+                </div>
               ) : (
                 <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5 max-h-48 overflow-y-auto pr-0.5">
                   {availableSlots.map((slot) => {
