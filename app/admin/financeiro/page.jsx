@@ -24,9 +24,14 @@ import {
 } from "@/lib/dates";
 import { PERMISSION_KEYS } from "@/lib/auth";
 import { getFinanceSummary } from "@/lib/actions/finance";
-import { cacheKeys, getCache, setCache } from "@/lib/admin-cache";
+import { cacheKeys, getCache, setCache, invalidateCache } from "@/lib/admin-cache";
 import FinanceRow from "@/components/admin/FinanceRow";
 import CommissionSettlementSheet from "@/components/admin/CommissionSettlementSheet";
+import PendingClientDebtSheet, {
+  groupPendingAppointmentsByClient,
+  PendingClientRow,
+} from "@/components/admin/PendingClientDebtSheet";
+import PaymentSheet from "@/components/admin/PaymentSheet";
 
 const RANGES = [
   { key: "hoje", label: "Hoje" },
@@ -71,9 +76,23 @@ export default function FinanceiroPage() {
   const [summary, setSummary] = useState(() => getCache(financeCacheKey) || null);
   const [loading, setLoading] = useState(() => !getCache(financeCacheKey));
   const [settlementOpen, setSettlementOpen] = useState(false);
+  const [selectedClientKey, setSelectedClientKey] = useState(null);
+  const [paymentTarget, setPaymentTarget] = useState(null);
   const requestIdRef = useRef(0);
 
   const monthOptions = useMemo(() => listSelectableMonths(new Date(), 24, 3), []);
+
+  // Agrupamento consolidado de pendências por cliente
+  const pendingClientGroups = useMemo(
+    () => groupPendingAppointmentsByClient(summary?.pendentes || []),
+    [summary?.pendentes]
+  );
+
+  const selectedClientGroup = useMemo(
+    () =>
+      pendingClientGroups.find((g) => g.key === selectedClientKey) || null,
+    [pendingClientGroups, selectedClientKey]
+  );
 
   function changeScope(id) {
     if (isChefe) selectBarber(id === "todos" ? null : id);
@@ -124,7 +143,7 @@ export default function FinanceiroPage() {
   }, [financeCacheKey, load]);
 
   return (
-    <div className="px-4 pt-4">
+    <div className="px-4 pt-4 pb-10">
       {canManageFinance && team.length > 0 && (
         <div className="mb-3 -mx-1 flex gap-2 overflow-x-auto pb-1 scroll-touch no-scrollbar">
           <button
@@ -249,7 +268,9 @@ export default function FinanceiroPage() {
                 {formatBRL(summary.totalPendente)}
               </p>
               <p className="text-zinc-500 text-[11px]">
-                {summary.pendentes.length} pendente(s)
+                {pendingClientGroups.length}{" "}
+                {pendingClientGroups.length === 1 ? "cliente" : "clientes"} ·{" "}
+                {summary.pendentes.length} pendência(s)
               </p>
             </div>
           </div>
@@ -330,32 +351,65 @@ export default function FinanceiroPage() {
                   : "border-transparent text-zinc-500"
               }`}
             >
-              Quem não pagou ({summary.pendentes.length})
+              Quem não pagou ({pendingClientGroups.length})
             </button>
           </div>
 
-          <div className="space-y-2">
-            {(tab === "pagos" ? summary.pagos : summary.pendentes).length ===
-            0 ? (
-              <p className="text-zinc-600 text-sm text-center mt-10">
-                {tab === "pagos"
-                  ? "Nenhum pagamento registrado."
-                  : "Ninguém pendente."}
-              </p>
-            ) : (
-              (tab === "pagos" ? summary.pagos : summary.pendentes).map(
-                (appointment) => (
+          <div className="space-y-2.5">
+            {tab === "pagos" ? (
+              summary.pagos.length === 0 ? (
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/75 px-5 py-8 text-center">
+                  <p className="text-zinc-300 text-sm font-medium">
+                    Nenhum pagamento registrado neste período.
+                  </p>
+                </div>
+              ) : (
+                summary.pagos.map((appointment) => (
                   <FinanceRow
                     key={appointment.id}
                     appointment={appointment}
-                    variant={tab === "pagos" ? "paid" : "pending"}
+                    variant="paid"
                   />
-                )
+                ))
               )
+            ) : pendingClientGroups.length === 0 ? (
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/75 px-5 py-8 text-center">
+                <p className="text-zinc-300 text-sm font-medium">
+                  Nenhum cliente com pagamento pendente neste período.
+                </p>
+              </div>
+            ) : (
+              pendingClientGroups.map((group) => (
+                <PendingClientRow
+                  key={group.key}
+                  group={group}
+                  onSelect={(g) => setSelectedClientKey(g.key)}
+                />
+              ))
             )}
           </div>
         </>
       )}
+
+      {/* Modal de Visualização Detalhada das Pendências Acumuladas por Cliente */}
+      <PendingClientDebtSheet
+        open={Boolean(selectedClientGroup)}
+        onClose={() => setSelectedClientKey(null)}
+        clientGroup={selectedClientGroup}
+        onSelectPayment={(appt) => setPaymentTarget(appt)}
+      />
+
+      {/* Modal de Registro de Pagamento integrado ao Histórico do Cliente */}
+      <PaymentSheet
+        open={Boolean(paymentTarget)}
+        appointment={paymentTarget}
+        onClose={() => {
+          setPaymentTarget(null);
+          invalidateCache("finance:");
+          invalidateCache("appointments:");
+          load({ silent: true });
+        }}
+      />
 
       {isChefe && (
         <CommissionSettlementSheet
