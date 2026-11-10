@@ -46,12 +46,18 @@ CREATE TABLE IF NOT EXISTS public.services (
     image_path text,
     storage_url text,
     barber_id uuid REFERENCES public.barbers(id) ON DELETE SET NULL,
-    display_order integer DEFAULT 0 NOT NULL,
+    ordem integer DEFAULT 1 NOT NULL,
+    position integer DEFAULT 1 NOT NULL,
+    display_order integer DEFAULT 1 NOT NULL,
     is_active boolean DEFAULT true NOT NULL,
     active boolean DEFAULT true NOT NULL,
     created_at timestamptz DEFAULT now() NOT NULL,
     updated_at timestamptz DEFAULT now() NOT NULL
 );
+
+ALTER TABLE public.services ADD COLUMN IF NOT EXISTS ordem integer DEFAULT 1 NOT NULL;
+ALTER TABLE public.services ADD COLUMN IF NOT EXISTS position integer DEFAULT 1 NOT NULL;
+ALTER TABLE public.services ADD COLUMN IF NOT EXISTS display_order integer DEFAULT 1 NOT NULL;
 
 -- ------------------------------------------------------------------------------
 -- 2B. TABELA DE PRODUTOS (public.products)

@@ -91,32 +91,32 @@ SET
 -- ------------------------------------------------------------------------------
 -- 3. CATÁLOGO INICIAL DE SERVIÇOS (IDEMPOTENTE E COM ISOLAMENTO DE IMAGEM)
 -- ------------------------------------------------------------------------------
-INSERT INTO public.services (name, description, price, price_in_cents, duration_minutes, default_duration_minutes, category, display_order, is_active, active)
-SELECT 'Degradê', 'Corte degradê navalhado ou disfarçado moderno', 25.00, 2500, 30, 30, 'cabelo', 1, true, true
+INSERT INTO public.services (name, description, price, price_in_cents, duration_minutes, default_duration_minutes, category, ordem, position, display_order, is_active, active)
+SELECT 'Degradê', 'Corte degradê navalhado ou disfarçado moderno', 25.00, 2500, 30, 30, 'cabelo', 1, 1, 1, true, true
 WHERE NOT EXISTS (SELECT 1 FROM public.services WHERE name ILIKE 'Degradê');
 
-INSERT INTO public.services (name, description, price, price_in_cents, duration_minutes, default_duration_minutes, category, display_order, is_active, active)
-SELECT 'Corte SÓ Tesoura', 'Corte clássico 100% tesoura com acabamento preciso', 25.00, 2500, 40, 40, 'cabelo', 2, true, true
+INSERT INTO public.services (name, description, price, price_in_cents, duration_minutes, default_duration_minutes, category, ordem, position, display_order, is_active, active)
+SELECT 'Corte SÓ Tesoura', 'Corte clássico 100% tesoura com acabamento preciso', 25.00, 2500, 40, 40, 'cabelo', 2, 2, 2, true, true
 WHERE NOT EXISTS (SELECT 1 FROM public.services WHERE name ILIKE '%Tesoura%');
 
-INSERT INTO public.services (name, description, price, price_in_cents, duration_minutes, default_duration_minutes, category, display_order, is_active, active)
-SELECT 'Lowfade ou Americano', 'Corte moderno com fade baixo ou afunilado americano', 25.00, 2500, 30, 30, 'cabelo', 3, true, true
+INSERT INTO public.services (name, description, price, price_in_cents, duration_minutes, default_duration_minutes, category, ordem, position, display_order, is_active, active)
+SELECT 'Lowfade ou Americano', 'Corte moderno com fade baixo ou afunilado americano', 25.00, 2500, 30, 30, 'cabelo', 3, 3, 3, true, true
 WHERE NOT EXISTS (SELECT 1 FROM public.services WHERE name ILIKE '%Lowfade%');
 
-INSERT INTO public.services (name, description, price, price_in_cents, duration_minutes, default_duration_minutes, category, display_order, is_active, active)
-SELECT 'Barboterapia', 'Tratamento completo com toalha quente, óleos e navalha', 20.00, 2000, 30, 30, 'barba', 4, true, true
+INSERT INTO public.services (name, description, price, price_in_cents, duration_minutes, default_duration_minutes, category, ordem, position, display_order, is_active, active)
+SELECT 'Barboterapia', 'Tratamento completo com toalha quente, óleos e navalha', 20.00, 2000, 30, 30, 'barba', 4, 4, 4, true, true
 WHERE NOT EXISTS (SELECT 1 FROM public.services WHERE name ILIKE 'Barboterapia');
 
-INSERT INTO public.services (name, description, price, price_in_cents, duration_minutes, default_duration_minutes, category, display_order, is_active, active)
-SELECT 'Corte e Barboterapia', 'Combo completo corte de cabelo + barba com toalha quente', 40.00, 4000, 60, 60, 'combo', 5, true, true
+INSERT INTO public.services (name, description, price, price_in_cents, duration_minutes, default_duration_minutes, category, ordem, position, display_order, is_active, active)
+SELECT 'Corte e Barboterapia', 'Combo completo corte de cabelo + barba com toalha quente', 40.00, 4000, 60, 60, 'combo', 5, 5, 5, true, true
 WHERE NOT EXISTS (SELECT 1 FROM public.services WHERE name ILIKE '%Corte e Barboterapia%');
 
-INSERT INTO public.services (name, description, price, price_in_cents, duration_minutes, default_duration_minutes, category, display_order, is_active, active)
-SELECT 'Corte + Barba Simples', 'Corte alinhado acompanhado de barba e contorno simples', 35.00, 3500, 50, 50, 'combo', 6, true, true
+INSERT INTO public.services (name, description, price, price_in_cents, duration_minutes, default_duration_minutes, category, ordem, position, display_order, is_active, active)
+SELECT 'Corte + Barba Simples', 'Corte alinhado acompanhado de barba e contorno simples', 35.00, 3500, 50, 50, 'combo', 6, 6, 6, true, true
 WHERE NOT EXISTS (SELECT 1 FROM public.services WHERE name ILIKE '%Corte + Barba%');
 
-INSERT INTO public.services (name, description, price, price_in_cents, duration_minutes, default_duration_minutes, category, display_order, is_active, active)
-SELECT 'Barba (Design Simples)', 'Alinhamento e contorno de barba ou cavanhaque', 15.00, 1500, 20, 20, 'barba', 7, true, true
+INSERT INTO public.services (name, description, price, price_in_cents, duration_minutes, default_duration_minutes, category, ordem, position, display_order, is_active, active)
+SELECT 'Barba (Design Simples)', 'Alinhamento e contorno de barba ou cavanhaque', 15.00, 1500, 20, 20, 'barba', 7, 7, 7, true, true
 WHERE NOT EXISTS (SELECT 1 FROM public.services WHERE name ILIKE '%Barba (Design Simples)%');
 
 -- ------------------------------------------------------------------------------

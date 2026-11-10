@@ -8,6 +8,45 @@ import { createAdminClient } from '@/lib/supabase/admin';
  * automaticamente o `custom_duration` e `custom_price` da tabela `public.barber_services`
  * (ou herdar o tempo/preço padrão da tabela `public.services` caso `custom_duration` seja null).
  */
+function resolveServiceOrder(row, fallback = 9999) {
+  const candidates = [row?.ordem, row?.position, row?.display_order];
+  for (const val of candidates) {
+    if (val !== null && val !== undefined && String(val).trim() !== '') {
+      const num = Number(val);
+      if (Number.isFinite(num) && num > 0) return Math.round(num);
+    }
+  }
+  for (const val of candidates) {
+    if (val !== null && val !== undefined && String(val).trim() !== '') {
+      const num = Number(val);
+      if (Number.isFinite(num)) return Math.round(num);
+    }
+  }
+  return fallback;
+}
+
+async function queryServicesOrdered(admin) {
+  // 1ª tentativa: ORDER BY ordem ASC, name ASC (padrão canônico v2.8)
+  const primary = await admin
+    .from('services')
+    .select('*')
+    .order('ordem', { ascending: true, nullsFirst: false })
+    .order('name', { ascending: true });
+
+  if (!primary.error) return primary;
+
+  // 2ª tentativa: ORDER BY display_order ASC, name ASC
+  const secondary = await admin
+    .from('services')
+    .select('*')
+    .order('display_order', { ascending: true, nullsFirst: false })
+    .order('name', { ascending: true });
+
+  if (!secondary.error) return secondary;
+
+  return admin.from('services').select('*');
+}
+
 export async function GET(request) {
   try {
     const admin = createAdminClient();
@@ -15,9 +54,9 @@ export async function GET(request) {
     const barberIdParam = searchParams.get('barber_id') || searchParams.get('barberId') || null;
     const serviceIdParam = searchParams.get('service_id') || searchParams.get('serviceId') || null;
 
-    // 1. Busca serviços, barbeiros e a tabela barber_services em paralelo
+    // 1. Busca serviços (ORDER BY ordem ASC), barbeiros e a tabela barber_services em paralelo
     const [servicesRes, barbersRes, bsRes] = await Promise.all([
-      admin.from('services').select('*'),
+      queryServicesOrdered(admin),
       admin.from('barbers').select('*'),
       admin.from('barber_services').select('*'),
     ]);
@@ -27,8 +66,8 @@ export async function GET(request) {
     }
 
     const services = [...(servicesRes.data || [])].sort((a, b) => {
-      const orderA = Number.isFinite(Number(a?.display_order)) ? Number(a.display_order) : 9999;
-      const orderB = Number.isFinite(Number(b?.display_order)) ? Number(b.display_order) : 9999;
+      const orderA = resolveServiceOrder(a, 9999);
+      const orderB = resolveServiceOrder(b, 9999);
       if (orderA !== orderB) return orderA - orderB;
       return String(a?.name || '').localeCompare(String(b?.name || ''), 'pt-BR');
     });
@@ -55,8 +94,9 @@ export async function GET(request) {
       // fallback
     }
 
-    const formatted = services.map((s) => {
+    const formatted = services.map((s, idx) => {
       let img = s.image_url || s.storage_url || null;
+      const seqOrder = resolveServiceOrder(s, idx + 1);
 
       if (!img && gallery.length > 0) {
         const match = gallery.find((g) => {
@@ -142,6 +182,9 @@ export async function GET(request) {
         name: s.name,
         description: s.description || null,
         category: s.category || 'corte',
+        ordem: seqOrder,
+        position: seqOrder,
+        display_order: seqOrder,
         price: resolvedPrice,
         default_price: defaultPrice,
         custom_price: selectedBarberCfg ? selectedBarberCfg.custom_price : null,

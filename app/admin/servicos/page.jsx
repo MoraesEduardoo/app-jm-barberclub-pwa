@@ -176,8 +176,17 @@ export default function ServicosPage() {
   }
 
   function handleReorder(newOrder) {
-    setServices(newOrder);
-    setCache(SERVICES_KEY, newOrder);
+    const sequencedOrder = newOrder.map((s, idx) => {
+      const seq = idx + 1;
+      return {
+        ...s,
+        ordem: seq,
+        position: seq,
+        display_order: seq,
+      };
+    });
+    setServices(sequencedOrder);
+    setCache(SERVICES_KEY, sequencedOrder);
     setSaveStatus('saving');
 
     if (saveTimeoutRef.current) {
@@ -186,7 +195,7 @@ export default function ServicosPage() {
 
     saveTimeoutRef.current = setTimeout(async () => {
       try {
-        const ids = newOrder.map((s) => s.id);
+        const ids = sequencedOrder.map((s) => s.id);
         await reorderServices(ids);
         setSaveStatus('saved');
         setTimeout(() => setSaveStatus(null), 2000);

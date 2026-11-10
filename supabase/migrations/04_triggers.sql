@@ -84,6 +84,9 @@ FOR EACH ROW EXECUTE FUNCTION public.sync_barbers_columns();
 -- ------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.sync_services_columns()
 RETURNS TRIGGER AS $$
+DECLARE
+    v_next_order integer;
+    v_resolved_order integer;
 BEGIN
     IF TG_OP = 'INSERT' THEN
         IF NEW.default_duration_minutes IS NOT NULL AND NEW.default_duration_minutes <> 30 AND NEW.duration_minutes = 30 THEN
@@ -99,6 +102,21 @@ BEGIN
             NEW.active := COALESCE(NEW.is_active, true);
             NEW.is_active := COALESCE(NEW.is_active, true);
         END IF;
+
+        v_resolved_order := COALESCE(
+            NULLIF(NEW.ordem, 0),
+            NULLIF(NEW.position, 0),
+            NULLIF(NEW.display_order, 0)
+        );
+
+        IF v_resolved_order IS NULL THEN
+            SELECT COALESCE(MAX(ordem), 0) + 1 INTO v_next_order FROM public.services;
+            v_resolved_order := COALESCE(v_next_order, 1);
+        END IF;
+
+        NEW.ordem := v_resolved_order;
+        NEW.position := v_resolved_order;
+        NEW.display_order := v_resolved_order;
     ELSE
         IF NEW.default_duration_minutes IS DISTINCT FROM OLD.default_duration_minutes THEN
             NEW.duration_minutes := NEW.default_duration_minutes;
@@ -111,6 +129,20 @@ BEGIN
         ELSIF NEW.is_active IS DISTINCT FROM OLD.is_active THEN
             NEW.active := NEW.is_active;
         END IF;
+
+        IF NEW.ordem IS DISTINCT FROM OLD.ordem AND NEW.ordem IS NOT NULL THEN
+            v_resolved_order := NEW.ordem;
+        ELSIF NEW.position IS DISTINCT FROM OLD.position AND NEW.position IS NOT NULL THEN
+            v_resolved_order := NEW.position;
+        ELSIF NEW.display_order IS DISTINCT FROM OLD.display_order AND NEW.display_order IS NOT NULL THEN
+            v_resolved_order := NEW.display_order;
+        ELSE
+            v_resolved_order := COALESCE(NEW.ordem, NEW.position, NEW.display_order, OLD.ordem, 1);
+        END IF;
+
+        NEW.ordem := v_resolved_order;
+        NEW.position := v_resolved_order;
+        NEW.display_order := v_resolved_order;
     END IF;
 
     IF NEW.price IS NOT NULL THEN

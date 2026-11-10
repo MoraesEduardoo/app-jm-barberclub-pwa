@@ -31,6 +31,15 @@ CREATE INDEX IF NOT EXISTS idx_barber_exceptions_date
 ON public.barber_exceptions (barber_id, exception_date);
 
 -- 3. Índices de Catálogo, Equipe e Galeria
+CREATE INDEX IF NOT EXISTS idx_services_ordem_asc
+ON public.services (ordem ASC, name ASC);
+
+CREATE INDEX IF NOT EXISTS idx_services_active_ordem_asc
+ON public.services (is_active, ordem ASC, name ASC);
+
+CREATE INDEX IF NOT EXISTS idx_services_position_asc
+ON public.services (position ASC, name ASC);
+
 CREATE INDEX IF NOT EXISTS idx_services_display_order
 ON public.services (display_order ASC, name ASC);
 
