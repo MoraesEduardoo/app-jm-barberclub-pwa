@@ -358,7 +358,7 @@ export default function LoginScreen({ onSuccess }) {
       {/* Rodapé institucional */}
       <div className="text-center text-zinc-600 text-xs space-y-1">
         <p>JM Barberclub · Gestão simplificada para profissionais</p>
-        <p className="text-[10px] text-zinc-700 font-mono">JM Barberclub • PWA v2.7</p>
+        <p className="text-[10px] text-zinc-700 font-mono">JM Barberclub • PWA v2.8.1</p>
       </div>
     </div>
   );

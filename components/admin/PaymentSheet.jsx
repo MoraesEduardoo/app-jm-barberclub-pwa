@@ -69,7 +69,7 @@ export default function PaymentSheet({ open, onClose, appointment }) {
         return;
       }
 
-      onClose();
+      onClose(response);
     } catch (err) {
       setError("Ocorreu um erro ao registar o pagamento.");
     } finally {
@@ -78,7 +78,7 @@ export default function PaymentSheet({ open, onClose, appointment }) {
   }
 
   return (
-    <BottomSheet open={open} onClose={onClose} title="Registrar pagamento">
+    <BottomSheet open={open} onClose={() => onClose(null)} title="Finalizar e Receber">
       <div className="mb-4 space-y-1.5">
         <p className="text-zinc-300 text-sm font-medium">
           {appointment.client_name} · {serviceLabel}

@@ -73,7 +73,7 @@ function AdminShell({ children, onProfileUpdated }) {
           onOpenMenu={() => setDrawerOpen(true)}
         />
         <ToastStack />
-        <main className="flex-1 pb-[calc(env(safe-area-inset-bottom,0px)+84px)]">
+        <main className="flex-1 pb-[calc(env(safe-area-inset-bottom,0px)+100px)]">
           {isDefaultRoot ? <AgendaPage /> : children}
         </main>
         <BottomNav />

@@ -95,6 +95,7 @@ export default function AppointmentActionSheet({
   busy = false,
   onChangeStatus,
   onOpenPayment,
+  onCompleteFiado,
   onAddProduct,
   onEditService,
   onOpenPreSchedule,
@@ -126,6 +127,13 @@ export default function AppointmentActionSheet({
   const isPreScheduled = isPreScheduledAppointment(appointment);
   const statusInfo = STATUS_BADGE[appointment.status] || STATUS_BADGE.confirmado;
   const paid = appointment.payment_status === 'pago';
+  const rawStatus = String(appointment.status || '').toLowerCase().trim();
+  const isCompleted =
+    paid ||
+    rawStatus === 'concluido' ||
+    rawStatus === 'concluído' ||
+    rawStatus === 'completed';
+  const isFiado = !paid && (appointment.payment_method === 'fiado' || isCompleted);
   const isCancelled =
     appointment.status === 'cancelado' || appointment.status === 'cancelled';
   const isPending =
@@ -435,44 +443,61 @@ export default function AppointmentActionSheet({
           </div>
         )}
 
-        {/* Painel de Ações do Atendimento */}
+        {/* Painel de Ações do Atendimento (v2.8.1: Conclusão Antecipada + Agenda 10 em 10 min) */}
         {!isCancelled && (
           <div className="space-y-2.5 pt-1">
-            {/* CTA Principal: Cobrar Atendimento */}
-            {!paid && onOpenPayment && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  onClose();
-                  onOpenPayment(appointment);
-                }}
-                className="w-full h-12 rounded-xl bg-accent hover:bg-accent-light active:bg-accent-dark text-white font-bold text-sm flex items-center justify-center gap-2 shadow-accent-glow active:scale-[0.99] transition-all touch-manipulation disabled:opacity-50"
-              >
-                <Wallet size={17} className="shrink-0" />
-                <span>
-                  Cobrar Atendimento (R$ {totalAmount.toFixed(2).replace('.', ',')})
-                </span>
-              </button>
+            {/* Linha Principal de Baixa: Finalizar e Receber + Fiado */}
+            {!paid && (
+              <div className="flex items-stretch gap-2">
+                {onOpenPayment && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      onClose();
+                      onOpenPayment(appointment);
+                    }}
+                    className="flex-1 h-12 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 active:scale-[0.99] transition-all touch-manipulation disabled:opacity-50"
+                  >
+                    <Wallet size={17} className="shrink-0" />
+                    <span className="truncate">
+                      Finalizar e Receber (R$ {totalAmount.toFixed(2).replace('.', ',')})
+                    </span>
+                  </button>
+                )}
+
+                {onCompleteFiado && !isFiado && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      onCompleteFiado(appointment);
+                      onClose();
+                    }}
+                    title="Dar baixa e liberar agenda enviando para Contas a Receber"
+                    className="shrink-0 h-12 px-4 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 hover:text-amber-200 font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+                  >
+                    <Clock3 size={16} className="text-amber-400 shrink-0" />
+                    <span>Fiado</span>
+                  </button>
+                )}
+              </div>
             )}
 
-            {/* Linha de Edição Rápida: + Produto e Editar Serviço */}
-            <div className="grid grid-cols-2 gap-2.5">
-              {onAddProduct && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    onClose();
-                    onAddProduct(appointment);
-                  }}
-                  className="h-11 px-3 rounded-xl bg-[#0c0c10] hover:bg-zinc-900 border border-amber-500/35 text-xs font-semibold text-amber-300 flex items-center justify-center gap-2 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
-                >
-                  <ShoppingBag size={15} className="text-amber-400 shrink-0" />
-                  <span className="truncate">+ Produto</span>
-                </button>
-              )}
+            {isFiado && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 flex items-center justify-between gap-2 text-xs text-amber-200">
+                <span className="inline-flex items-center gap-1.5 font-semibold">
+                  <Clock3 size={13} className="text-amber-400 shrink-0" />
+                  Atendimento concluído no Fiado (Contas a Receber)
+                </span>
+                <span className="font-mono tabular-nums font-bold text-amber-300">
+                  R$ {totalAmount.toFixed(2).replace('.', ',')}
+                </span>
+              </div>
+            )}
 
+            {/* Linha Secundária 1: Editar Serviço e + Produto */}
+            <div className="grid grid-cols-2 gap-2.5">
               {onEditService && (
                 <button
                   type="button"
@@ -485,6 +510,21 @@ export default function AppointmentActionSheet({
                 >
                   <Scissors size={15} className="text-blue-400 shrink-0" />
                   <span className="truncate">Editar Serviço</span>
+                </button>
+              )}
+
+              {onAddProduct && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    onClose();
+                    onAddProduct(appointment);
+                  }}
+                  className="h-11 px-3 rounded-xl bg-[#0c0c10] hover:bg-zinc-900 border border-amber-500/35 text-xs font-semibold text-amber-300 flex items-center justify-center gap-2 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+                >
+                  <ShoppingBag size={15} className="text-amber-400 shrink-0" />
+                  <span className="truncate">+ Produto</span>
                 </button>
               )}
             </div>
@@ -524,22 +564,16 @@ export default function AppointmentActionSheet({
               </div>
             )}
 
-            {/* Linha Inferior: Lembrete WhatsApp e Cancelar Agendamento */}
-            <div
-              className={`grid gap-2.5 ${
-                hasPhone ? 'grid-cols-2' : 'grid-cols-1'
-              }`}
-            >
-              {hasPhone && (
-                <button
-                  type="button"
-                  onClick={handleSendWhatsAppReminder}
-                  className="h-11 px-3 rounded-xl bg-[#0c0c10] hover:bg-zinc-900 border border-zinc-800 hover:border-emerald-500/40 text-xs font-semibold text-zinc-200 hover:text-white flex items-center justify-center gap-2 active:scale-95 transition-all touch-manipulation"
-                >
-                  <MessageSquare size={15} className="text-emerald-400 shrink-0" />
-                  <span>Lembrete</span>
-                </button>
-              )}
+            {/* Linha Secundária 2: Lembrete e Cancelar */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={handleSendWhatsAppReminder}
+                className="h-11 px-3 rounded-xl bg-[#0c0c10] hover:bg-zinc-900 border border-zinc-800 hover:border-emerald-500/40 text-xs font-semibold text-zinc-200 hover:text-white flex items-center justify-center gap-2 active:scale-95 transition-all touch-manipulation"
+              >
+                <MessageSquare size={15} className="text-emerald-400 shrink-0" />
+                <span className="truncate">Lembrete</span>
+              </button>
 
               {onChangeStatus && (
                 <button
@@ -552,7 +586,7 @@ export default function AppointmentActionSheet({
                   className="h-11 px-3 rounded-xl bg-[#0c0c10] hover:bg-red-950/30 border border-zinc-800 hover:border-accent/40 text-xs font-semibold text-zinc-400 hover:text-accent-light flex items-center justify-center gap-2 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
                 >
                   <XCircle size={15} className="text-accent-light shrink-0" />
-                  <span>Cancelar</span>
+                  <span className="truncate">Cancelar</span>
                 </button>
               )}
             </div>

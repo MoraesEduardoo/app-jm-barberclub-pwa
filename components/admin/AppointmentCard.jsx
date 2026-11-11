@@ -154,7 +154,11 @@ export default function AppointmentCard({
       'bg-[#080b10] border-blue-900/45 hover:border-blue-500/50 hover:bg-[#0b1018] shadow-[0_2px_12px_rgba(0,0,0,0.65)]';
     nodeDotClass = 'bg-blue-400 border-black ring-2 ring-blue-500/25';
     startTimeClass = 'text-zinc-200';
-    statusLabel = paid ? 'Pago' : 'Concluído';
+    statusLabel = paid
+      ? 'Pago'
+      : appointment.payment_method === 'fiado'
+      ? 'Concluído · Fiado'
+      : 'Concluído';
     statusTextClass = 'text-blue-400';
     statusDotColor = 'bg-blue-400';
   } else if (isPreScheduled) {

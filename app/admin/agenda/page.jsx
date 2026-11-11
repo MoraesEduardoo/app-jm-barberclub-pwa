@@ -12,6 +12,7 @@ import {
   updateAppointmentStatus,
   confirmAppointment,
   rescheduleAppointment,
+  completeAppointmentFiado,
 } from "@/lib/actions/appointments";
 import {
   cacheKeys,
@@ -156,14 +157,14 @@ function buildTimelineItems(appointmentsList, { closingTime = "20:30", includeTr
     }
   });
 
-  // Se o último atendimento terminar antes do fecho do expediente (>= 20 min livres),
-  // exibe a janela livre final até o horário de fecho para facilitar encaixes no fim do dia
+  // Se o último atendimento terminar antes do fecho do expediente (>= 10 min livres),
+  // exibe a janela livre final de 10 em 10 min até o horário de fecho
   const closeMin = timeStrToMinutes(closingTime);
   if (
     includeTrailingGap &&
     prevEndMin !== null &&
     closeMin !== null &&
-    closeMin - prevEndMin >= 20
+    closeMin - prevEndMin >= 10
   ) {
     const gapMinutes = closeMin - prevEndMin;
     const firstTick = Math.ceil((prevEndMin + 10) / 30) * 30;
@@ -272,8 +273,26 @@ export default function AgendaPage() {
   useEffect(() => {
     mountedRef.current = true;
     setActiveTab("agenda");
+
+    const openFromNavbar = () => {
+      setWalkInInitialTime("");
+      setWalkInWindowContext(null);
+      setWalkInOpen(true);
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("jm:open-walkin", openFromNavbar);
+      if (window.__jmOpenWalkInOnMount) {
+        window.__jmOpenWalkInOnMount = false;
+        openFromNavbar();
+      }
+    }
+
     return () => {
       mountedRef.current = false;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("jm:open-walkin", openFromNavbar);
+      }
     };
   }, [setActiveTab]);
 
@@ -419,11 +438,110 @@ export default function AgendaPage() {
     executeStatusChange(id, status);
   }
 
-  function handleClosePayment() {
+  function handleClosePayment(paymentResult) {
+    const targetId = paymentTarget?.id;
     setPaymentTarget(null);
+
+    if (paymentResult?.success && targetId) {
+      syncAppointmentsState((prev) =>
+        prev.map((a) =>
+          a.id === targetId
+            ? {
+                ...a,
+                status: "concluido",
+                payment_status: "pago",
+                payment_method: paymentResult.payment_method || a.payment_method,
+                price: paymentResult.price ?? a.price,
+                total_price: paymentResult.total_price ?? a.total_price,
+                duration_minutes: paymentResult.duration_minutes ?? a.duration_minutes,
+                end_time: paymentResult.end_time
+                  ? `${String(paymentResult.end_time).slice(0, 5)}:00`
+                  : a.end_time,
+              }
+            : a
+        )
+      );
+      invalidateCache("appointments:");
+      toast.success(
+        paymentResult.wasEarly
+          ? `Pagamento registrado! Agenda liberada a partir das ${paymentResult.end_time} (de 10 em 10 min).`
+          : "Atendimento finalizado e pagamento registrado com sucesso!"
+      );
+    }
+
     invalidateCache("finance:");
     invalidateCache("clients:");
     load({ silent: true });
+  }
+
+  async function handleCompleteFiado(appt) {
+    if (!appt?.id || busyId) return;
+    const id = appt.id;
+    setBusyId(id);
+    setActionError("");
+
+    const previousAppointments = appointments;
+    syncAppointmentsState((prev) =>
+      prev.map((a) =>
+        a.id === id
+          ? {
+              ...a,
+              status: "concluido",
+              payment_status: "pendente",
+              payment_method: "fiado",
+            }
+          : a
+      )
+    );
+
+    try {
+      const res = await completeAppointmentFiado(id);
+      if (res?.error === "AUTH_EXPIRED") {
+        endSession();
+        return;
+      }
+
+      if (!res?.success) {
+        syncAppointmentsState(previousAppointments);
+        const msg = res?.error || "Não foi possível dar baixa no Fiado.";
+        setActionError(msg);
+        toast.error(msg);
+        return;
+      }
+
+      syncAppointmentsState((prev) =>
+        prev.map((a) =>
+          a.id === id
+            ? {
+                ...a,
+                status: "concluido",
+                payment_status: "pendente",
+                payment_method: "fiado",
+                duration_minutes: res.duration_minutes ?? a.duration_minutes,
+                end_time: res.end_time
+                  ? `${String(res.end_time).slice(0, 5)}:00`
+                  : a.end_time,
+              }
+            : a
+        )
+      );
+
+      invalidateCache("appointments:");
+      invalidateCache("finance:");
+      invalidateCache("clients:");
+
+      toast.success(
+        res.wasEarly
+          ? `Baixa no Fiado concluída! Horários livres a partir das ${res.end_time} (de 10 em 10 min).`
+          : "Baixa no Fiado registrada! Enviado para Contas a Receber e agenda liberada."
+      );
+      load({ silent: true });
+    } catch {
+      syncAppointmentsState(previousAppointments);
+      toast.error("Sem conexão. Não foi possível registar baixa no Fiado.");
+    } finally {
+      setBusyId(null);
+    }
   }
 
   function handleCloseWalkIn(result) {
@@ -744,7 +862,7 @@ export default function AgendaPage() {
         </div>
       )}
 
-      {/* Visualização em Linha do Tempo Vertical em Blocos (v2.8) */}
+      {/* Visualização em Linha do Tempo Vertical em Blocos (v2.8.1) */}
       <div className="mt-4">
         {loading ? (
           <div className="space-y-3">
@@ -960,6 +1078,7 @@ export default function AgendaPage() {
         busy={busyId === selectedAppointment?.id}
         onChangeStatus={handleChangeStatus}
         onOpenPayment={setPaymentTarget}
+        onCompleteFiado={handleCompleteFiado}
         onAddProduct={setProductTarget}
         onEditService={setEditServiceTarget}
         onOpenPreSchedule={setPreScheduleTarget}
@@ -1056,19 +1175,6 @@ export default function AgendaPage() {
         onReschedule={handleReschedulePreScheduled}
         onCancel={handleCancelPreScheduled}
       />
-
-      <button
-        type="button"
-        onClick={() => {
-          setWalkInInitialTime("");
-          setWalkInWindowContext(null);
-          setWalkInOpen(true);
-        }}
-        className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+72px)] right-4 z-30 flex items-center gap-2 h-12 pl-4 pr-5 rounded-full bg-accent text-white text-sm font-semibold shadow-accent-glow active:scale-95 active:bg-accent-dark transition-all touch-manipulation select-none"
-      >
-        <UserPlus size={18} />
-        Sem hora
-      </button>
 
       <WalkInSheet
         open={walkInOpen}

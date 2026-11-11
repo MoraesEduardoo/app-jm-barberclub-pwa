@@ -242,7 +242,13 @@ BEGIN
   WITH busy_appointments AS MATERIALIZED (
     SELECT
       a.appointment_time AS win_start,
-      (a.appointment_time + make_interval(mins => COALESCE(NULLIF(a.duration_minutes, 0), 30)))::time AS win_end
+      LEAST(
+        COALESCE(
+          a.end_time,
+          (a.appointment_time + make_interval(mins => COALESCE(NULLIF(a.duration_minutes, 0), 30)))::time
+        ),
+        (a.appointment_time + make_interval(mins => COALESCE(NULLIF(a.duration_minutes, 0), 30)))::time
+      ) AS win_end
     FROM public.appointments a
     WHERE a.barber_id = p_barber_id
       AND a.appointment_date = p_date
