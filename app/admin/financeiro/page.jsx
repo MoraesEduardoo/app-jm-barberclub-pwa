@@ -12,6 +12,7 @@ import {
   ChevronRight,
   ChevronLeft,
   Calendar,
+  RotateCcw,
 } from "lucide-react";
 import { useBarber } from "@/lib/barber-context";
 import { endSession } from "@/lib/session";
@@ -21,6 +22,10 @@ import {
   shiftMonth,
   formatMonthYearPT,
   listSelectableMonths,
+  currentWeekStartInShop,
+  shiftWeek,
+  formatWeekRangePT,
+  listSelectableWeeks,
 } from "@/lib/dates";
 import { PERMISSION_KEYS } from "@/lib/auth";
 import { getFinanceSummary } from "@/lib/actions/finance";
@@ -53,8 +58,11 @@ export default function FinanceiroPage() {
   const canManageFinance = can(PERMISSION_KEYS.MANAGE_FINANCE);
 
   const currentMonth = useMemo(() => currentMonthInShop(), []);
+  const currentWeekStart = useMemo(() => currentWeekStartInShop(), []);
+
   const [range, setRange] = useState("hoje");
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
+  const [selectedWeekStart, setSelectedWeekStart] = useState(currentWeekStart);
   const [tab, setTab] = useState("pagos");
 
   const [localScope, setLocalScope] = useState(
@@ -68,8 +76,8 @@ export default function FinanceiroPage() {
     : barber.id;
 
   const { from: initialFrom, to: initialTo } = useMemo(
-    () => financeRange(range, new Date(), selectedMonth),
-    [range, selectedMonth]
+    () => financeRange(range, new Date(), selectedMonth, selectedWeekStart),
+    [range, selectedMonth, selectedWeekStart]
   );
   const financeCacheKey = cacheKeys.finance(initialFrom, initialTo, effectiveScope);
 
@@ -81,6 +89,25 @@ export default function FinanceiroPage() {
   const requestIdRef = useRef(0);
 
   const monthOptions = useMemo(() => listSelectableMonths(new Date(), 24, 3), []);
+
+  const weekOptions = useMemo(() => {
+    const base = listSelectableWeeks(new Date(), 26, 8);
+    if (!base.some((w) => w.value === selectedWeekStart)) {
+      return [
+        {
+          value: selectedWeekStart,
+          label: formatWeekRangePT(selectedWeekStart, true),
+          shortLabel: formatWeekRangePT(selectedWeekStart, true),
+          offset: null,
+          isCurrent: selectedWeekStart === currentWeekStart,
+        },
+        ...base,
+      ].sort((a, b) => b.value.localeCompare(a.value));
+    }
+    return base;
+  }, [selectedWeekStart, currentWeekStart]);
+
+  const isCurrentWeek = selectedWeekStart === currentWeekStart;
 
   // Agrupamento consolidado de pendências por cliente
   const pendingClientGroups = useMemo(
@@ -102,7 +129,12 @@ export default function FinanceiroPage() {
   const load = useCallback(
     async ({ silent = false } = {}) => {
       const requestId = ++requestIdRef.current;
-      const { from, to } = financeRange(range, new Date(), selectedMonth);
+      const { from, to } = financeRange(
+        range,
+        new Date(),
+        selectedMonth,
+        selectedWeekStart
+      );
       const currentKey = cacheKeys.finance(from, to, effectiveScope);
       const cached = getCache(currentKey);
 
@@ -128,7 +160,7 @@ export default function FinanceiroPage() {
         setLoading(false);
       }
     },
-    [range, selectedMonth, effectiveScope]
+    [range, selectedMonth, selectedWeekStart, effectiveScope]
   );
 
   useEffect(() => {
@@ -187,6 +219,82 @@ export default function FinanceiroPage() {
           </button>
         ))}
       </div>
+
+      {/* Seletor de Semanas (Navegação Temporal Passada / Futura + Botão Semana Atual) */}
+      {range === "semana" && (
+        <div className="bg-[#09090d] border border-zinc-800/95 rounded-2xl p-2.5 mb-4 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedWeekStart((prev) => shiftWeek(prev, -1))}
+              aria-label="Semana anterior"
+              title="Semana anterior"
+              className="h-9 w-9 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 flex items-center justify-center text-zinc-200 active:scale-95 transition-all touch-manipulation shrink-0"
+            >
+              <ChevronLeft size={16} />
+            </button>
+
+            <div className="relative flex-1 min-w-0 py-0.5">
+              <div className="flex flex-col items-center justify-center pointer-events-none">
+                <div className="flex items-center gap-1.5">
+                  <Calendar size={13} className="text-blue-400 shrink-0" />
+                  <span className="font-mono tabular-nums text-white font-bold text-xs sm:text-sm truncate">
+                    {formatWeekRangePT(selectedWeekStart, true)}
+                  </span>
+                </div>
+                <span className="text-[10px] font-medium text-zinc-400 mt-0.5">
+                  {isCurrentWeek
+                    ? "Semana atual (Seg a Dom) · Toque para escolher"
+                    : "Semana selecionada (Seg a Dom) · Toque para escolher"}
+                </span>
+              </div>
+
+              <select
+                aria-label="Selecionar semana"
+                value={selectedWeekStart}
+                onChange={(e) => setSelectedWeekStart(e.target.value)}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              >
+                {weekOptions.map((w) => (
+                  <option key={w.value} value={w.value} className="bg-zinc-950 text-white">
+                    {w.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSelectedWeekStart((prev) => shiftWeek(prev, 1))}
+              aria-label="Próxima semana"
+              title="Próxima semana"
+              className="h-9 w-9 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 flex items-center justify-center text-zinc-200 active:scale-95 transition-all touch-manipulation shrink-0"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-zinc-800/80 px-1">
+            <span className="text-[11px] text-zinc-400 font-medium truncate">
+              {isCurrentWeek ? "Exibindo a semana corrente" : "Consultando outro período semanal"}
+            </span>
+
+            <button
+              type="button"
+              onClick={() => setSelectedWeekStart(currentWeekStart)}
+              disabled={isCurrentWeek}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all touch-manipulation select-none ${
+                isCurrentWeek
+                  ? "bg-blue-500/15 border border-blue-500/35 text-blue-300 cursor-default"
+                  : "bg-accent/15 hover:bg-accent/25 border border-accent/40 text-accent-light active:scale-95"
+              }`}
+            >
+              <RotateCcw size={11} className={isCurrentWeek ? "opacity-70" : ""} />
+              <span>Semana Atual</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {range === "mes" && (
         <div className="bg-surface border border-zinc-800 rounded-xl p-2 mb-4 flex items-center justify-between gap-2">
