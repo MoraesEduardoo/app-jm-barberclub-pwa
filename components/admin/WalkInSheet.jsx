@@ -561,8 +561,7 @@ export default function WalkInSheet({
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-emerald-200 truncate">
                   Janela selecionada: {windowContext.startTime}
-                  {windowContext.endTime ? ` às ${windowContext.endTime}` : ""}
-                  {windowContext.gapMinutes ? ` (${windowContext.gapMinutes} min livres)` : ""}
+                  {windowContext.endTime ? ` – ${windowContext.endTime}` : ""}
                 </p>
                 <p className="text-[11px] text-zinc-400 truncate">
                   Profissional: <strong className="text-zinc-200">{selectedBarberName}</strong>

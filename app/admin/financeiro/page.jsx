@@ -275,23 +275,29 @@ export default function FinanceiroPage() {
           </div>
 
           <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-zinc-800/80 px-1">
-            <span className="text-[11px] text-zinc-400 font-medium truncate">
-              {isCurrentWeek ? "Exibindo a semana corrente" : "Consultando outro período semanal"}
-            </span>
+            {isCurrentWeek ? (
+              <div className="w-full flex items-center justify-center py-0.5">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/25 text-[11px] font-semibold text-blue-300 select-none">
+                  <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+                  Exibindo a semana corrente
+                </span>
+              </div>
+            ) : (
+              <>
+                <span className="text-[11px] text-zinc-400 font-medium truncate">
+                  Consultando outro período semanal
+                </span>
 
-            <button
-              type="button"
-              onClick={() => setSelectedWeekStart(currentWeekStart)}
-              disabled={isCurrentWeek}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all touch-manipulation select-none ${
-                isCurrentWeek
-                  ? "bg-blue-500/15 border border-blue-500/35 text-blue-300 cursor-default"
-                  : "bg-accent/15 hover:bg-accent/25 border border-accent/40 text-accent-light active:scale-95"
-              }`}
-            >
-              <RotateCcw size={11} className={isCurrentWeek ? "opacity-70" : ""} />
-              <span>Semana Atual</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedWeekStart(currentWeekStart)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-accent/15 hover:bg-accent/25 border border-accent/40 text-accent-light active:scale-95 transition-all touch-manipulation select-none shrink-0"
+                >
+                  <RotateCcw size={11} />
+                  <span>Semana Atual</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

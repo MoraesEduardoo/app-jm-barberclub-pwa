@@ -64,14 +64,11 @@ function formatAvailableGapDuration(totalMinutes) {
 }
 
 /**
- * Monta o texto limpo, direto e elegante exibido na faixa de intervalo livre
- * Ex: "⏱️ Intervalo livre • 25 min"
- * Ex: "⏱️ Intervalo livre • 1h05"
+ * Monta o rótulo limpo exibido na faixa de intervalo livre
+ * (sem contagem de duração acumulada, destacando o intervalo real de horário)
  */
-function formatFluidGapLabel(totalMinutes) {
-  const mins = Math.max(0, Math.round(Number(totalMinutes) || 0));
-  const durationText = formatAvailableGapDuration(mins);
-  return `⏱️ Intervalo livre • ${durationText}`;
+function formatFluidGapLabel() {
+  return "⏱️ Intervalo livre";
 }
 
 /**
@@ -890,14 +887,17 @@ export default function AgendaPage() {
                           className="w-full text-left rounded-xl border border-dashed border-zinc-800/95 bg-[#07070a]/90 bg-[repeating-linear-gradient(-45deg,rgba(255,255,255,0.018)_0px,rgba(255,255,255,0.018)_5px,transparent_5px,transparent_11px)] hover:border-zinc-700 hover:bg-[#0c0c12] active:scale-[0.995] transition-all px-3.5 py-2.5 flex items-center justify-between gap-3 group touch-manipulation"
                         >
                           <div className="flex flex-col justify-center min-w-0">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="text-[11px] sm:text-xs font-semibold text-zinc-200 group-hover:text-white transition-colors truncate">
-                                {item.fluidLabel}
+                            <span className="text-[10px] font-medium text-zinc-400 group-hover:text-zinc-300 transition-colors truncate">
+                              {item.fluidLabel}
+                            </span>
+                            <div className="flex items-center gap-2 mt-0.5 min-w-0">
+                              <span className="font-mono tabular-nums text-xs sm:text-sm font-bold text-white group-hover:text-accent-light transition-colors">
+                                {item.fromTime} – {item.toTime}
+                              </span>
+                              <span className="text-[10px] text-zinc-500 truncate">
+                                · vaga disponível
                               </span>
                             </div>
-                            <span className="font-mono tabular-nums text-[10px] text-zinc-400 mt-0.5">
-                              {item.fromTime} – {item.toTime} · vaga disponível
-                            </span>
                           </div>
 
                           <span className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700/90 text-[11px] font-semibold text-zinc-200 group-hover:border-accent/50 group-hover:bg-accent/15 group-hover:text-accent-light transition-all whitespace-nowrap">
