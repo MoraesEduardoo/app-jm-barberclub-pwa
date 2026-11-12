@@ -147,7 +147,7 @@ export default function AppointmentCard({
       rawStatus === 'concluído' ||
       rawStatus === 'completed');
 
-  // Padronização de Cores na Linha do Tempo (v2.8.1):
+  // Padronização de Cores na Linha do Tempo (v2.8.2):
   // - Pago: Verde (emerald)
   // - Fiado: Amarelo (amber)
   // - Confirmado: Azul (blue)

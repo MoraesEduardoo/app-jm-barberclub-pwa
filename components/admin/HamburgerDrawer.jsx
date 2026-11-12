@@ -393,7 +393,7 @@ export default function HamburgerDrawer({
             </button>
 
             <p className="text-[10px] text-zinc-600 text-center font-mono">
-              JM Barberclub • PWA v2.8.1
+              JM Barberclub • PWA v2.8.2
             </p>
           </div>
         </aside>

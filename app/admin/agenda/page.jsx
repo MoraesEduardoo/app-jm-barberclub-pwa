@@ -260,6 +260,7 @@ export default function AgendaPage() {
   const [selectedAppointmentId, setSelectedAppointmentId] = useState(null);
   const [paymentTarget, setPaymentTarget] = useState(null);
   const [productTarget, setProductTarget] = useState(null);
+  const [productModalMode, setProductModalMode] = useState("produto"); // 'produto' | 'conveniencia'
   const [editServiceTarget, setEditServiceTarget] = useState(null);
   const [preScheduleTarget, setPreScheduleTarget] = useState(null);
   const [filterMode, setFilterMode] = useState("all"); // 'all' | 'confirmado' | 'concluido' | 'pre_scheduled'
@@ -862,7 +863,7 @@ export default function AgendaPage() {
         </div>
       )}
 
-      {/* Visualização em Linha do Tempo Vertical em Blocos (v2.8.1) */}
+      {/* Visualização em Linha do Tempo Vertical em Blocos (v2.8.2) */}
       <div className="mt-4">
         {loading ? (
           <div className="space-y-3">
@@ -1079,7 +1080,14 @@ export default function AgendaPage() {
         onChangeStatus={handleChangeStatus}
         onOpenPayment={setPaymentTarget}
         onCompleteFiado={handleCompleteFiado}
-        onAddProduct={setProductTarget}
+        onAddProduct={(appt) => {
+          setProductModalMode("produto");
+          setProductTarget(appt);
+        }}
+        onAddConvenience={(appt) => {
+          setProductModalMode("conveniencia");
+          setProductTarget(appt);
+        }}
         onEditService={setEditServiceTarget}
         onOpenPreSchedule={setPreScheduleTarget}
         onProductRemoved={() => {
@@ -1140,10 +1148,16 @@ export default function AgendaPage() {
         open={Boolean(productTarget)}
         onClose={() => setProductTarget(null)}
         appointment={productTarget}
+        mode={productModalMode}
         onAdded={(res) => {
           const count = res?.addedItems?.length || 1;
+          const isConv = productModalMode === "conveniencia";
           toast.success(
-            count > 1
+            isConv
+              ? count > 1
+                ? `${count} itens de conveniência adicionados à conta do cliente!`
+                : "Item de conveniência adicionado à conta do cliente!"
+              : count > 1
               ? `${count} produtos adicionados e somados ao atendimento!`
               : "Produto adicionado e somado ao atendimento!"
           );

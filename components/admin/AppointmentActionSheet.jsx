@@ -9,15 +9,15 @@ import {
   User,
   Phone,
   Zap,
-  MessageSquare,
+  MessageCircle,
   Crown,
   Clock,
   RefreshCw,
   CalendarClock,
   ShoppingBag,
+  Coffee,
   X,
   Scissors,
-  Sparkles,
   Copy,
   Check,
 } from 'lucide-react';
@@ -31,6 +31,9 @@ import {
 import { isPreScheduledAppointment } from '@/lib/pre-scheduled';
 import { parseAppointmentNotes } from './AddProductSheet';
 import { removeProductFromAppointment } from '@/lib/actions/appointments';
+import { useBarber } from '@/lib/barber-context';
+import { isChefe } from '@/lib/auth';
+import { isOwnerBarber } from '@/lib/commission';
 import {
   getAppointmentStartTime,
   getAppointmentEndTime,
@@ -97,10 +100,14 @@ export default function AppointmentActionSheet({
   onOpenPayment,
   onCompleteFiado,
   onAddProduct,
+  onAddConvenience,
   onEditService,
   onOpenPreSchedule,
   onProductRemoved,
 }) {
+  const { barber } = useBarber();
+  const isChief = isChefe(barber) || isOwnerBarber(barber);
+
   const [removingKey, setRemovingKey] = useState(null);
   const [copiedPhone, setCopiedPhone] = useState(false);
   const copyTimerRef = useRef(null);
@@ -156,9 +163,13 @@ export default function AppointmentActionSheet({
   const totalAmount = Number(
     appointment.total_price ?? appointment.price ?? appointment.services?.price ?? 0
   );
-  const { cleanNotes, products: attachedProducts } = parseAppointmentNotes(
-    appointment.notes
-  );
+  const {
+    cleanNotes,
+    products: attachedProducts,
+    regularProducts,
+    convenienceProducts,
+  } = parseAppointmentNotes(appointment.notes);
+
   const productsSubtotal = attachedProducts.reduce(
     (acc, item) => acc + Number(item.subtotal || 0),
     0
@@ -231,6 +242,10 @@ export default function AppointmentActionSheet({
 
   async function handleRemoveProduct(item) {
     if (removingKey) return;
+    if (item.isConvenience && !isChief) {
+      toast.warning('Apenas o Barbeiro Chefe pode alterar itens de Conveniência.');
+      return;
+    }
     setRemovingKey(item.key);
     try {
       const res = await removeProductFromAppointment({
@@ -241,16 +256,25 @@ export default function AppointmentActionSheet({
         toast.error(res.error);
         return;
       }
-      toast.success('Produto removido e devolvido ao estoque.');
+      toast.success(
+        item.isConvenience
+          ? 'Item de conveniência removido e devolvido ao estoque.'
+          : 'Produto removido e devolvido ao estoque.'
+      );
       if (onProductRemoved) {
         onProductRemoved(res);
       }
     } catch {
-      toast.error('Não foi possível remover o produto.');
+      toast.error('Não foi possível remover o item.');
     } finally {
       setRemovingKey(null);
     }
   }
+
+  // Lista visível de produtos: barbeiros comuns veem apenas produtos de barbearia;
+  // Barbeiro Chefe vê produtos de barbearia e itens de conveniência.
+  const visibleRegularProducts = regularProducts;
+  const visibleConvenienceProducts = isChief ? convenienceProducts : [];
 
   return (
     <BottomSheet
@@ -273,19 +297,19 @@ export default function AppointmentActionSheet({
               </span>
             </div>
 
-              {paid ? (
-                <span className="inline-flex items-center gap-1 text-emerald-400 text-xs font-semibold px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-                  <CheckCircle2 size={13} /> Pago
-                </span>
-              ) : isFiado ? (
-                <span className="inline-flex items-center gap-1 text-amber-300 text-xs font-semibold px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/35">
-                  <Clock3 size={13} /> Fiado
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-blue-300 text-xs font-semibold px-2.5 py-1 rounded-lg bg-blue-500/15 border border-blue-500/35">
-                  <Clock3 size={13} /> Confirmado
-                </span>
-              )}
+            {paid ? (
+              <span className="inline-flex items-center gap-1 text-emerald-400 text-xs font-semibold px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                <CheckCircle2 size={13} /> Pago
+              </span>
+            ) : isFiado ? (
+              <span className="inline-flex items-center gap-1 text-amber-300 text-xs font-semibold px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/35">
+                <Clock3 size={13} /> Fiado
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-blue-300 text-xs font-semibold px-2.5 py-1 rounded-lg bg-blue-500/15 border border-blue-500/35">
+                <Clock3 size={13} /> Confirmado
+              </span>
+            )}
           </div>
 
           {/* Cliente e Telefone */}
@@ -414,8 +438,8 @@ export default function AppointmentActionSheet({
           )}
         </div>
 
-        {/* Lista de Produtos Vinculados ao Atendimento */}
-        {attachedProducts.length > 0 && (
+        {/* Lista de Produtos de Barbearia Vinculados ao Atendimento */}
+        {visibleRegularProducts.length > 0 && (
           <div className="rounded-2xl bg-[#070709] border border-zinc-800/90 p-3.5 space-y-2">
             <div className="flex items-center justify-between text-xs">
               <span className="inline-flex items-center gap-1.5 text-amber-400 font-semibold">
@@ -428,7 +452,7 @@ export default function AppointmentActionSheet({
               )}
             </div>
             <div className="space-y-1.5">
-              {attachedProducts.map((item) => (
+              {visibleRegularProducts.map((item) => (
                 <div
                   key={item.key}
                   className="flex items-center justify-between gap-2 text-xs bg-black/70 border border-zinc-800/80 rounded-xl px-3 py-2"
@@ -453,7 +477,44 @@ export default function AppointmentActionSheet({
           </div>
         )}
 
-        {/* Painel de Ações do Atendimento (v2.8.1: Conclusão Antecipada + Agenda 10 em 10 min) */}
+        {/* Lista de Itens de Conveniência (Exclusivo para o Barbeiro Chefe) */}
+        {visibleConvenienceProducts.length > 0 && (
+          <div className="rounded-2xl bg-[#070908] border border-emerald-500/30 p-3.5 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="inline-flex items-center gap-1.5 text-emerald-400 font-semibold">
+                <Coffee size={13} /> Conveniência na Conta (100% Caixa)
+              </span>
+              <span className="text-emerald-300/80 font-mono tabular-nums text-[11px]">
+                0% comissão colab.
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              {visibleConvenienceProducts.map((item) => (
+                <div
+                  key={item.key}
+                  className="flex items-center justify-between gap-2 text-xs bg-black/70 border border-emerald-500/20 rounded-xl px-3 py-2"
+                >
+                  <span className="text-zinc-200 font-medium truncate">
+                    {item.label}
+                  </span>
+                  {!isCancelled && isChief && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveProduct(item)}
+                      disabled={removingKey === item.key}
+                      title="Remover item de conveniência e devolver ao estoque"
+                      className="h-7 w-7 flex items-center justify-center text-zinc-400 hover:text-rose-400 rounded-lg hover:bg-zinc-900 transition-colors shrink-0"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Painel de Ações do Atendimento (v2.8.2) */}
         {!isCancelled && (
           <div className="space-y-2.5 pt-1">
             {/* Linha Principal de Baixa: Finalizar e Receber + Fiado */}
@@ -506,8 +567,12 @@ export default function AppointmentActionSheet({
               </div>
             )}
 
-            {/* Linha Secundária 1: Editar Serviço e + Produto */}
-            <div className="grid grid-cols-2 gap-2.5">
+            {/* Linha Secundária 1: Editar Serviço, + Produto e + Conveniência (Conveniência restrito ao Barbeiro Chefe) */}
+            <div
+              className={`grid ${
+                isChief && onAddConvenience ? 'grid-cols-3' : 'grid-cols-2'
+              } gap-2`}
+            >
               {onEditService && (
                 <button
                   type="button"
@@ -516,9 +581,9 @@ export default function AppointmentActionSheet({
                     onClose();
                     onEditService(appointment);
                   }}
-                  className="h-11 px-3 rounded-xl bg-[#0c0c10] hover:bg-zinc-900 border border-blue-500/35 text-xs font-semibold text-blue-200 hover:text-white flex items-center justify-center gap-2 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+                  className="h-11 px-2.5 rounded-xl bg-[#0c0c10] hover:bg-zinc-900 border border-blue-500/35 text-xs font-semibold text-blue-200 hover:text-white flex items-center justify-center gap-1.5 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
                 >
-                  <Scissors size={15} className="text-blue-400 shrink-0" />
+                  <Scissors size={14} className="text-blue-400 shrink-0" />
                   <span className="truncate">Editar Serviço</span>
                 </button>
               )}
@@ -531,10 +596,26 @@ export default function AppointmentActionSheet({
                     onClose();
                     onAddProduct(appointment);
                   }}
-                  className="h-11 px-3 rounded-xl bg-[#0c0c10] hover:bg-zinc-900 border border-amber-500/35 text-xs font-semibold text-amber-300 flex items-center justify-center gap-2 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+                  className="h-11 px-2.5 rounded-xl bg-[#0c0c10] hover:bg-zinc-900 border border-amber-500/35 text-xs font-semibold text-amber-300 flex items-center justify-center gap-1.5 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
                 >
-                  <ShoppingBag size={15} className="text-amber-400 shrink-0" />
+                  <ShoppingBag size={14} className="text-amber-400 shrink-0" />
                   <span className="truncate">+ Produto</span>
+                </button>
+              )}
+
+              {isChief && onAddConvenience && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    onClose();
+                    onAddConvenience(appointment);
+                  }}
+                  title="Adicionar bebida ou snack de Conveniência (Exclusivo Chefe)"
+                  className="h-11 px-2.5 rounded-xl bg-[#0c0c10] hover:bg-emerald-950/30 border border-emerald-500/35 text-xs font-semibold text-emerald-300 hover:text-emerald-200 flex items-center justify-center gap-1.5 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+                >
+                  <Coffee size={14} className="text-emerald-400 shrink-0" />
+                  <span className="truncate">+ Conveniência</span>
                 </button>
               )}
             </div>
@@ -574,16 +655,23 @@ export default function AppointmentActionSheet({
               </div>
             )}
 
-            {/* Linha Secundária 2: Botão de Ícone Limpo do WhatsApp (sem texto "Lembrete") + Cancelar */}
+            {/* Linha Secundária 2: Botão de Ícone Limpo do WhatsApp (balão com telefone dentro em verde) + Cancelar */}
             <div className="flex items-stretch gap-2.5">
               <button
                 type="button"
                 onClick={handleSendWhatsAppReminder}
                 title="Enviar lembrete via WhatsApp"
                 aria-label="Enviar lembrete via WhatsApp"
-                className="w-12 h-11 shrink-0 rounded-xl bg-emerald-950/30 hover:bg-emerald-950/50 border border-emerald-500/40 hover:border-emerald-400 text-emerald-400 hover:text-emerald-300 flex items-center justify-center active:scale-95 transition-all touch-manipulation"
+                className="w-12 h-11 shrink-0 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/35 hover:border-emerald-500/60 text-emerald-500 flex items-center justify-center active:scale-95 transition-all touch-manipulation"
               >
-                <MessageSquare size={18} className="text-emerald-400 shrink-0" />
+                <span className="relative inline-flex items-center justify-center">
+                  <MessageCircle size={22} strokeWidth={2} className="text-emerald-500" />
+                  <Phone
+                    size={9.5}
+                    strokeWidth={2.4}
+                    className="text-emerald-500 fill-emerald-500 absolute"
+                  />
+                </span>
               </button>
 
               {onChangeStatus && (

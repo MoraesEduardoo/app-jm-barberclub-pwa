@@ -9,7 +9,7 @@ import { warmupAdminTabsData } from '@/lib/admin-cache';
 import { PERMISSION_KEYS } from '@/lib/auth';
 
 /**
- * Abas laterais da pílula flutuante inferior (v2.8.1):
+ * Abas laterais da pílula flutuante inferior (v2.8.2):
  * Esquerda: Agenda, Serviços
  * Centro: Botão Circular Flutuante Elevado (+ Novo Atendimento / Encaixe)
  * Direita: Expediente, Equipa

@@ -61,11 +61,9 @@ function AdminShell({ children, onProfileUpdated }) {
     }
   }, [pathname, isDefaultRoot, router, setActiveTab]);
 
-  // Notificações seguem SEMPRE quem está logado, não quem está a ser visualizado.
-  const scopeAllNotifications = hasPermission(barber, PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS);
-
+  // Notificações isoladas estritamente pelo barbeiro logado (v2.8.2): cada profissional recebe apenas alertas da sua agenda
   return (
-    <NotificationProvider barberId={barber.id} scopeAll={scopeAllNotifications}>
+    <NotificationProvider barberId={barber.id}>
       <div className="min-h-screen bg-black flex flex-col">
         <Header
           pathname={effectivePathname}

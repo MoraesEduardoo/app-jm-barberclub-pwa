@@ -12,6 +12,7 @@ import {
   AlertCircle,
   Phone,
   User,
+  History,
 } from "lucide-react";
 import BottomSheet from "./BottomSheet";
 import { todayInShop, addDaysStr } from "@/lib/dates";
@@ -28,7 +29,6 @@ import { invalidateCache } from "@/lib/admin-cache";
 import { dayOfWeekFromDate } from "@/lib/constants/schedule";
 import {
   generateFullDaySlotsWithStatus,
-  roundUpToNextSlot,
   extractBusyRangesFromAppointments,
 } from "@/lib/slots";
 
@@ -114,9 +114,9 @@ export default function WalkInSheet({
   const [barberId, setBarberId] = useState(barber.id);
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
-  // 'now' = Agora | 'today_slot' = Escolher horário (hoje) | 'future_date' = Marcar dia (qualquer data)
-  const [timingMode, setTimingMode] = useState("now");
-  const [selectedDate, setSelectedDate] = useState(() => addDaysStr(todayInShop(), 1));
+  // 'today_slot' = Escolher horário (hoje) | 'future_date' = Marcar dia (qualquer data passada/futura) | 'now' = Agora
+  const [timingMode, setTimingMode] = useState("today_slot");
+  const [selectedDate, setSelectedDate] = useState(() => todayInShop());
   const [manualTime, setManualTime] = useState("");
   const [focusWindowOnly, setFocusWindowOnly] = useState(false);
   const [rpcSlots, setRpcSlots] = useState(null);
@@ -161,25 +161,34 @@ export default function WalkInSheet({
     if (open) {
       const currentToday = todayInShop();
       const targetBarber = windowContext?.barberId || barber.id;
+      const baseDate = initialDate ? String(initialDate).slice(0, 10) : currentToday;
+
       setBarberId(targetBarber);
       setServiceId("");
       setClientName("");
       setClientPhone("");
 
       if (windowContext?.startTime) {
-        const cleanDate = windowContext.date || currentToday;
+        const cleanDate = windowContext.date || baseDate;
         if (cleanDate !== currentToday) {
           setTimingMode("future_date");
           setSelectedDate(cleanDate);
         } else {
           setTimingMode("today_slot");
-          setSelectedDate(addDaysStr(currentToday, 1));
+          setSelectedDate(currentToday);
         }
         setManualTime(windowContext.startTime);
         setFocusWindowOnly(false);
+      } else if (baseDate !== currentToday) {
+        // Se a agenda já estava posicionada num dia anterior ou futuro, abre direto nessa data com a grelha visível
+        setTimingMode("future_date");
+        setSelectedDate(baseDate);
+        setManualTime("");
+        setFocusWindowOnly(false);
       } else {
-        setTimingMode("now");
-        setSelectedDate(addDaysStr(currentToday, 1));
+        // Abre por padrão exibindo a grelha completa de slots do expediente (09:00 até o fecho)
+        setTimingMode("today_slot");
+        setSelectedDate(currentToday);
         setManualTime("");
         setFocusWindowOnly(false);
       }
@@ -201,12 +210,17 @@ export default function WalkInSheet({
       setIsDayOff(false);
       setError("");
     }
-  }, [open, barber.id, windowContext]);
+  }, [open, barber.id, windowContext, initialDate]);
 
   const effectiveDate = useMemo(() => {
     if (timingMode === "future_date") return selectedDate || today;
     return today;
   }, [timingMode, selectedDate, today]);
+
+  const isRetroactiveDate = useMemo(
+    () => Boolean(effectiveDate && effectiveDate < today),
+    [effectiveDate, today]
+  );
 
   // Verifica se o modal continua focado na mesma data da janela livre clicada
   const isMatchingWindowDate = useMemo(() => {
@@ -287,27 +301,32 @@ export default function WalkInSheet({
     };
   }, [selectedService, barberId, serviceId, resolvedConfig]);
 
-  // Lista rápida de 14 dias para a mini agenda horizontal no modo "Marcar dia"
+  // Lista rápida de dias para a mini agenda horizontal (inclui dias anteriores: Anteontem, Ontem, Hoje, Amanhã e próximos dias)
   const quickDays = useMemo(() => {
     const base = todayInShop();
-    return Array.from({ length: 14 }, (_, idx) => {
-      const iso = addDaysStr(base, idx);
+    const offsets = [-3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    return offsets.map((offset) => {
+      const iso = addDaysStr(base, offset);
       const [, m, d] = iso.split("-").map(Number);
       const dt = new Date(`${iso}T12:00:00Z`);
       const dow = SHORT_WEEKDAYS_PT[dt.getUTCDay()];
       const month = SHORT_MONTHS_PT[(m || 1) - 1];
       let tag = dow;
-      if (idx === 0) tag = "Hoje";
-      else if (idx === 1) tag = "Amanhã";
+      if (offset === -2) tag = "Anteontem";
+      else if (offset === -1) tag = "Ontem";
+      else if (offset === 0) tag = "Hoje";
+      else if (offset === 1) tag = "Amanhã";
       return {
         iso,
+        offset,
+        isPastDate: offset < 0,
         dayNum: String(d).padStart(2, "0"),
         month,
         dow,
         tag,
       };
     });
-  }, [open]);
+  }, [today]);
 
   useEffect(() => {
     let cancelled = false;
@@ -335,17 +354,17 @@ export default function WalkInSheet({
 
   // Carrega o expediente semanal do barbeiro selecionado
   useEffect(() => {
-    if (timingMode !== "now" && barberId) {
+    if (barberId) {
       listSchedule(barberId)
         .then((rows) => setScheduleRows(rows || []))
         .catch(() => setScheduleRows([]));
     }
-  }, [timingMode, barberId]);
+  }, [barberId]);
 
   // Consulta dinâmica do motor de disponibilidade do Supabase para o barbeiro, data e serviço escolhidos
   useEffect(() => {
     let cancelled = false;
-    if (timingMode !== "now" && barberId && serviceId && effectiveDate) {
+    if (timingMode !== "now" && barberId && effectiveDate) {
       setLoadingSlots(true);
       setIsDayOff(false);
 
@@ -353,7 +372,7 @@ export default function WalkInSheet({
         getAvailableSlotsForBarber({
           barberId,
           date: effectiveDate,
-          serviceId,
+          serviceId: serviceId || null,
         }),
         effectiveDate === todayInShop()
           ? Promise.resolve({ data: existingAppointmentsRef.current })
@@ -361,7 +380,7 @@ export default function WalkInSheet({
       ])
         .then(([slotRes, apptRes]) => {
           if (cancelled) return;
-          if (slotRes?.durationMinutes) {
+          if (serviceId && slotRes?.durationMinutes) {
             setResolvedConfig({
               barberId,
               serviceId,
@@ -454,22 +473,24 @@ export default function WalkInSheet({
     }
   }, [isMatchingWindowDate, windowSpecificSlots]);
 
-  // Grelha completa de slots do dia (das 09:00 / abertura até ao fecho da barbearia) com status isPast / isFuture
+  // Grelha completa de slots do dia (das 09:00 / abertura até ao fecho da barbearia)
+  // Sem qualquer trava ou escurecimento de horários anteriores ao relógio atual — bloqueia apenas ocupações reais
   const allDaySlotEntries = useMemo(() => {
-    if (timingMode === "now" || !selectedService) return [];
+    if (timingMode === "now") return [];
     if (isDayOff) return [];
-
-    const isTargetToday = effectiveDate === todayInShop();
-    const cutoffNow = isTargetToday ? roundUpToNextSlot() : null;
 
     let baseEntries = [];
     if (Array.isArray(rpcSlotDetails) && rpcSlotDetails.length > 0) {
-      baseEntries = rpcSlotDetails;
+      baseEntries = rpcSlotDetails.map((e) => ({
+        ...e,
+        isPast: false,
+        isFuture: true,
+      }));
     } else if (Array.isArray(rpcSlots) && rpcSlots.length > 0) {
       baseEntries = rpcSlots.map((timeStr) => ({
         time: timeStr,
-        isPast: Boolean(cutoffNow && timeStr < cutoffNow),
-        isFuture: !Boolean(cutoffNow && timeStr < cutoffNow),
+        isPast: false,
+        isFuture: true,
       }));
     } else {
       const sourceAppointments =
@@ -477,20 +498,21 @@ export default function WalkInSheet({
       const busyRanges = extractBusyRangesFromAppointments(sourceAppointments, barberId);
       const serviceDur =
         effectiveServiceInfo?.durationMinutes ??
-        selectedService.duration_minutes ??
-        selectedService.default_duration_minutes ??
+        selectedService?.duration_minutes ??
+        selectedService?.default_duration_minutes ??
         30;
 
-      const fallbackSchedule = daySchedule && daySchedule.active
-        ? daySchedule
-        : {
-            active: true,
-            start_time: scheduleBounds.startTime,
-            end_time: scheduleBounds.endTime,
-          };
+      const fallbackSchedule =
+        daySchedule && daySchedule.active
+          ? daySchedule
+          : {
+              active: true,
+              start_time: scheduleBounds.startTime,
+              end_time: scheduleBounds.endTime,
+            };
 
       baseEntries = generateFullDaySlotsWithStatus(fallbackSchedule, busyRanges, serviceDur, {
-        nowTime: cutoffNow,
+        nowTime: null,
       });
     }
 
@@ -498,8 +520,7 @@ export default function WalkInSheet({
       const byTime = new Map(baseEntries.map((e) => [e.time, e]));
       windowSpecificSlots.forEach((ws) => {
         if (!byTime.has(ws)) {
-          const isPast = Boolean(cutoffNow && ws < cutoffNow);
-          byTime.set(ws, { time: ws, isPast, isFuture: !isPast });
+          byTime.set(ws, { time: ws, isPast: false, isFuture: true });
         }
       });
       return Array.from(byTime.values()).sort((a, b) => a.time.localeCompare(b.time));
@@ -525,12 +546,10 @@ export default function WalkInSheet({
   // Slots exibidos na grelha: por padrão exibe TODOS os horários livres das 09:00 (ou abertura) até o fecho
   const displayedSlotEntries = useMemo(() => {
     if (isMatchingWindowDate && focusWindowOnly && windowSpecificSlots.length > 0) {
-      const isTargetToday = effectiveDate === todayInShop();
-      const cutoffNow = isTargetToday ? roundUpToNextSlot() : null;
       return windowSpecificSlots.map((t) => ({
         time: t,
-        isPast: Boolean(cutoffNow && t < cutoffNow),
-        isFuture: !Boolean(cutoffNow && t < cutoffNow),
+        isPast: false,
+        isFuture: true,
       }));
     }
     return allDaySlotEntries;
@@ -539,18 +558,12 @@ export default function WalkInSheet({
     focusWindowOnly,
     windowSpecificSlots,
     allDaySlotEntries,
-    effectiveDate,
   ]);
 
-  const futureAvailableCount = useMemo(
-    () => displayedSlotEntries.filter((e) => !e.isPast).length,
-    [displayedSlotEntries]
-  );
-
+  // Permite navegar para qualquer dia (passado, ontem, hoje ou futuro) sem bloqueio
   function handleStepDate(deltaDays) {
-    const minDate = todayInShop();
-    const next = addDaysStr(selectedDate || minDate, deltaDays);
-    if (next < minDate) return;
+    const base = selectedDate || todayInShop();
+    const next = addDaysStr(base, deltaDays);
     setSelectedDate(next);
     setFocusWindowOnly(false);
     setManualTime("");
@@ -565,7 +578,7 @@ export default function WalkInSheet({
     if (timingMode !== "now" && !manualTime) {
       setError(
         timingMode === "future_date"
-          ? "Escolha a data e um horário disponível para agendar."
+          ? "Escolha a data e um horário disponível na grelha."
           : 'Escolha um horário disponível na grelha ou marque "Agora".'
       );
       return;
@@ -574,8 +587,9 @@ export default function WalkInSheet({
     setSaving(true);
     setError("");
     try {
-      // No modo de encaixe do dia ("today_slot" ou "now"), usa o fluxo de encaixe permitindo qualquer vaga livre das 09:00 até o fecho
-      const isWalkInBooking = timingMode === "now" || timingMode === "today_slot";
+      // No modo de encaixe do dia ("today_slot" ou "now") ou em datas retroativas, usa o fluxo direto de encaixe
+      const isWalkInBooking =
+        timingMode === "now" || timingMode === "today_slot" || effectiveDate < today;
       const response = await createWalkInAppointment({
         barber_id: barberId,
         service_id: serviceId,
@@ -623,7 +637,9 @@ export default function WalkInSheet({
         isMatchingWindowDate && windowContext?.startTime
           ? `Encaixe às ${windowContext.startTime}`
           : timingMode === "future_date"
-          ? "Agendar atendimento"
+          ? isRetroactiveDate
+            ? "Lançar corte de dia anterior"
+            : "Agendar / Encaixar em outra data"
           : "Novo atendimento / Encaixe"
       }
     >
@@ -771,23 +787,8 @@ export default function WalkInSheet({
             <button
               type="button"
               onClick={() => {
-                setTimingMode("now");
-                setManualTime("");
-              }}
-              className={`h-11 px-2 rounded-xl text-xs font-semibold border transition-all touch-manipulation select-none active:scale-95 flex items-center justify-center gap-1.5 ${
-                timingMode === "now"
-                  ? "bg-accent border-accent text-white shadow-sm"
-                  : "bg-[#080808] border-zinc-800 text-zinc-400 active:bg-zinc-900"
-              }`}
-            >
-              <Zap size={14} className="shrink-0" />
-              <span>Agora</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
                 setTimingMode("today_slot");
+                setSelectedDate(today);
                 if (windowContext?.startTime && windowContext.date === today) {
                   setManualTime((prev) => prev || windowContext.startTime);
                 }
@@ -799,7 +800,7 @@ export default function WalkInSheet({
               }`}
             >
               <Clock size={14} className="shrink-0" />
-              <span className="truncate">Escolher horário</span>
+              <span className="truncate">Hoje (Horários)</span>
             </button>
 
             <button
@@ -812,11 +813,48 @@ export default function WalkInSheet({
               }`}
             >
               <CalendarDays size={14} className="shrink-0" />
-              <span className="truncate">Marcar dia</span>
+              <span className="truncate">Outra Data</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setTimingMode("now");
+                setManualTime("");
+              }}
+              className={`h-11 px-2 rounded-xl text-xs font-semibold border transition-all touch-manipulation select-none active:scale-95 flex items-center justify-center gap-1.5 ${
+                timingMode === "now"
+                  ? "bg-accent border-accent text-white shadow-sm"
+                  : "bg-[#080808] border-zinc-800 text-zinc-400 active:bg-zinc-900"
+              }`}
+            >
+              <Zap size={14} className="shrink-0" />
+              <span>Agora</span>
             </button>
           </div>
 
-          {/* Mini Agenda / Seletor de Data quando "Marcar dia" está ativo */}
+          {/* Atalho rápido para lançar corte pendente de Ontem quando está em Hoje */}
+          {timingMode === "today_slot" && (
+            <div className="flex items-center justify-between gap-2 mb-2.5 px-1">
+              <span className="text-[11px] text-zinc-400">
+                Exibindo expediente completo de hoje ({formatShortDDMM(today)})
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setTimingMode("future_date");
+                  setSelectedDate(addDaysStr(today, -1));
+                  setManualTime("");
+                }}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-300 hover:text-amber-200 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2 py-0.5 active:scale-95 transition-all"
+              >
+                <History size={11} />
+                <span>Lançar Ontem / Dia Anterior</span>
+              </button>
+            </div>
+          )}
+
+          {/* Mini Agenda / Seletor de Data (permite selecionar dias anteriores e datas futuras) */}
           {timingMode === "future_date" && (
             <div className="rounded-2xl bg-[#050505] border border-zinc-800/90 p-3 mb-3 space-y-3">
               <div className="flex items-center justify-between gap-2">
@@ -825,21 +863,25 @@ export default function WalkInSheet({
                   <span className="text-xs font-semibold text-white truncate">
                     {formatDateReadable(selectedDate)}
                   </span>
+                  {isRetroactiveDate && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/35 text-amber-300 shrink-0">
+                      Retroativo
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">
                   <button
                     type="button"
                     onClick={() => handleStepDate(-1)}
-                    disabled={selectedDate <= today}
                     aria-label="Dia anterior"
-                    className="w-8 h-8 rounded-lg bg-[#0d0d0d] border border-zinc-800 flex items-center justify-center text-zinc-300 disabled:opacity-30 active:scale-95 transition-all"
+                    title="Voltar 1 dia (permite dias anteriores)"
+                    className="w-8 h-8 rounded-lg bg-[#0d0d0d] border border-zinc-800 flex items-center justify-center text-zinc-300 hover:border-zinc-700 active:scale-95 transition-all"
                   >
                     <ChevronLeft size={15} />
                   </button>
                   <input
                     type="date"
-                    min={today}
                     value={selectedDate}
                     onChange={(e) => {
                       if (e.target.value) {
@@ -854,14 +896,15 @@ export default function WalkInSheet({
                     type="button"
                     onClick={() => handleStepDate(1)}
                     aria-label="Próximo dia"
-                    className="w-8 h-8 rounded-lg bg-[#0d0d0d] border border-zinc-800 flex items-center justify-center text-zinc-300 active:scale-95 transition-all"
+                    title="Avançar 1 dia"
+                    className="w-8 h-8 rounded-lg bg-[#0d0d0d] border border-zinc-800 flex items-center justify-center text-zinc-300 hover:border-zinc-700 active:scale-95 transition-all"
                   >
                     <ChevronRight size={15} />
                   </button>
                 </div>
               </div>
 
-              {/* Faixa horizontal de dias rápidos (Mini Agenda) */}
+              {/* Faixa horizontal de dias rápidos (Mini Agenda incluindo dias passados: Anteontem, Ontem, Hoje, Amanhã...) */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar select-none">
                 {quickDays.map((d) => {
                   const isSelected = d.iso === selectedDate;
@@ -876,15 +919,21 @@ export default function WalkInSheet({
                           setManualTime("");
                         }
                       }}
-                      className={`shrink-0 min-w-[58px] py-2 px-2.5 rounded-xl border text-center transition-all touch-manipulation active:scale-95 ${
+                      className={`shrink-0 min-w-[60px] py-2 px-2.5 rounded-xl border text-center transition-all touch-manipulation active:scale-95 ${
                         isSelected
                           ? "bg-accent border-accent text-white shadow-sm"
+                          : d.isPastDate
+                          ? "bg-[#0c0a06] border-amber-500/25 text-amber-200/85 hover:border-amber-500/50"
                           : "bg-[#0b0b0b] border-zinc-800/90 text-zinc-400 hover:border-zinc-700"
                       }`}
                     >
                       <span
                         className={`block text-[10px] font-semibold uppercase tracking-wide ${
-                          isSelected ? "text-white/90" : "text-zinc-500"
+                          isSelected
+                            ? "text-white/90"
+                            : d.isPastDate
+                            ? "text-amber-400"
+                            : "text-zinc-500"
                         }`}
                       >
                         {d.tag}
@@ -906,7 +955,7 @@ export default function WalkInSheet({
             </div>
           )}
 
-          {/* Grelha de Horários Disponíveis (Das 09:00 / Abertura até o Fechamento) */}
+          {/* Grelha de Horários Disponíveis (Das 09:00 / Abertura até o Fechamento, sem ocultar horários anteriores ao relógio) */}
           {timingMode !== "now" && (
             <div className="rounded-2xl bg-[#050505] border border-zinc-800/80 p-3">
               <div className="flex items-center justify-between gap-2 mb-2">
@@ -915,58 +964,34 @@ export default function WalkInSheet({
                     ? `Horários na janela (${windowContext.startTime}${
                         windowContext.endTime ? `–${windowContext.endTime}` : ""
                       })`
-                    : `Horários (${scheduleBounds.startTime} às ${scheduleBounds.endTime} • ${formatShortDDMM(
+                    : `Expediente (${scheduleBounds.startTime} às ${scheduleBounds.endTime} • ${formatShortDDMM(
                         effectiveDate
                       )})`}
                 </span>
 
-                {isMatchingWindowDate && selectedService ? (
+                {isMatchingWindowDate && (
                   <button
                     type="button"
                     onClick={() => setFocusWindowOnly((prev) => !prev)}
                     className="text-[11px] font-semibold text-accent-light hover:underline shrink-0"
                   >
                     {focusWindowOnly
-                      ? `Ver todos (${scheduleBounds.startTime}–${scheduleBounds.endTime})`
+                      ? `Ver expediente (${scheduleBounds.startTime}–${scheduleBounds.endTime})`
                       : `Focar janela (${windowContext.startTime})`}
                   </button>
-                ) : (
-                  selectedService &&
-                  !loadingSlots &&
-                  displayedSlotEntries.length > 0 && (
-                    <span className="text-[11px] font-medium text-emerald-400">
-                      {futureAvailableCount} à frente • {displayedSlotEntries.length} livres
-                    </span>
-                  )
+                )}
+
+                {!isMatchingWindowDate && !loadingSlots && displayedSlotEntries.length > 0 && (
+                  <span className="text-[11px] font-medium text-emerald-400">
+                    {displayedSlotEntries.length} horários livres
+                  </span>
                 )}
               </div>
 
-              {/* Legenda visual: Horários passados vs Horários livres para a frente */}
-              {selectedService && !loadingSlots && displayedSlotEntries.length > 0 && (
-                <div className="flex items-center justify-between gap-2 mb-2.5 px-1 text-[10px] text-zinc-400">
-                  <div className="flex items-center gap-3">
-                    <span className="inline-flex items-center gap-1">
-                      <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                      <span className="text-zinc-200 font-medium">Livre para a frente</span>
-                    </span>
-                    <span className="inline-flex items-center gap-1 opacity-60">
-                      <span className="h-2 w-2 rounded-full bg-zinc-600" />
-                      <span>Horário já passou (permite encaixe)</span>
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {!selectedService && !isMatchingWindowDate ? (
-                <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/90 px-3.5 py-3 text-xs text-zinc-200 font-medium">
-                  Selecione o serviço acima para visualizar todos os slots das{" "}
-                  <strong className="text-white">{scheduleBounds.startTime}</strong> até{" "}
-                  <strong className="text-white">{scheduleBounds.endTime}</strong>.
-                </div>
-              ) : loadingSlots && !focusWindowOnly ? (
+              {loadingSlots && !focusWindowOnly ? (
                 <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/70 px-3.5 py-3 text-xs text-zinc-200 font-medium">
                   <Loader2 size={14} className="animate-spin text-accent-light" />
-                  <span>Consultando disponibilidade na agenda…</span>
+                  <span>Consultando horários do expediente…</span>
                 </div>
               ) : displayedSlotEntries.length === 0 ? (
                 <div className="rounded-xl border border-amber-500/35 bg-zinc-900/95 px-3.5 py-3 flex items-start gap-2.5">
@@ -978,7 +1003,7 @@ export default function WalkInSheet({
                     <p className="text-[11px] text-zinc-300 mt-0.5 leading-relaxed">
                       {isDayOff || (daySchedule && !daySchedule.active)
                         ? "O profissional selecionado não possui expediente ativo nesta data."
-                        : "Nenhum slot livre encontrado entre a abertura e o fecho para esta duração."}
+                        : "Todos os slots entre a abertura e o fecho já estão ocupados por agendamentos reais."}
                     </p>
                   </div>
                 </div>
@@ -986,7 +1011,6 @@ export default function WalkInSheet({
                 <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5 max-h-56 overflow-y-auto pr-0.5">
                   {displayedSlotEntries.map((entry) => {
                     const slot = entry.time;
-                    const isPast = Boolean(entry.isPast);
                     const isWindowSlot = windowSpecificSlots.includes(slot);
                     const isSelected = manualTime === slot;
 
@@ -995,27 +1019,16 @@ export default function WalkInSheet({
                         key={slot}
                         type="button"
                         onClick={() => setManualTime(slot)}
-                        title={
-                          isPast
-                            ? `Horário ${slot} já passou — clique para registar encaixe neste horário`
-                            : `Horário livre disponível às ${slot}`
-                        }
+                        title={`Horário livre disponível às ${slot}`}
                         className={`py-2 px-1.5 rounded-lg text-xs font-mono tabular-nums font-semibold border transition-all touch-manipulation select-none active:scale-95 text-center flex flex-col items-center justify-center ${
                           isSelected
                             ? "bg-accent border-accent text-white shadow-md shadow-red-600/30 ring-1 ring-accent-light"
                             : isWindowSlot
                             ? "bg-emerald-950/40 border-emerald-500/50 text-emerald-200 hover:border-emerald-400"
-                            : isPast
-                            ? "bg-[#070709] border-zinc-800/70 text-zinc-500 opacity-50 hover:opacity-85 hover:border-zinc-700"
                             : "bg-[#0c1210] border-emerald-500/35 text-white hover:border-emerald-400 hover:bg-emerald-950/30 shadow-[0_0_10px_rgba(16,185,129,0.06)]"
                         }`}
                       >
                         <span>{slot}</span>
-                        {isPast && !isSelected && (
-                          <span className="text-[8.5px] font-sans font-normal text-zinc-500 leading-none mt-0.5">
-                            passou
-                          </span>
-                        )}
                       </button>
                     );
                   })}
@@ -1032,7 +1045,11 @@ export default function WalkInSheet({
             ? "Salvando…"
             : timingMode === "future_date"
             ? manualTime
-              ? `Agendar para ${formatShortDDMM(effectiveDate)} às ${manualTime}`
+              ? isRetroactiveDate
+                ? `Registar corte em ${formatShortDDMM(effectiveDate)} às ${manualTime}`
+                : `Agendar para ${formatShortDDMM(effectiveDate)} às ${manualTime}`
+              : isRetroactiveDate
+              ? "Registar corte retroativo"
               : "Agendar atendimento"
             : manualTime && timingMode !== "now"
             ? `Confirmar encaixe às ${manualTime}`

@@ -11,10 +11,21 @@ import {
   removeProductPhoto,
 } from '@/lib/actions/products';
 import { compressImage } from '@/lib/image-compress';
-import { Upload, X, Package, Loader2 } from 'lucide-react';
+import { Upload, X, Package, Coffee, Loader2 } from 'lucide-react';
 import { toast } from '@/lib/toast';
+import { useBarber } from '@/lib/barber-context';
+import { isChefe } from '@/lib/auth';
+import { isConvenienceProduct, isOwnerBarber } from '@/lib/commission';
 
-export default function ProductFormSheet({ open, onClose, product }) {
+export default function ProductFormSheet({
+  open,
+  onClose,
+  product,
+  defaultCategory = 'barbearia', // 'barbearia' | 'conveniencia'
+}) {
+  const { barber } = useBarber();
+  const isChief = isChefe(barber) || isOwnerBarber(barber);
+
   const isEditing = Boolean(product && product.id);
   const fileInputRef = useRef(null);
 
@@ -28,6 +39,10 @@ export default function ProductFormSheet({ open, onClose, product }) {
       ? String(product.stock_quantity)
       : '0'
   );
+  const [category, setCategory] = useState(() => {
+    if (product && isConvenienceProduct(product)) return 'conveniencia';
+    return defaultCategory === 'conveniencia' && isChief ? 'conveniencia' : 'barbearia';
+  });
   const [isActive, setIsActive] = useState(
     product?.is_active !== undefined ? Boolean(product.is_active) : true
   );
@@ -52,13 +67,17 @@ export default function ProductFormSheet({ open, onClose, product }) {
             ? String(product.stock_quantity)
             : '0'
         );
+        setCategory(
+          isConvenienceProduct(product) && isChief ? 'conveniencia' : 'barbearia'
+        );
         setIsActive(product.is_active !== undefined ? Boolean(product.is_active) : true);
         setPreviewUrl(product.image_url || null);
       } else {
         setName('');
         setDescription('');
         setPrice('');
-        setStockQuantity('1');
+        setStockQuantity('10');
+        setCategory(defaultCategory === 'conveniencia' && isChief ? 'conveniencia' : 'barbearia');
         setIsActive(true);
         setPreviewUrl(null);
       }
@@ -76,7 +95,7 @@ export default function ProductFormSheet({ open, onClose, product }) {
       setIsPhotoRemoved(false);
       setError('');
     }
-  }, [open, product]);
+  }, [open, product, defaultCategory, isChief]);
 
   async function handleFileSelect(e) {
     const file = e.target.files?.[0];
@@ -133,9 +152,11 @@ export default function ProductFormSheet({ open, onClose, product }) {
     setError('');
 
     if (!name.trim() || price === '') {
-      setError('Preencha o nome e o preço do produto.');
+      setError('Preencha o nome e o preço do item.');
       return;
     }
+
+    const isConv = isChief && category === 'conveniencia';
 
     setSaving(true);
     try {
@@ -145,6 +166,8 @@ export default function ProductFormSheet({ open, onClose, product }) {
         price: Number(price),
         stock_quantity: Math.max(0, Math.floor(Number(stockQuantity || 0))),
         is_active: isActive,
+        category: isConv ? 'conveniencia' : 'barbearia',
+        is_convenience: isConv,
       };
 
       let targetProductId = product?.id;
@@ -165,7 +188,15 @@ export default function ProductFormSheet({ open, onClose, product }) {
         await removeProductPhoto(targetProductId);
       }
 
-      toast.success(isEditing ? 'Produto atualizado!' : 'Produto guardado com sucesso!');
+      toast.success(
+        isEditing
+          ? isConv
+            ? 'Item de conveniência atualizado!'
+            : 'Produto atualizado!'
+          : isConv
+          ? 'Item de conveniência guardado!'
+          : 'Produto guardado com sucesso!'
+      );
       onClose();
     } catch (err) {
       setError(err.message || 'Erro ao guardar o produto.');
@@ -175,31 +206,85 @@ export default function ProductFormSheet({ open, onClose, product }) {
   }
 
   async function handleDelete() {
-    if (!product || !confirm(`Remover o produto "${product.name}"?`)) return;
+    if (!product || !confirm(`Remover "${product.name}"?`)) return;
     setSaving(true);
     try {
       await deleteProduct(product.id);
-      toast.success('Produto removido.');
+      toast.success('Item removido.');
       onClose();
     } catch (err) {
-      setError(err.message || 'Erro ao remover o produto.');
+      setError(err.message || 'Erro ao remover o item.');
       setSaving(false);
     }
   }
+
+  const isConvenience = isChief && category === 'conveniencia';
 
   return (
     <BottomSheet
       open={open}
       onClose={onClose}
-      title={isEditing ? 'Editar produto' : 'Registar produto'}
+      title={
+        isEditing
+          ? isConvenience
+            ? 'Editar item de conveniência'
+            : 'Editar produto'
+          : isConvenience
+          ? 'Registar conveniência'
+          : 'Registar produto'
+      }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Seletor de Categoria (Exclusivo para o Barbeiro Chefe) */}
+        {isChief && (
+          <div className="space-y-1.5">
+            <span className="block text-xs font-medium text-zinc-400">
+              Tipo de Item
+            </span>
+            <div className="grid grid-cols-2 gap-1.5 bg-surface border border-zinc-800 rounded-xl p-1">
+              <button
+                type="button"
+                onClick={() => setCategory('barbearia')}
+                className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  category === 'barbearia'
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Package size={14} />
+                <span>Produto Barbearia</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCategory('conveniencia')}
+                className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  category === 'conveniencia'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Coffee size={14} />
+                <span>Conveniência</span>
+              </button>
+            </div>
+            {isConvenience && (
+              <p className="text-[11px] text-emerald-400 px-1">
+                Exclusivo Chefe: valores de Conveniência ficam 100% no caixa geral (sem comissão de colaboradores).
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Foto do Produto (Supabase Storage) */}
         <div className="bg-surface/60 border border-zinc-800/80 rounded-2xl p-3.5 space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
-              <Package size={13} className="text-accent" />
-              Foto do Produto
+              {isConvenience ? (
+                <Coffee size={13} className="text-emerald-400" />
+              ) : (
+                <Package size={13} className="text-accent" />
+              )}
+              {isConvenience ? 'Foto da Conveniência' : 'Foto do Produto'}
             </span>
             {previewUrl && (
               <button
@@ -223,7 +308,7 @@ export default function ProductFormSheet({ open, onClose, product }) {
                 />
               ) : (
                 <div className="flex flex-col items-center justify-center text-zinc-600 gap-1 text-center p-1">
-                  <Package size={20} />
+                  {isConvenience ? <Coffee size={20} /> : <Package size={20} />}
                   <span className="text-[10px] text-zinc-500">Sem foto</span>
                 </div>
               )}
@@ -258,11 +343,15 @@ export default function ProductFormSheet({ open, onClose, product }) {
           </div>
         </div>
 
-        <FormField label="Nome do produto">
+        <FormField label={isConvenience ? 'Nome da bebida / snack' : 'Nome do produto'}>
           <TextInput
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Ex.: Pomada Modeladora Efeito Mate"
+            placeholder={
+              isConvenience
+                ? 'Ex.: Refrigerante Lata 350ml / Água Mineral'
+                : 'Ex.: Pomada Modeladora Efeito Mate'
+            }
             autoFocus={!isEditing}
             required
           />
@@ -272,7 +361,11 @@ export default function ProductFormSheet({ open, onClose, product }) {
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Ex.: Fixação forte, acabamento seco, 120g"
+            placeholder={
+              isConvenience
+                ? 'Ex.: Bebida gelada 350ml'
+                : 'Ex.: Fixação forte, acabamento seco, 120g'
+            }
             rows={2}
             className="w-full rounded-xl bg-surface border border-zinc-800 px-3.5 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-accent transition-colors resize-none"
           />
@@ -287,7 +380,7 @@ export default function ProductFormSheet({ open, onClose, product }) {
               step="0.5"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
-              placeholder="35,00"
+              placeholder={isConvenience ? '6,00' : '35,00'}
               required
             />
           </FormField>
@@ -300,7 +393,7 @@ export default function ProductFormSheet({ open, onClose, product }) {
               step="1"
               value={stockQuantity}
               onChange={(e) => setStockQuantity(e.target.value)}
-              placeholder="10"
+              placeholder="15"
               required
             />
           </FormField>
@@ -308,7 +401,7 @@ export default function ProductFormSheet({ open, onClose, product }) {
 
         <div className="flex items-center justify-between rounded-xl bg-surface border border-zinc-800 px-3.5 py-2.5">
           <div>
-            <p className="text-xs font-semibold text-white">Produto ativo</p>
+            <p className="text-xs font-semibold text-white">Item ativo</p>
             <p className="text-[11px] text-zinc-500">
               {isActive ? 'Visível e ativo no catálogo' : 'Inativo / oculto'}
             </p>
@@ -334,11 +427,17 @@ export default function ProductFormSheet({ open, onClose, product }) {
 
         <div className="flex flex-col gap-2 pt-2">
           <PrimaryButton type="submit" disabled={saving || compressing}>
-            {saving ? 'Guardando…' : isEditing ? 'Salvar alterações' : 'Guardar produto'}
+            {saving
+              ? 'Guardando…'
+              : isEditing
+              ? 'Salvar alterações'
+              : isConvenience
+              ? 'Guardar item de conveniência'
+              : 'Guardar produto'}
           </PrimaryButton>
           {isEditing && (
             <GhostButton type="button" onClick={handleDelete} disabled={saving || compressing}>
-              Remover produto
+              Remover item
             </GhostButton>
           )}
         </div>

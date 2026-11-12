@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   Plus,
   Lock,
@@ -10,11 +10,12 @@ import {
   Sparkles,
   Scissors,
   Package,
+  Coffee,
   RefreshCw,
 } from 'lucide-react';
 import { Reorder, useDragControls } from 'framer-motion';
 import { listServices, reorderServices } from '@/lib/actions/services';
-import { listProducts } from '@/lib/actions/products';
+import { listProducts, seedDefaultConvenienceProducts } from '@/lib/actions/products';
 import { bootstrapInitialServicesCatalogAction } from '@/lib/actions/bootstrap';
 import {
   cacheKeys,
@@ -26,7 +27,8 @@ import ServiceRow from '@/components/admin/ServiceRow';
 import ServiceFormSheet from '@/components/admin/ServiceFormSheet';
 import ProductFormSheet from '@/components/admin/ProductFormSheet';
 import { useBarber } from '@/lib/barber-context';
-import { PERMISSION_KEYS } from '@/lib/auth';
+import { PERMISSION_KEYS, isChefe } from '@/lib/auth';
+import { isConvenienceProduct, isOwnerBarber } from '@/lib/commission';
 import { toast } from '@/lib/toast';
 
 const SERVICES_KEY = cacheKeys.services();
@@ -64,10 +66,11 @@ function ReorderableServiceRow({ service, onEdit }) {
 }
 
 export default function ServicosPage() {
-  const { can } = useBarber();
+  const { barber, can } = useBarber();
   const canManage = can(PERMISSION_KEYS.MANAGE_SERVICES);
+  const isChief = isChefe(barber) || isOwnerBarber(barber);
 
-  const [activeTab, setActiveTab] = useState('services'); // 'services' | 'products'
+  const [activeTab, setActiveTab] = useState('services'); // 'services' | 'products' | 'convenience'
   const [services, setServices] = useState(() => {
     const cached = getCache(SERVICES_KEY);
     return Array.isArray(cached) ? cached : [];
@@ -82,15 +85,27 @@ export default function ServicosPage() {
   });
   const [errorMsg, setErrorMsg] = useState(null);
   const [bootstrapping, setBootstrapping] = useState(false);
+  const [seedingConvenience, setSeedingConvenience] = useState(false);
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState(null);
 
   const [productSheetOpen, setProductSheetOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [defaultProductCategory, setDefaultProductCategory] = useState('barbearia');
 
   const [saveStatus, setSaveStatus] = useState(null); // 'saving' | 'saved' | null
   const saveTimeoutRef = useRef(null);
+
+  const regularProducts = useMemo(
+    () => products.filter((p) => !isConvenienceProduct(p)),
+    [products]
+  );
+
+  const convenienceProducts = useMemo(
+    () => (isChief ? products.filter((p) => isConvenienceProduct(p)) : []),
+    [products, isChief]
+  );
 
   const loadCatalog = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
@@ -175,6 +190,20 @@ export default function ServicosPage() {
     }
   }
 
+  async function handleSeedConvenience() {
+    if (!isChief) return;
+    setSeedingConvenience(true);
+    try {
+      await seedDefaultConvenienceProducts();
+      toast.success('Itens padrão de Conveniência carregados com sucesso!');
+      await loadCatalog({ silent: false });
+    } catch {
+      toast.error('Erro ao carregar catálogo de Conveniência.');
+    } finally {
+      setSeedingConvenience(false);
+    }
+  }
+
   function handleReorder(newOrder) {
     const sequencedOrder = newOrder.map((s, idx) => {
       const seq = idx + 1;
@@ -220,8 +249,12 @@ export default function ServicosPage() {
 
   return (
     <div className="px-4 pt-4 pb-32">
-      {/* Seletor Serviços / Produtos */}
-      <div className="grid grid-cols-2 gap-1.5 bg-surface border border-zinc-800 rounded-xl p-1 mb-4">
+      {/* Seletor Serviços / Produtos / Conveniência (Conveniência restrito ao Barbeiro Chefe) */}
+      <div
+        className={`grid ${
+          isChief ? 'grid-cols-3' : 'grid-cols-2'
+        } gap-1.5 bg-surface border border-zinc-800 rounded-xl p-1 mb-4`}
+      >
         <button
           type="button"
           onClick={() => setActiveTab('services')}
@@ -234,6 +267,7 @@ export default function ServicosPage() {
           <Scissors size={14} />
           <span>Serviços ({services.length})</span>
         </button>
+
         <button
           type="button"
           onClick={() => setActiveTab('products')}
@@ -244,8 +278,23 @@ export default function ServicosPage() {
           }`}
         >
           <Package size={14} />
-          <span>Produtos ({products.length})</span>
+          <span>Produtos ({regularProducts.length})</span>
         </button>
+
+        {isChief && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('convenience')}
+            className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+              activeTab === 'convenience'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Coffee size={14} />
+            <span>Conveniência ({convenienceProducts.length})</span>
+          </button>
+        )}
       </div>
 
       {errorMsg && (
@@ -369,16 +418,156 @@ export default function ServicosPage() {
             </Reorder.Group>
           )}
         </>
-      ) : (
+      ) : activeTab === 'convenience' && isChief ? (
         <>
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 px-3 py-2 mb-3 flex items-center justify-between gap-2 text-xs text-emerald-300">
+            <span className="inline-flex items-center gap-1.5 font-medium">
+              <Coffee size={14} className="text-emerald-400 shrink-0" />
+              Módulo Exclusivo do Barbeiro Chefe • 100% retido no Caixa Geral (0% comissão colab.)
+            </span>
+          </div>
+
           <div className="flex items-center justify-between mb-3">
             <p className="text-zinc-400 text-xs font-medium">
-              {products.length} produto{products.length !== 1 ? 's' : ''} registado
-              {products.length !== 1 ? 's' : ''}
+              {convenienceProducts.length} item{convenienceProducts.length !== 1 ? 's' : ''} de
+              Conveniência
             </p>
             <button
               type="button"
               onClick={() => {
+                setDefaultProductCategory('conveniencia');
+                setEditingProduct(null);
+                setProductSheetOpen(true);
+              }}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-full pl-2.5 pr-3 py-1.5 active:scale-95 transition-all touch-manipulation select-none shadow-sm"
+            >
+              <Plus size={14} /> Nova Conveniência
+            </button>
+          </div>
+
+          {loading && convenienceProducts.length === 0 ? (
+            <div className="space-y-3">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-[96px] rounded-2xl bg-surface animate-pulse" />
+              ))}
+            </div>
+          ) : convenienceProducts.length === 0 ? (
+            <div className="mt-8 rounded-2xl border border-zinc-800 bg-surface/60 p-6 flex flex-col items-center justify-center text-center gap-4">
+              <div className="h-12 w-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                <Coffee size={22} />
+              </div>
+              <div className="space-y-1 max-w-xs">
+                <h3 className="text-white font-bold text-sm">Catálogo de Conveniência Vazio</h3>
+                <p className="text-zinc-400 text-xs leading-relaxed">
+                  Registe refrigerantes, águas, cervejas e snacks para incluir na conta do cliente
+                  (pagamento imediato ou Fiado) com retenção de 100% no caixa da barbearia.
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full max-w-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDefaultProductCategory('conveniencia');
+                    setEditingProduct(null);
+                    setProductSheetOpen(true);
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-sm active:scale-95 transition-all"
+                >
+                  <Plus size={14} /> Cadastrar Manualmente
+                </button>
+                <button
+                  type="button"
+                  disabled={seedingConvenience}
+                  onClick={handleSeedConvenience}
+                  className="w-full flex items-center justify-center gap-1.5 h-10 px-4 rounded-xl bg-elevated border border-zinc-700 hover:border-zinc-600 text-zinc-200 text-xs font-semibold active:scale-95 transition-all disabled:opacity-50"
+                >
+                  {seedingConvenience ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin text-emerald-400" /> Carregando…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={14} className="text-emerald-400" /> Padrão (5 itens)
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {convenienceProducts.map((product) => (
+                <button
+                  key={product.id}
+                  type="button"
+                  onClick={() => {
+                    setDefaultProductCategory('conveniencia');
+                    setEditingProduct(product);
+                    setProductSheetOpen(true);
+                  }}
+                  className="w-full text-left rounded-2xl border border-zinc-800/90 bg-surface hover:border-emerald-500/40 p-3 flex items-center gap-3.5 transition-all active:scale-[0.99]"
+                >
+                  <div className="h-20 w-20 rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800 shrink-0 flex items-center justify-center">
+                    {product.image_url ? (
+                      <img
+                        src={product.image_url}
+                        alt={product.name}
+                        referrerPolicy="no-referrer"
+                        className="h-full w-full object-cover object-center rounded-xl"
+                      />
+                    ) : (
+                      <Coffee size={22} className="text-emerald-400" />
+                    )}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-white font-semibold text-sm truncate">
+                        {product.name}
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-semibold">
+                        Conveniência
+                      </span>
+                      {!product.is_active && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400">
+                          Inativo
+                        </span>
+                      )}
+                    </div>
+
+                    {product.description && (
+                      <p className="text-zinc-400 text-xs line-clamp-1 mt-0.5">
+                        {product.description}
+                      </p>
+                    )}
+
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-xs px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-300 font-medium">
+                        Stock: {product.stock_quantity} un.
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0 pl-2">
+                    <span className="text-white font-bold text-sm">
+                      R$ {Number(product.price || 0).toFixed(2).replace('.', ',')}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-zinc-400 text-xs font-medium">
+              {regularProducts.length} produto{regularProducts.length !== 1 ? 's' : ''} registado
+              {regularProducts.length !== 1 ? 's' : ''}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setDefaultProductCategory('barbearia');
                 setEditingProduct(null);
                 setProductSheetOpen(true);
               }}
@@ -388,13 +577,13 @@ export default function ServicosPage() {
             </button>
           </div>
 
-          {loading && products.length === 0 ? (
+          {loading && regularProducts.length === 0 ? (
             <div className="space-y-3">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="h-[96px] rounded-2xl bg-surface animate-pulse" />
               ))}
             </div>
-          ) : products.length === 0 ? (
+          ) : regularProducts.length === 0 ? (
             <div className="mt-8 rounded-2xl border border-zinc-800 bg-surface/60 p-6 flex flex-col items-center justify-center text-center gap-4">
               <div className="h-12 w-12 rounded-2xl bg-accent/15 border border-accent/30 flex items-center justify-center text-accent">
                 <Package size={22} />
@@ -409,6 +598,7 @@ export default function ServicosPage() {
               <button
                 type="button"
                 onClick={() => {
+                  setDefaultProductCategory('barbearia');
                   setEditingProduct(null);
                   setProductSheetOpen(true);
                 }}
@@ -419,11 +609,12 @@ export default function ServicosPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {products.map((product) => (
+              {regularProducts.map((product) => (
                 <button
                   key={product.id}
                   type="button"
                   onClick={() => {
+                    setDefaultProductCategory('barbearia');
                     setEditingProduct(product);
                     setProductSheetOpen(true);
                   }}
@@ -487,10 +678,14 @@ export default function ServicosPage() {
       />
 
       <ProductFormSheet
-        key={editingProduct?.id || (productSheetOpen ? 'new-product' : 'none')}
+        key={
+          editingProduct?.id ||
+          (productSheetOpen ? `new-product-${defaultProductCategory}` : 'none')
+        }
         open={productSheetOpen}
         onClose={handleCloseProductSheet}
         product={editingProduct}
+        defaultCategory={defaultProductCategory}
       />
     </div>
   );

@@ -130,7 +130,7 @@ export default function ProfileSheet({
         </button>
 
         <p className="text-[10px] text-zinc-600 text-center font-mono mt-5 pt-3 border-t border-zinc-800/70">
-          JM Barberclub • PWA v2.8.1
+          JM Barberclub • PWA v2.8.2
         </p>
       </BottomSheet>
 
