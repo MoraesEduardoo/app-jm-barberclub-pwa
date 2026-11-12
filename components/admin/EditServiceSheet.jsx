@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Scissors, Check, Clock, Loader2, Sparkles, User, RefreshCw } from "lucide-react";
+import { Scissors, Check, Clock, Loader2, Sparkles, User, Phone, RefreshCw } from "lucide-react";
 import BottomSheet from "./BottomSheet";
 import { PrimaryButton } from "./FormField";
 import { listServices } from "@/lib/actions/services";
@@ -52,6 +52,8 @@ export default function EditServiceSheet({ open, onClose, appointment, onSaved }
   );
   const [loading, setLoading] = useState(false);
   const [selectedServiceId, setSelectedServiceId] = useState("");
+  const [clientName, setClientName] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const mountedRef = useRef(true);
@@ -114,6 +116,9 @@ export default function EditServiceSheet({ open, onClose, appointment, onSaved }
     }
     setError("");
     setSelectedServiceId(appointment.service_id || "");
+    setClientName(appointment.client_name || "");
+    const rawPhone = String(appointment.client_phone || "").replace(/\D/g, "");
+    setClientPhone(rawPhone === "00000000000" ? "" : appointment.client_phone || "");
 
     const cached = getCache(servicesKey);
     if (Array.isArray(cached) && cached.length > 0) {
@@ -143,7 +148,16 @@ export default function EditServiceSheet({ open, onClose, appointment, onSaved }
         apptServiceName: appointment.service,
       });
     }
-  }, [open, appointment?.id, appointment?.service_id, appointment?.service, servicesKey, loadServices]);
+  }, [
+    open,
+    appointment?.id,
+    appointment?.service_id,
+    appointment?.service,
+    appointment?.client_name,
+    appointment?.client_phone,
+    servicesKey,
+    loadServices,
+  ]);
 
   if (!appointment) return null;
 
@@ -208,19 +222,30 @@ export default function EditServiceSheet({ open, onClose, appointment, onSaved }
     ? Number((resolvedSelected.price + productsSubtotal).toFixed(2))
     : currentTotal;
 
-  const isUnchanged =
+  const origPhoneClean = String(appointment.client_phone || "").replace(/\D/g, "");
+  const normalizedOrigPhone = origPhoneClean === "00000000000" ? "" : origPhoneClean;
+  const currentPhoneClean = String(clientPhone || "").replace(/\D/g, "");
+
+  const isServiceChanged =
     Boolean(selectedServiceId) &&
-    String(selectedServiceId) === String(appointment.service_id || "");
+    String(selectedServiceId) !== String(appointment.service_id || "");
+  const isClientChanged =
+    String(clientName || "").trim() !== String(appointment.client_name || "").trim() ||
+    currentPhoneClean !== normalizedOrigPhone;
+
+  const isUnchanged = !isServiceChanged && !isClientChanged;
 
   async function handleConfirm() {
-    if (!selectedServiceId) return;
+    if (!selectedServiceId && !appointment.service_id) return;
     setSaving(true);
     setError("");
 
     try {
       const res = await updateAppointmentService({
         appointmentId: appointment.id,
-        serviceId: selectedServiceId,
+        serviceId: selectedServiceId || appointment.service_id,
+        clientName: clientName.trim() || "Cliente",
+        clientPhone: clientPhone.trim(),
       });
 
       if (res?.error) {
@@ -234,20 +259,20 @@ export default function EditServiceSheet({ open, onClose, appointment, onSaved }
       }
       onClose();
     } catch {
-      setError("Não foi possível atualizar o serviço do atendimento.");
+      setError("Não foi possível atualizar os dados do atendimento.");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <BottomSheet open={open} onClose={onClose} title="Editar Serviço do Atendimento">
+    <BottomSheet open={open} onClose={onClose} title="Editar Serviço & Dados do Cliente">
       <div className="space-y-4">
-        {/* Resumo do Cliente / Atendimento Atual */}
-        <div className="flex items-center justify-between bg-elevated/70 border border-zinc-800 rounded-xl px-3.5 py-2.5">
+        {/* Resumo do Atendimento Atual */}
+        <div className="flex items-center justify-between bg-[#070709] border border-zinc-800/90 rounded-xl px-3.5 py-2.5">
           <div className="min-w-0 pr-2">
             <p className="text-white text-xs font-bold truncate">
-              {appointment.client_name}
+              {clientName || appointment.client_name || "Cliente"}
             </p>
             <p className="text-zinc-400 text-[11px] truncate">
               Atual: <span className="text-zinc-200 font-medium">{currentServiceName}</span>
@@ -260,13 +285,74 @@ export default function EditServiceSheet({ open, onClose, appointment, onSaved }
           </div>
           <div className="text-right shrink-0">
             <span className="text-[10px] text-zinc-500 block">Total atual</span>
-            <span className="text-white font-bold text-xs">
+            <span className="text-white font-bold text-xs font-mono tabular-nums">
               {formatBRL(currentTotal)}
             </span>
           </div>
         </div>
 
-        {/* Instrução */}
+        {/* Edição Direta dos Dados Cadastrais do Cliente (Nome + Telemóvel / Chave Primária) */}
+        <div className="rounded-xl bg-[#070709] border border-zinc-800/90 p-3.5 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
+              <User size={12} className="text-blue-400" />
+              Dados Cadastrais do Cliente
+            </span>
+            <span className="text-[10px] text-zinc-500">
+              Salva na base de Clientes
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label className="block text-[11px] font-medium text-zinc-400 mb-1">
+                Nome do cliente
+              </label>
+              <div className="relative">
+                <User
+                  size={13}
+                  className="
+                    absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none
+                  "
+                />
+                <input
+                  type="text"
+                  value={clientName}
+                  onChange={(e) => {
+                    setError("");
+                    setClientName(e.target.value);
+                  }}
+                  placeholder="Ex: João Silva"
+                  className="w-full h-10 rounded-lg bg-[#0d0d11] border border-zinc-800 pl-8 pr-3 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium text-zinc-400 mb-1">
+                Telemóvel / WhatsApp (Chave)
+              </label>
+              <div className="relative">
+                <Phone
+                  size={13}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
+                />
+                <input
+                  type="tel"
+                  value={clientPhone}
+                  onChange={(e) => {
+                    setError("");
+                    setClientPhone(e.target.value);
+                  }}
+                  placeholder="(83) 99999-9999"
+                  className="w-full h-10 rounded-lg bg-[#0d0d11] border border-zinc-800 pl-8 pr-3 text-xs font-mono tabular-nums text-white placeholder:text-zinc-600 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Instrução de Serviço */}
         <div className="flex items-center justify-between px-0.5">
           <span className="text-[11px] text-zinc-400">
             Selecione o serviço realizado pelo cliente:
@@ -305,7 +391,7 @@ export default function EditServiceSheet({ open, onClose, appointment, onSaved }
             </button>
           </div>
         ) : (
-          <div className="space-y-2 max-h-64 overflow-y-auto pr-0.5">
+          <div className="space-y-2 max-h-56 overflow-y-auto pr-0.5">
             {services.map((service) => {
               const isSelected = String(service.id) === String(selectedServiceId);
               const isCurrent =
@@ -383,7 +469,7 @@ export default function EditServiceSheet({ open, onClose, appointment, onSaved }
           <div className="bg-surface border border-zinc-800 rounded-xl p-3 space-y-2">
             <div className="flex items-center justify-between text-[11px] text-zinc-400">
               <span>
-                Novo serviço ({selectedService.name} · ~{resolvedSelected.duration} min)
+                Serviço ({selectedService.name} · ~{resolvedSelected.duration} min)
               </span>
               <span className="font-semibold text-zinc-200">
                 {formatBRL(resolvedSelected.price)}
@@ -399,7 +485,7 @@ export default function EditServiceSheet({ open, onClose, appointment, onSaved }
 
             <div className="flex items-center justify-between pt-2 border-t border-zinc-800/80">
               <span className="text-xs text-zinc-300 font-medium">
-                Novo total do atendimento
+                Total do atendimento
               </span>
               <span className="text-sm font-bold text-emerald-400">
                 {formatBRL(nextTotal)}
@@ -416,19 +502,19 @@ export default function EditServiceSheet({ open, onClose, appointment, onSaved }
 
         <PrimaryButton
           onClick={handleConfirm}
-          disabled={saving || !selectedServiceId || isUnchanged}
+          disabled={saving || (!selectedServiceId && !appointment.service_id) || isUnchanged}
         >
           {saving ? (
             <span className="inline-flex items-center gap-2">
-              <Loader2 size={15} className="animate-spin" /> Atualizando serviço…
+              <Loader2 size={15} className="animate-spin" /> Salvando alterações…
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5">
               <Scissors size={15} />
               <span>
                 {isUnchanged
-                  ? "Selecione outro serviço para alterar"
-                  : "Confirmar Novo Serviço"}
+                  ? "Altere o cliente ou serviço para salvar"
+                  : "Salvar Alterações"}
               </span>
             </span>
           )}

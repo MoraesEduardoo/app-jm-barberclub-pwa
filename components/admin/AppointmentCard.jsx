@@ -140,27 +140,46 @@ export default function AppointmentCard({
   // Altura proporcional à duração na linha do tempo vertical (ex: 30min -> 88px, 60min -> 128px)
   const blockMinHeight = Math.max(86, Math.min(168, Math.round(durationMin * 1.85 + 30)));
 
-  // Paleta OLED Dark (Preto predominante, Zinco refinado e Acentos Vermelho/Azul/Esmeralda)
-  let cardSurfaceClass =
-    'bg-[#0b0b0e] border-zinc-800/95 hover:border-zinc-700 hover:bg-[#101015] shadow-[0_2px_12px_rgba(0,0,0,0.65)]';
-  let nodeDotClass = 'bg-accent border-black ring-2 ring-accent/30';
-  let startTimeClass = 'text-zinc-200';
-  let statusLabel = 'Confirmado';
-  let statusTextClass = 'text-zinc-300';
-  let statusDotColor = 'bg-accent';
+  const isFiado =
+    !paid &&
+    (appointment.payment_method === 'fiado' ||
+      rawStatus === 'concluido' ||
+      rawStatus === 'concluído' ||
+      rawStatus === 'completed');
 
-  if (isCompleted) {
+  // Padronização de Cores na Linha do Tempo (v2.8.1):
+  // - Pago: Verde (emerald)
+  // - Fiado: Amarelo (amber)
+  // - Confirmado: Azul (blue)
+  let cardSurfaceClass =
+    'bg-[#070c15] border-blue-500/40 hover:border-blue-400/65 hover:bg-[#0a1220] shadow-[0_2px_12px_rgba(0,0,0,0.65)]';
+  let nodeDotClass = 'bg-blue-400 border-black ring-2 ring-blue-500/30';
+  let startTimeClass = 'text-blue-200';
+  let statusLabel = 'Confirmado';
+  let statusTextClass = 'text-blue-400';
+  let statusDotColor = 'bg-blue-400';
+  let completedIconColor = 'text-blue-400';
+
+  if (paid) {
+    // Pago -> Verde
     cardSurfaceClass =
-      'bg-[#080b10] border-blue-900/45 hover:border-blue-500/50 hover:bg-[#0b1018] shadow-[0_2px_12px_rgba(0,0,0,0.65)]';
-    nodeDotClass = 'bg-blue-400 border-black ring-2 ring-blue-500/25';
-    startTimeClass = 'text-zinc-200';
-    statusLabel = paid
-      ? 'Pago'
-      : appointment.payment_method === 'fiado'
-      ? 'Concluído · Fiado'
-      : 'Concluído';
-    statusTextClass = 'text-blue-400';
-    statusDotColor = 'bg-blue-400';
+      'bg-[#06120c] border-emerald-500/45 hover:border-emerald-400/70 hover:bg-[#091a11] shadow-[0_2px_12px_rgba(0,0,0,0.65)]';
+    nodeDotClass = 'bg-emerald-400 border-black ring-2 ring-emerald-500/30';
+    startTimeClass = 'text-emerald-200';
+    statusLabel = 'Pago';
+    statusTextClass = 'text-emerald-400';
+    statusDotColor = 'bg-emerald-400';
+    completedIconColor = 'text-emerald-400';
+  } else if (isFiado) {
+    // Fiado -> Amarelo
+    cardSurfaceClass =
+      'bg-[#130f05] border-amber-500/45 hover:border-amber-400/70 hover:bg-[#1a1407] shadow-[0_2px_12px_rgba(0,0,0,0.65)]';
+    nodeDotClass = 'bg-amber-400 border-black ring-2 ring-amber-500/30';
+    startTimeClass = 'text-amber-200';
+    statusLabel = 'Fiado';
+    statusTextClass = 'text-amber-400';
+    statusDotColor = 'bg-amber-400';
+    completedIconColor = 'text-amber-400';
   } else if (isPreScheduled) {
     cardSurfaceClass =
       'bg-[#0d0914] border-purple-500/35 hover:border-purple-400/60 hover:bg-[#120d1c] shadow-[0_2px_12px_rgba(0,0,0,0.65)]';
@@ -193,11 +212,15 @@ export default function AppointmentCard({
           className={`absolute right-0 top-0 w-px ${
             showEndOfShiftHighlight
               ? 'bottom-2 bg-gradient-to-b from-zinc-700 via-accent/60 to-accent'
+              : paid
+              ? 'bottom-0 bg-gradient-to-b from-zinc-800 via-emerald-500/45 to-emerald-500/75'
+              : isFiado
+              ? 'bottom-0 bg-gradient-to-b from-zinc-800 via-amber-500/45 to-amber-500/75'
               : showCompletedEndTimeBlue
               ? 'bottom-0 bg-gradient-to-b from-zinc-800 via-blue-500/40 to-blue-500/70'
               : isLast
               ? 'bottom-2 bg-gradient-to-b from-zinc-700 via-zinc-800 to-transparent'
-              : 'bottom-0 bg-zinc-800'
+              : 'bottom-0 bg-gradient-to-b from-zinc-800 via-blue-500/30 to-zinc-800'
           }`}
         />
 
@@ -206,12 +229,16 @@ export default function AppointmentCard({
           className={`absolute -right-[4.5px] top-3.5 h-2.5 w-2.5 rounded-full border ${nodeDotClass} z-10`}
         />
 
-        {/* Nó de Encerramento no Eixo (Azul para corte concluído | Vermelho para fecho do expediente) */}
-        {(showCompletedEndTimeBlue || showEndOfShiftHighlight) && (
+        {/* Nó de Encerramento no Eixo */}
+        {(showCompletedEndTimeBlue || showEndOfShiftHighlight || paid || isFiado) && (
           <span
             className={`absolute -right-[4px] bottom-3 h-2 w-2 rounded-full border border-black z-10 ${
               showEndOfShiftHighlight
                 ? 'bg-accent-light ring-2 ring-accent/35'
+                : paid
+                ? 'bg-emerald-400 ring-2 ring-emerald-500/30'
+                : isFiado
+                ? 'bg-amber-400 ring-2 ring-amber-500/30'
                 : 'bg-blue-400 ring-2 ring-blue-500/30'
             }`}
           />
@@ -236,17 +263,19 @@ export default function AppointmentCard({
           </div>
         )}
 
-        {/* Horário Final na base do bloco:
-            - Azul quando o corte individual está concluído (ex: 08:30)
-            - Vermelho exclusivamente quando coincide com o fecho do expediente (ex: 20:30) */}
+        {/* Horário Final na base do bloco */}
         {endTime && (
           <span
             className={`font-mono tabular-nums text-[10px] leading-none ${
               showEndOfShiftHighlight
                 ? 'font-bold text-accent-light bg-accent/15 border border-accent/40 px-1.5 py-0.5 rounded-md shadow-[0_0_8px_rgba(220,38,38,0.2)]'
+                : paid
+                ? 'font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/35 px-1.5 py-0.5 rounded-md shadow-[0_0_8px_rgba(16,185,129,0.18)]'
+                : isFiado
+                ? 'font-bold text-amber-400 bg-amber-500/15 border border-amber-500/35 px-1.5 py-0.5 rounded-md shadow-[0_0_8px_rgba(245,158,11,0.18)]'
                 : showCompletedEndTimeBlue
                 ? 'font-bold text-blue-400 bg-blue-500/15 border border-blue-500/35 px-1.5 py-0.5 rounded-md shadow-[0_0_8px_rgba(59,130,246,0.18)]'
-                : 'font-medium text-zinc-500 pb-1'
+                : 'font-medium text-blue-300/80 pb-1'
             }`}
           >
             {endTime}
@@ -276,6 +305,10 @@ export default function AppointmentCard({
                     className={
                       showEndOfShiftHighlight
                         ? 'text-accent-light font-extrabold'
+                        : paid
+                        ? 'text-emerald-400 font-extrabold'
+                        : isFiado
+                        ? 'text-amber-400 font-extrabold'
                         : showCompletedEndTimeBlue
                         ? 'text-blue-400 font-extrabold'
                         : startTimeClass
@@ -304,7 +337,7 @@ export default function AppointmentCard({
               )}
               <div className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${statusTextClass}`}>
                 {isCompleted ? (
-                  <CheckCircle2 size={11} className="text-blue-400 shrink-0" />
+                  <CheckCircle2 size={11} className={`${completedIconColor} shrink-0`} />
                 ) : (
                   <span className={`h-1.5 w-1.5 rounded-full ${statusDotColor} shrink-0`} />
                 )}

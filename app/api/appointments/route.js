@@ -129,6 +129,77 @@ export async function GET(request) {
  * com bloqueios pessimistas (`SELECT ... FOR UPDATE` + `pg_advisory_xact_lock`) e captura
  * limpa de `SQLSTATE 23505` retornando `code: 'SLOT_ALREADY_BOOKED'` (HTTP 409).
  */
+/**
+ * Calcula o nível de lotação do dia (occupancy_status, occupancy_percent, remaining_slots_today, occupancy_reminder)
+ * logo após a conclusão de um agendamento no Chatbot.
+ */
+async function buildDailyOccupancyReminder(admin, barberId, dateStr) {
+  try {
+    const cleanDate = String(dateStr || todayInShop()).slice(0, 10);
+    const [apptsRes, slotsRes] = await Promise.all([
+      admin
+        .from('appointments')
+        .select('id, duration_minutes, status')
+        .eq('barber_id', barberId)
+        .eq('appointment_date', cleanDate)
+        .neq('status', 'cancelado')
+        .neq('status', 'cancelled'),
+      admin.rpc('chatbot_get_available_slots', {
+        p_barber_id: barberId,
+        p_date: cleanDate,
+        p_service_id: null,
+      }),
+    ]);
+
+    const activeAppts = apptsRes?.data || [];
+    const occupiedMinutes = activeAppts.reduce(
+      (acc, r) => acc + (Number(r.duration_minutes) || 30),
+      0
+    );
+
+    const parts = cleanDate.split('-').map(Number);
+    const dt =
+      parts.length === 3 ? new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0) : new Date();
+    const dow = dt.getDay();
+    // Capacidade total estimada de minutos úteis do dia (Dom: 210m, Seg: 360m, Ter-Sáb: 690m)
+    const totalShiftMinutes = dow === 0 ? 210 : dow === 1 ? 360 : 690;
+
+    const occupancyPercent = Math.min(
+      100,
+      Math.max(5, Math.round((occupiedMinutes / totalShiftMinutes) * 100))
+    );
+    const remainingSlots = Array.isArray(slotsRes?.data) ? slotsRes.data.length : 0;
+
+    let level = 'tranquila';
+    let reminderText = `📅 Lotação do dia: ${occupancyPercent}% preenchida (${activeAppts.length} atendimentos confirmados). Lembrete: chegue com 5 minutos de antecedência para aproveitar o seu horário!`;
+
+    if (occupancyPercent >= 80 || remainingSlots <= 3) {
+      level = 'alta';
+      reminderText = `🔥 Lotação do dia: Agenda com alta procura (${occupancyPercent}% preenchida • restam poucas vagas). Lembrete importante: chegue no horário exato para garantir o seu atendimento sem atrasos!`;
+    } else if (occupancyPercent >= 50) {
+      level = 'moderada';
+      reminderText = `⚡ Lotação do dia: Movimentação moderada (${occupancyPercent}% preenchida). Lembrete: recomendamos chegar com 5 minutos de antecedência!`;
+    }
+
+    return {
+      occupancy_level: level,
+      occupancy_percent: occupancyPercent,
+      appointments_today: activeAppts.length,
+      remaining_slots_today: remainingSlots,
+      occupancy_reminder: reminderText,
+    };
+  } catch {
+    return {
+      occupancy_level: 'normal',
+      occupancy_percent: 50,
+      appointments_today: 1,
+      remaining_slots_today: null,
+      occupancy_reminder:
+        '📅 Lembrete: A agenda do dia está movimentada. Recomendamos chegar com 5 minutos de antecedência!',
+    };
+  }
+}
+
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -158,6 +229,22 @@ export async function POST(request) {
     }
 
     const admin = createAdminClient();
+
+    // Garante que o cliente seja salvo na tabela public.clients usando o telefone como chave primária
+    if (clientPhoneRaw.length >= 8 && clientPhoneRaw !== '00000000000') {
+      try {
+        await admin
+          .from('clients')
+          .upsert(
+            {
+              name: clientName || 'Cliente',
+              phone: clientPhoneRaw,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'phone' }
+          );
+      } catch {}
+    }
 
     // 1. Consulta paralela leve de services e barber_services (Index-Only Scan)
     const [svcRes, bsRes] = await Promise.all([
@@ -248,7 +335,6 @@ export async function POST(request) {
       }
 
       // 2.2. Tratamento de outras rejeições de regra de negócio da RPC (ex: BARBER_ON_LEAVE, BARBER_INACTIVE, INVALID_PHONE)
-      //      Não permite cair no fallback de inserção direta!
       if (rpcRes && rpcRes.success === false) {
         const businessCode = rpcRes.code || 'BOOKING_REJECTED';
         const businessMsg =
@@ -265,7 +351,7 @@ export async function POST(request) {
         );
       }
 
-      // 2.3. Sucesso atômico via RPC
+      // 2.3. Sucesso atômico via RPC + Lembrete Automático de Lotação do Dia
       if (!rpcErr && rpcRes?.success) {
         const createdIds = Array.isArray(rpcRes.appointment_ids)
           ? rpcRes.appointment_ids
@@ -273,12 +359,10 @@ export async function POST(request) {
           ? [rpcRes.appointment_id]
           : [];
 
-        // Notificação Push assíncrona (best-effort)
-        if (createdIds[0]) {
-          try {
-            await notifyNewAppointment(createdIds[0]);
-          } catch {}
-        }
+        const [occupancyInfo] = await Promise.all([
+          buildDailyOccupancyReminder(admin, barberId, date),
+          createdIds[0] ? notifyNewAppointment(createdIds[0]).catch(() => {}) : Promise.resolve(),
+        ]);
 
         return NextResponse.json(
           {
@@ -294,15 +378,15 @@ export async function POST(request) {
               rpcRes.end_time || addMinutesToTimeStr(formattedTime, totalDuration).slice(0, 5),
             total_duration: rpcRes.total_duration || totalDuration,
             total_price: rpcRes.total_price ?? totalPrice,
-            message: 'Agendamento confirmado com sucesso!',
+            ...occupancyInfo,
+            message: `Agendamento confirmado com sucesso!\n\n${occupancyInfo.occupancy_reminder}`,
           },
           { status: 200, headers: CORS_HEADERS }
         );
       }
     }
 
-    // 3. Fallback direto de inserção em public.appointments (protegido no banco pelo
-    //    índice único `idx_appointments_unique_active_slot` e trigger `trg_prevent_appointment_overlap`)
+    // 3. Fallback direto de inserção em public.appointments
     const primaryItem = resolvedItems[0];
     const endTime = addMinutesToTimeStr(formattedTime, totalDuration);
 
@@ -360,9 +444,10 @@ export async function POST(request) {
       );
     }
 
-    try {
-      await notifyNewAppointment(created.id);
-    } catch {}
+    const [occupancyInfo] = await Promise.all([
+      buildDailyOccupancyReminder(admin, barberId, date),
+      notifyNewAppointment(created.id).catch(() => {}),
+    ]);
 
     return NextResponse.json(
       {
@@ -376,7 +461,8 @@ export async function POST(request) {
         end_time: endTime.slice(0, 5),
         total_duration: totalDuration,
         total_price: totalPrice,
-        message: 'Agendamento confirmado com sucesso!',
+        ...occupancyInfo,
+        message: `Agendamento confirmado com sucesso!\n\n${occupancyInfo.occupancy_reminder}`,
       },
       { status: 200, headers: CORS_HEADERS }
     );

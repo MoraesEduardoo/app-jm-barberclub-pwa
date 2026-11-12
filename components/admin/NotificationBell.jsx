@@ -192,8 +192,207 @@ function cleanPushErrorMessage(err) {
 }
 
 /**
+ * Componente dedicado para gestão e estado das Notificações Push no Dispositivo.
+ */
+function PushDeviceStatusSection({
+  isSubscribed,
+  pushStatus,
+  busy,
+  feedbackError,
+  onSubscribe,
+  onUnsubscribe,
+}) {
+  return (
+    <div className="bg-surface border border-zinc-800 rounded-2xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div
+            className={`h-9 w-9 rounded-xl flex items-center justify-center shrink-0 ${
+              isSubscribed
+                ? 'bg-red-500/15 text-red-500'
+                : 'bg-zinc-800 text-zinc-400'
+            }`}
+          >
+            {isSubscribed ? <BellRing size={18} /> : <BellOff size={18} />}
+          </div>
+          <div>
+            <h4 className="text-white text-xs font-semibold">
+              Notificações Push no Telemóvel
+            </h4>
+            <p className="text-zinc-400 text-[11px] mt-0.5">
+              {isSubscribed
+                ? 'Ativas neste dispositivo'
+                : pushStatus === 'denied'
+                ? 'Bloqueadas pelo navegador'
+                : pushStatus === 'unsupported'
+                ? 'Não suportadas neste navegador'
+                : 'Desativadas no momento'}
+            </p>
+          </div>
+        </div>
+
+        <span
+          className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+            isSubscribed
+              ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+              : 'bg-zinc-800 text-zinc-400'
+          }`}
+        >
+          {isSubscribed ? 'Ativo' : 'Inativo'}
+        </span>
+      </div>
+
+      {feedbackError && (
+        <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl px-3 py-2.5 text-xs">
+          <AlertCircle size={15} className="shrink-0 mt-0.5" />
+          <div className="flex-1 space-y-1.5">
+            <span className="block leading-relaxed">{feedbackError}</span>
+            <button
+              type="button"
+              onClick={onSubscribe}
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-red-300 hover:text-white underline underline-offset-2"
+            >
+              <RotateCcw size={11} />
+              Tentar novamente
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="pt-1">
+        {isSubscribed ? (
+          <button
+            type="button"
+            onClick={onUnsubscribe}
+            disabled={busy}
+            className="w-full flex items-center justify-center gap-2 h-11 rounded-xl bg-elevated hover:bg-zinc-800 border border-zinc-700/80 text-zinc-300 hover:text-white text-xs font-semibold active:bg-zinc-900 transition-all touch-manipulation disabled:opacity-50"
+          >
+            {busy ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <BellOff size={14} />
+            )}
+            <span>Desativar notificações</span>
+          </button>
+        ) : pushStatus === 'denied' ? (
+          <div className="w-full flex items-center justify-center p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800 text-zinc-400 text-xs text-center">
+            Permissão bloqueada no navegador. Abra as configurações do site e altere Notificações para &quot;Permitir&quot;.
+          </div>
+        ) : pushStatus === 'unsupported' ? (
+          <div className="w-full flex items-center justify-center p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800 text-zinc-400 text-xs text-center">
+            Este navegador não possui suporte a Web Push Notifications.
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={onSubscribe}
+            disabled={busy}
+            className="w-full flex items-center justify-center gap-2 h-11 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold active:bg-red-700 transition-all touch-manipulation shadow-sm disabled:opacity-50"
+          >
+            {busy ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <BellRing size={14} />
+            )}
+            <span>Ativar notificações no telemóvel</span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const NOTIFICATION_CATEGORIES = [
+  { key: 'all', label: 'Todas' },
+  { key: 'new_appointment', label: 'Agendamentos' },
+  { key: 'walk_in', label: 'Encaixes' },
+  { key: 'status_change', label: 'Status' },
+];
+
+/**
+ * Componente dedicado para o Feed de Notificações do Sistema separado por categorias.
+ */
+function SystemNotificationsFeedSection({ notifications = [] }) {
+  const [category, setCategory] = useState('all');
+
+  const filtered =
+    category === 'all'
+      ? notifications
+      : notifications.filter((n) => n.type === category);
+
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
+          Notificações do Sistema ({filtered.length})
+        </h4>
+      </div>
+
+      {/* Filtros de Secção de Notificações */}
+      <div className="grid grid-cols-4 gap-1 bg-[#08080a] border border-zinc-800/90 rounded-xl p-1">
+        {NOTIFICATION_CATEGORIES.map((cat) => {
+          const active = category === cat.key;
+          return (
+            <button
+              key={cat.key}
+              type="button"
+              onClick={() => setCategory(cat.key)}
+              className={`h-7 rounded-lg text-[10.5px] font-semibold transition-all touch-manipulation ${
+                active
+                  ? 'bg-red-600 text-white shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              {cat.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="bg-surface/50 border border-zinc-800/80 rounded-xl py-8 text-center text-zinc-500 text-xs">
+          Nenhuma notificação nesta categoria por enquanto.
+        </div>
+      ) : (
+        <div className="space-y-2 max-h-56 overflow-y-auto pr-0.5">
+          {filtered.map((n) => {
+            const Icon = ICONS[n.type] || Bell;
+            const badgeColor =
+              n.type === 'walk_in'
+                ? 'bg-amber-500/15 text-amber-400'
+                : n.type === 'status_change'
+                ? 'bg-blue-500/15 text-blue-400'
+                : 'bg-red-500/10 text-red-400';
+
+            return (
+              <div
+                key={n.id}
+                className="flex items-start gap-3 bg-surface border border-zinc-800/90 rounded-xl px-3.5 py-3 text-xs"
+              >
+                <div
+                  className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${badgeColor}`}
+                >
+                  <Icon size={15} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-white font-medium">{n.message}</p>
+                  <p className="text-zinc-500 text-[11px] mt-0.5">
+                    {timeAgo(n.createdAt)}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * NotificationBell:
- * Sininho de notificações inteligente com indicador visual de status das notificações push.
+ * Sininho de notificações inteligente com componentes separados para o Controlo Push
+ * e o Feed Categorizado de Notificações do Sistema.
  */
 export default function NotificationBell() {
   const { barber } = useBarber();
@@ -228,7 +427,6 @@ export default function NotificationBell() {
       if (subscription) {
         setPushStatus('subscribed');
 
-        // Se o barbeiro está autenticado, sincroniza silenciosamente com o Supabase
         if (barber?.id) {
           fetch('/api/push/subscribe', {
             method: 'POST',
@@ -263,7 +461,6 @@ export default function NotificationBell() {
     setFeedbackError('');
 
     try {
-      // 1. Permissão do usuário
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
         setPushStatus(permission === 'denied' ? 'denied' : 'unsubscribed');
@@ -274,28 +471,19 @@ export default function NotificationBell() {
         return;
       }
 
-      // 2. Chave pública VAPID e validação
       const keyStr = await getVapidPublicKeyString();
       const vapidKeyBytes = urlBase64ToUint8Array(keyStr);
-
-      // 3. Service Worker ativo e pronto
       const reg = await getReadyServiceWorkerRegistration();
 
-      // 4. Verificação de inscrição existente
       let subscription = await reg.pushManager.getSubscription();
 
-      // Se existe inscrição mas foi feita com outra chave VAPID, cancela para renovar limpo
       if (subscription && !checkSameVapidKey(subscription, vapidKeyBytes)) {
-        console.log('[Push] Inscrição com chave antiga detectada. Renovando...');
         try {
           await subscription.unsubscribe();
-        } catch (unsubErr) {
-          console.warn('[Push] Erro ao desinscrever chave antiga:', unsubErr);
-        }
+        } catch {}
         subscription = null;
       }
 
-      // 5. Inscrição no PushManager com recuperação inteligente de erro
       if (!subscription) {
         try {
           subscription = await reg.pushManager.subscribe({
@@ -303,34 +491,25 @@ export default function NotificationBell() {
             applicationServerKey: vapidKeyBytes,
           });
         } catch (subErr) {
-          // Se disparar "push service error" (comum no Chrome/Android quando o FCM está dessincronizado)
           const isServiceErr =
             subErr.name === 'AbortError' ||
             /push service error|registration failed/i.test(subErr.message || '');
 
           if (isServiceErr) {
-            console.warn('[Push] Falha inicial do Push Service. Executando tentativa de recuperação automática...');
-            try {
-              const stale = await reg.pushManager.getSubscription();
-              if (stale) await stale.unsubscribe();
-              // Pausa de 600ms para estabilização do daemon do navegador
-              await new Promise((r) => setTimeout(r, 600));
+            const stale = await reg.pushManager.getSubscription();
+            if (stale) await stale.unsubscribe();
+            await new Promise((r) => setTimeout(r, 600));
 
-              subscription = await reg.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: vapidKeyBytes,
-              });
-            } catch (retryErr) {
-              console.error('[Push] Falha na segunda tentativa:', retryErr);
-              throw retryErr;
-            }
+            subscription = await reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: vapidKeyBytes,
+            });
           } else {
             throw subErr;
           }
         }
       }
 
-      // 6. Persistência na tabela push_subscriptions do Supabase
       const response = await fetch('/api/push/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -348,7 +527,6 @@ export default function NotificationBell() {
 
       setPushStatus('subscribed');
     } catch (err) {
-      console.error('Erro ao assinar push:', err);
       setFeedbackError(cleanPushErrorMessage(err));
       setPushStatus('error');
     } finally {
@@ -356,7 +534,6 @@ export default function NotificationBell() {
     }
   }
 
-  // Desativação de push notifications
   async function handleUnsubscribe() {
     setBusy(true);
     setFeedbackError('');
@@ -376,8 +553,7 @@ export default function NotificationBell() {
         }
       }
       setPushStatus('unsubscribed');
-    } catch (err) {
-      console.error('Erro ao desativar push:', err);
+    } catch {
       setFeedbackError('Erro ao desativar notificações.');
     } finally {
       setBusy(false);
@@ -388,7 +564,6 @@ export default function NotificationBell() {
 
   return (
     <>
-      {/* Botão do Sininho no Cabeçalho */}
       <button
         type="button"
         onClick={() => {
@@ -405,7 +580,6 @@ export default function NotificationBell() {
       >
         {isSubscribed ? <BellRing size={17} /> : <Bell size={17} />}
 
-        {/* Ponto indicador de push ativo na cor vermelha */}
         {isSubscribed && (
           <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
@@ -413,7 +587,6 @@ export default function NotificationBell() {
           </span>
         )}
 
-        {/* Badge numérico de mensagens não lidas */}
         {unreadCount > 0 && (
           <span className="absolute -top-1 -right-1 h-4 min-w-[16px] px-1 rounded-full bg-red-600 text-white text-[9px] font-bold flex items-center justify-center">
             {unreadCount > 9 ? '9+' : unreadCount}
@@ -421,151 +594,22 @@ export default function NotificationBell() {
         )}
       </button>
 
-      {/* Modal / BottomSheet de Gerenciamento e Histórico */}
       <BottomSheet
         open={open}
         onClose={() => setOpen(false)}
         title="Notificações & Alertas"
       >
         <div className="space-y-4 pb-2">
-          {/* Card de Status do Push no Celular */}
-          <div className="bg-surface border border-zinc-800 rounded-2xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div
-                  className={`h-9 w-9 rounded-xl flex items-center justify-center shrink-0 ${
-                    isSubscribed
-                      ? 'bg-red-500/15 text-red-500'
-                      : 'bg-zinc-800 text-zinc-400'
-                  }`}
-                >
-                  {isSubscribed ? (
-                    <BellRing size={18} />
-                  ) : (
-                    <BellOff size={18} />
-                  )}
-                </div>
-                <div>
-                  <h4 className="text-white text-xs font-semibold">
-                    Notificações no Celular
-                  </h4>
-                  <p className="text-zinc-400 text-[11px] mt-0.5">
-                    {isSubscribed
-                      ? 'Ativas neste dispositivo'
-                      : pushStatus === 'denied'
-                      ? 'Bloqueadas pelo navegador'
-                      : pushStatus === 'unsupported'
-                      ? 'Não suportadas neste navegador'
-                      : 'Desativadas no momento'}
-                  </p>
-                </div>
-              </div>
+          <PushDeviceStatusSection
+            isSubscribed={isSubscribed}
+            pushStatus={pushStatus}
+            busy={busy}
+            feedbackError={feedbackError}
+            onSubscribe={handleSubscribe}
+            onUnsubscribe={handleUnsubscribe}
+          />
 
-              {/* Tag indicadora */}
-              <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                  isSubscribed
-                    ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                    : 'bg-zinc-800 text-zinc-400'
-                }`}
-              >
-                {isSubscribed ? 'Ativo' : 'Inativo'}
-              </span>
-            </div>
-
-            {feedbackError && (
-              <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl px-3 py-2.5 text-xs">
-                <AlertCircle size={15} className="shrink-0 mt-0.5" />
-                <div className="flex-1 space-y-1.5">
-                  <span className="block leading-relaxed">{feedbackError}</span>
-                  <button
-                    type="button"
-                    onClick={handleSubscribe}
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-red-300 hover:text-white underline underline-offset-2"
-                  >
-                    <RotateCcw size={11} />
-                    Tentar novamente
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Ações de Controle */}
-            <div className="pt-1">
-              {isSubscribed ? (
-                <button
-                  type="button"
-                  onClick={handleUnsubscribe}
-                  disabled={busy}
-                  className="w-full flex items-center justify-center gap-2 h-11 rounded-xl bg-elevated hover:bg-zinc-800 border border-zinc-700/80 text-zinc-300 hover:text-white text-xs font-semibold active:bg-zinc-900 transition-all touch-manipulation disabled:opacity-50"
-                >
-                  {busy ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <BellOff size={14} />
-                  )}
-                  <span>Desativar notificações</span>
-                </button>
-              ) : pushStatus === 'denied' ? (
-                <div className="w-full flex items-center justify-center p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800 text-zinc-400 text-xs text-center">
-                  Permissão bloqueada no navegador. Abra as configurações do site e altere Notificações para &quot;Permitir&quot;.
-                </div>
-              ) : pushStatus === 'unsupported' ? (
-                <div className="w-full flex items-center justify-center p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800 text-zinc-400 text-xs text-center">
-                  Este navegador não possui suporte a Web Push Notifications.
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleSubscribe}
-                  disabled={busy}
-                  className="w-full flex items-center justify-center gap-2 h-11 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold active:bg-red-700 transition-all touch-manipulation shadow-sm disabled:opacity-50"
-                >
-                  {busy ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <BellRing size={14} />
-                  )}
-                  <span>Ativar notificações no celular</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Histórico Recente de Notificações Internas */}
-          <div>
-            <h4 className="text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-2 flex items-center justify-between">
-              <span>Alertas Recentes ({notifications.length})</span>
-            </h4>
-
-            {notifications.length === 0 ? (
-              <div className="bg-surface/50 border border-zinc-800/80 rounded-xl py-8 text-center text-zinc-500 text-xs">
-                Nenhuma notificação por enquanto.
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-56 overflow-y-auto pr-0.5">
-                {notifications.map((n) => {
-                  const Icon = ICONS[n.type] || Bell;
-                  return (
-                    <div
-                      key={n.id}
-                      className="flex items-start gap-3 bg-surface border border-zinc-800/90 rounded-xl px-3.5 py-3 text-xs"
-                    >
-                      <div className="h-8 w-8 rounded-full bg-red-500/10 flex items-center justify-center shrink-0">
-                        <Icon size={15} className="text-red-400" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-white font-medium">{n.message}</p>
-                        <p className="text-zinc-500 text-[11px] mt-0.5">
-                          {timeAgo(n.createdAt)}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <SystemNotificationsFeedSection notifications={notifications} />
         </div>
       </BottomSheet>
     </>

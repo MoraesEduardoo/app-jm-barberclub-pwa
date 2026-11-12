@@ -2,7 +2,17 @@
 
 import { endSession } from "@/lib/session";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, Clock, Zap, ChevronLeft, ChevronRight, Loader2, AlertCircle } from "lucide-react";
+import {
+  CalendarDays,
+  Clock,
+  Zap,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  AlertCircle,
+  Phone,
+  User,
+} from "lucide-react";
 import BottomSheet from "./BottomSheet";
 import { todayInShop, addDaysStr } from "@/lib/dates";
 import { FormField, TextInput, PrimaryButton } from "./FormField";
@@ -14,9 +24,10 @@ import {
   getBarberServiceDuration,
   listAppointmentsByDate,
 } from "@/lib/actions/appointments";
+import { invalidateCache } from "@/lib/admin-cache";
 import { dayOfWeekFromDate } from "@/lib/constants/schedule";
 import {
-  generateAvailableSlots,
+  generateFullDaySlotsWithStatus,
   roundUpToNextSlot,
   extractBusyRangesFromAppointments,
 } from "@/lib/slots";
@@ -57,7 +68,7 @@ function formatMinutesToHHMM(totalMinutes) {
 
 /**
  * Gera os horários que cabem especificamente dentro da janela livre clicada na timeline
- * (ex: janela das 09:55 às 10:20 -> prioriza 09:55 e sub-slots de 5 em 5 min que comportem o serviço).
+ * (ex: janela das 09:55 às 10:20 -> prioriza 09:55 e sub-slots de 10 em 10 min que comportem o serviço).
  */
 function buildSlotsForClickedWindow(windowCtx, serviceDurationMinutes) {
   if (!windowCtx?.startTime) return [];
@@ -72,8 +83,8 @@ function buildSlotsForClickedWindow(windowCtx, serviceDurationMinutes) {
   const dur = Number(serviceDurationMinutes) > 0 ? Number(serviceDurationMinutes) : Math.min(20, gapMin);
   const slots = [startTime];
 
-  // Gera opções de encaixe a cada 5 minutos dentro do intervalo [startMin, endMin)
-  for (let cursor = startMin + 5; cursor < endMin; cursor += 5) {
+  // Gera opções de encaixe a cada 10 minutos dentro do intervalo [startMin, endMin)
+  for (let cursor = startMin + 10; cursor < endMin; cursor += 10) {
     if (cursor + dur <= endMin || (slots.length < 3 && cursor + 10 <= endMin)) {
       const candidate = formatMinutesToHHMM(cursor);
       if (!slots.includes(candidate)) {
@@ -109,6 +120,7 @@ export default function WalkInSheet({
   const [manualTime, setManualTime] = useState("");
   const [focusWindowOnly, setFocusWindowOnly] = useState(false);
   const [rpcSlots, setRpcSlots] = useState(null);
+  const [rpcSlotDetails, setRpcSlotDetails] = useState(null);
   const [isDayOff, setIsDayOff] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [scheduleRows, setScheduleRows] = useState([]);
@@ -164,7 +176,7 @@ export default function WalkInSheet({
           setSelectedDate(addDaysStr(currentToday, 1));
         }
         setManualTime(windowContext.startTime);
-        setFocusWindowOnly(true);
+        setFocusWindowOnly(false);
       } else {
         setTimingMode("now");
         setSelectedDate(addDaysStr(currentToday, 1));
@@ -184,6 +196,7 @@ export default function WalkInSheet({
         });
 
       setRpcSlots(null);
+      setRpcSlotDetails(null);
       setResolvedConfig(null);
       setIsDayOff(false);
       setError("");
@@ -202,7 +215,6 @@ export default function WalkInSheet({
   }, [windowContext, effectiveDate, timingMode]);
 
   // Filtra e ordena serviços habilitados para o barbeiro selecionado
-  // (priorizando os serviços que cabem na duração da janela livre quando aplicável)
   const availableServicesForBarber = useMemo(() => {
     const filtered = services.filter((s) => {
       const cfg = s.barber_durations?.[barberId];
@@ -297,8 +309,6 @@ export default function WalkInSheet({
     });
   }, [open]);
 
-  // No momento exato em que o barbeiro seleciona o serviço e o profissional,
-  // consulta barber_services (barber_id + service_id) para buscar custom_duration
   useEffect(() => {
     let cancelled = false;
     if (!barberId || !serviceId) {
@@ -365,10 +375,18 @@ export default function WalkInSheet({
           if (slotRes?.isDayOff) {
             setIsDayOff(true);
             setRpcSlots([]);
-          } else if (Array.isArray(slotRes?.slots)) {
-            setRpcSlots(slotRes.slots);
+            setRpcSlotDetails([]);
           } else {
-            setRpcSlots(null);
+            if (Array.isArray(slotRes?.slots)) {
+              setRpcSlots(slotRes.slots);
+            } else {
+              setRpcSlots(null);
+            }
+            if (Array.isArray(slotRes?.slotDetails)) {
+              setRpcSlotDetails(slotRes.slotDetails);
+            } else {
+              setRpcSlotDetails(null);
+            }
           }
 
           if (Array.isArray(apptRes?.data)) {
@@ -380,6 +398,7 @@ export default function WalkInSheet({
         .catch(() => {
           if (!cancelled) {
             setRpcSlots(null);
+            setRpcSlotDetails(null);
             setTargetDateAppointments([]);
           }
         })
@@ -388,6 +407,7 @@ export default function WalkInSheet({
         });
     } else {
       setRpcSlots(null);
+      setRpcSlotDetails(null);
       setIsDayOff(false);
       setLoadingSlots(false);
     }
@@ -403,6 +423,17 @@ export default function WalkInSheet({
     return scheduleRows.find((r) => r.day_of_week === dow) || null;
   }, [scheduleRows, effectiveDate]);
 
+  // Horário de abertura e fecho para o dia selecionado (ex: 09:00 até 20:30, ou 09:00 até 12:30 no Domingo)
+  const scheduleBounds = useMemo(() => {
+    const dow = effectiveDate ? dayOfWeekFromDate(effectiveDate) : 2;
+    const defaultStart = "09:00";
+    const defaultEnd = dow === 0 ? "12:30" : "20:30";
+    return {
+      startTime: daySchedule?.start_time ? String(daySchedule.start_time).slice(0, 5) : defaultStart,
+      endTime: daySchedule?.end_time ? String(daySchedule.end_time).slice(0, 5) : defaultEnd,
+    };
+  }, [daySchedule, effectiveDate]);
+
   // Slots específicos da janela livre clicada (ex: 09:55 às 10:20)
   const windowSpecificSlots = useMemo(() => {
     if (!isMatchingWindowDate || !windowContext?.startTime) return [];
@@ -414,7 +445,7 @@ export default function WalkInSheet({
     return buildSlotsForClickedWindow(windowContext, serviceDur);
   }, [isMatchingWindowDate, windowContext, effectiveServiceInfo, selectedService]);
 
-  // Mantém o horário de início da janela pré-selecionado quando em modo de encaixe de janela
+  // Mantém o horário de início da janela pré-selecionado quando aberto a partir da timeline
   useEffect(() => {
     if (isMatchingWindowDate && windowSpecificSlots.length > 0) {
       setManualTime((prev) =>
@@ -423,14 +454,24 @@ export default function WalkInSheet({
     }
   }, [isMatchingWindowDate, windowSpecificSlots]);
 
-  // Todos os slots disponíveis do dia (motor geral)
-  const allDaySlots = useMemo(() => {
+  // Grelha completa de slots do dia (das 09:00 / abertura até ao fecho da barbearia) com status isPast / isFuture
+  const allDaySlotEntries = useMemo(() => {
     if (timingMode === "now" || !selectedService) return [];
     if (isDayOff) return [];
-    let baseSlots = [];
-    if (Array.isArray(rpcSlots) && rpcSlots.length > 0) {
-      baseSlots = rpcSlots;
-    } else if (daySchedule && daySchedule.active) {
+
+    const isTargetToday = effectiveDate === todayInShop();
+    const cutoffNow = isTargetToday ? roundUpToNextSlot() : null;
+
+    let baseEntries = [];
+    if (Array.isArray(rpcSlotDetails) && rpcSlotDetails.length > 0) {
+      baseEntries = rpcSlotDetails;
+    } else if (Array.isArray(rpcSlots) && rpcSlots.length > 0) {
+      baseEntries = rpcSlots.map((timeStr) => ({
+        time: timeStr,
+        isPast: Boolean(cutoffNow && timeStr < cutoffNow),
+        isFuture: !Boolean(cutoffNow && timeStr < cutoffNow),
+      }));
+    } else {
       const sourceAppointments =
         effectiveDate === todayInShop() ? existingAppointments : targetDateAppointments;
       const busyRanges = extractBusyRangesFromAppointments(sourceAppointments, barberId);
@@ -439,43 +480,72 @@ export default function WalkInSheet({
         selectedService.duration_minutes ??
         selectedService.default_duration_minutes ??
         30;
-      const isTargetToday = effectiveDate === todayInShop();
 
-      baseSlots = generateAvailableSlots(daySchedule, busyRanges, serviceDur, {
-        nowTime: isTargetToday && !isMatchingWindowDate ? roundUpToNextSlot() : null,
+      const fallbackSchedule = daySchedule && daySchedule.active
+        ? daySchedule
+        : {
+            active: true,
+            start_time: scheduleBounds.startTime,
+            end_time: scheduleBounds.endTime,
+          };
+
+      baseEntries = generateFullDaySlotsWithStatus(fallbackSchedule, busyRanges, serviceDur, {
+        nowTime: cutoffNow,
       });
     }
 
     if (windowSpecificSlots.length > 0) {
-      const merged = [...windowSpecificSlots];
-      baseSlots.forEach((s) => {
-        if (!merged.includes(s)) merged.push(s);
+      const byTime = new Map(baseEntries.map((e) => [e.time, e]));
+      windowSpecificSlots.forEach((ws) => {
+        if (!byTime.has(ws)) {
+          const isPast = Boolean(cutoffNow && ws < cutoffNow);
+          byTime.set(ws, { time: ws, isPast, isFuture: !isPast });
+        }
       });
-      return merged;
+      return Array.from(byTime.values()).sort((a, b) => a.time.localeCompare(b.time));
     }
-    return baseSlots;
+
+    return baseEntries;
   }, [
     timingMode,
     selectedService,
     effectiveServiceInfo,
     isDayOff,
+    rpcSlotDetails,
     rpcSlots,
     daySchedule,
+    scheduleBounds,
     effectiveDate,
     existingAppointments,
     targetDateAppointments,
     barberId,
-    isMatchingWindowDate,
     windowSpecificSlots,
   ]);
 
-  // Slots exibidos no seletor: filtra prioritariamente para a janela clicada quando focusWindowOnly está ativo
-  const availableSlots = useMemo(() => {
+  // Slots exibidos na grelha: por padrão exibe TODOS os horários livres das 09:00 (ou abertura) até o fecho
+  const displayedSlotEntries = useMemo(() => {
     if (isMatchingWindowDate && focusWindowOnly && windowSpecificSlots.length > 0) {
-      return windowSpecificSlots;
+      const isTargetToday = effectiveDate === todayInShop();
+      const cutoffNow = isTargetToday ? roundUpToNextSlot() : null;
+      return windowSpecificSlots.map((t) => ({
+        time: t,
+        isPast: Boolean(cutoffNow && t < cutoffNow),
+        isFuture: !Boolean(cutoffNow && t < cutoffNow),
+      }));
     }
-    return allDaySlots;
-  }, [isMatchingWindowDate, focusWindowOnly, windowSpecificSlots, allDaySlots]);
+    return allDaySlotEntries;
+  }, [
+    isMatchingWindowDate,
+    focusWindowOnly,
+    windowSpecificSlots,
+    allDaySlotEntries,
+    effectiveDate,
+  ]);
+
+  const futureAvailableCount = useMemo(
+    () => displayedSlotEntries.filter((e) => !e.isPast).length,
+    [displayedSlotEntries]
+  );
 
   function handleStepDate(deltaDays) {
     const minDate = todayInShop();
@@ -496,7 +566,7 @@ export default function WalkInSheet({
       setError(
         timingMode === "future_date"
           ? "Escolha a data e um horário disponível para agendar."
-          : 'Escolha um horário disponível ou marque "Agora".'
+          : 'Escolha um horário disponível na grelha ou marque "Agora".'
       );
       return;
     }
@@ -504,6 +574,8 @@ export default function WalkInSheet({
     setSaving(true);
     setError("");
     try {
+      // No modo de encaixe do dia ("today_slot" ou "now"), usa o fluxo de encaixe permitindo qualquer vaga livre das 09:00 até o fecho
+      const isWalkInBooking = timingMode === "now" || timingMode === "today_slot";
       const response = await createWalkInAppointment({
         barber_id: barberId,
         service_id: serviceId,
@@ -511,7 +583,7 @@ export default function WalkInSheet({
         client_phone: clientPhone,
         date: effectiveDate,
         time: timingMode === "now" ? null : manualTime,
-        is_walk_in: timingMode === "now",
+        is_walk_in: isWalkInBooking,
       });
 
       if (response?.error === "AUTH_EXPIRED") {
@@ -523,6 +595,9 @@ export default function WalkInSheet({
         setError(response.error);
         return;
       }
+
+      // Invalida o cache de clientes para que o novo cliente salvo pelo telefone apareça imediatamente na aba Clientes
+      invalidateCache("clients:");
 
       onClose({
         created: true,
@@ -549,7 +624,7 @@ export default function WalkInSheet({
           ? `Encaixe às ${windowContext.startTime}`
           : timingMode === "future_date"
           ? "Agendar atendimento"
-          : "Novo atendimento"
+          : "Novo atendimento / Encaixe"
       }
     >
       <form onSubmit={handleSubmit}>
@@ -654,22 +729,39 @@ export default function WalkInSheet({
           )}
         </FormField>
 
-        <FormField label="Nome do cliente (opcional)">
-          <TextInput
-            value={clientName}
-            onChange={(e) => setClientName(e.target.value)}
-            placeholder="Cliente avulso"
-          />
-        </FormField>
+        {/* Campos do Cliente (Telefone como Chave Primária para registo automático em Clientes) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <FormField label="Nome do cliente">
+            <div className="relative">
+              <User
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
+              />
+              <TextInput
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+                placeholder="Ex: João Silva"
+                className="pl-8"
+              />
+            </div>
+          </FormField>
 
-        <FormField label="Telefone (opcional)">
-          <TextInput
-            type="tel"
-            value={clientPhone}
-            onChange={(e) => setClientPhone(e.target.value)}
-            placeholder="(83) 99999-9999"
-          />
-        </FormField>
+          <FormField label="Telemóvel / WhatsApp (salva em Clientes)">
+            <div className="relative">
+              <Phone
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
+              />
+              <TextInput
+                type="tel"
+                value={clientPhone}
+                onChange={(e) => setClientPhone(e.target.value)}
+                placeholder="(83) 99999-9999"
+                className="pl-8 font-mono tabular-nums"
+              />
+            </div>
+          </FormField>
+        </div>
 
         <div className="mb-4">
           <span className="block text-xs font-medium text-zinc-400 mb-1.5">
@@ -814,16 +906,18 @@ export default function WalkInSheet({
             </div>
           )}
 
-          {/* Seletor de Horários Disponíveis (para "Escolher horário" hoje ou "Marcar dia") */}
+          {/* Grelha de Horários Disponíveis (Das 09:00 / Abertura até o Fechamento) */}
           {timingMode !== "now" && (
             <div className="rounded-2xl bg-[#050505] border border-zinc-800/80 p-3">
               <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
                   {isMatchingWindowDate && focusWindowOnly
                     ? `Horários na janela (${windowContext.startTime}${
                         windowContext.endTime ? `–${windowContext.endTime}` : ""
                       })`
-                    : `Horários disponíveis (${formatShortDDMM(effectiveDate)})`}
+                    : `Horários (${scheduleBounds.startTime} às ${scheduleBounds.endTime} • ${formatShortDDMM(
+                        effectiveDate
+                      )})`}
                 </span>
 
                 {isMatchingWindowDate && selectedService ? (
@@ -833,31 +927,48 @@ export default function WalkInSheet({
                     className="text-[11px] font-semibold text-accent-light hover:underline shrink-0"
                   >
                     {focusWindowOnly
-                      ? "Ver todos do dia"
+                      ? `Ver todos (${scheduleBounds.startTime}–${scheduleBounds.endTime})`
                       : `Focar janela (${windowContext.startTime})`}
                   </button>
                 ) : (
                   selectedService &&
                   !loadingSlots &&
-                  availableSlots.length > 0 && (
-                    <span className="text-[11px] font-medium text-zinc-500">
-                      {availableSlots.length} {availableSlots.length === 1 ? "vaga" : "vagas"} (
-                      {effectiveServiceInfo?.durationMinutes ?? 30} min)
+                  displayedSlotEntries.length > 0 && (
+                    <span className="text-[11px] font-medium text-emerald-400">
+                      {futureAvailableCount} à frente • {displayedSlotEntries.length} livres
                     </span>
                   )
                 )}
               </div>
 
+              {/* Legenda visual: Horários passados vs Horários livres para a frente */}
+              {selectedService && !loadingSlots && displayedSlotEntries.length > 0 && (
+                <div className="flex items-center justify-between gap-2 mb-2.5 px-1 text-[10px] text-zinc-400">
+                  <div className="flex items-center gap-3">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                      <span className="text-zinc-200 font-medium">Livre para a frente</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1 opacity-60">
+                      <span className="h-2 w-2 rounded-full bg-zinc-600" />
+                      <span>Horário já passou (permite encaixe)</span>
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {!selectedService && !isMatchingWindowDate ? (
                 <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/90 px-3.5 py-3 text-xs text-zinc-200 font-medium">
-                  Selecione o serviço acima para consultar os horários livres.
+                  Selecione o serviço acima para visualizar todos os slots das{" "}
+                  <strong className="text-white">{scheduleBounds.startTime}</strong> até{" "}
+                  <strong className="text-white">{scheduleBounds.endTime}</strong>.
                 </div>
               ) : loadingSlots && !focusWindowOnly ? (
                 <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/70 px-3.5 py-3 text-xs text-zinc-200 font-medium">
                   <Loader2 size={14} className="animate-spin text-accent-light" />
                   <span>Consultando disponibilidade na agenda…</span>
                 </div>
-              ) : availableSlots.length === 0 ? (
+              ) : displayedSlotEntries.length === 0 ? (
                 <div className="rounded-xl border border-amber-500/35 bg-zinc-900/95 px-3.5 py-3 flex items-start gap-2.5">
                   <AlertCircle size={15} className="text-amber-400 shrink-0 mt-0.5" />
                   <div className="min-w-0">
@@ -867,31 +978,44 @@ export default function WalkInSheet({
                     <p className="text-[11px] text-zinc-300 mt-0.5 leading-relaxed">
                       {isDayOff || (daySchedule && !daySchedule.active)
                         ? "O profissional selecionado não possui expediente ativo nesta data."
-                        : timingMode === "future_date"
-                        ? "Nenhum horário livre disponível para esta data e duração de serviço."
-                        : "Nenhum horário livre restante hoje para a duração deste serviço."}
+                        : "Nenhum slot livre encontrado entre a abertura e o fecho para esta duração."}
                     </p>
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5 max-h-48 overflow-y-auto pr-0.5">
-                  {availableSlots.map((slot) => {
+                <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5 max-h-56 overflow-y-auto pr-0.5">
+                  {displayedSlotEntries.map((entry) => {
+                    const slot = entry.time;
+                    const isPast = Boolean(entry.isPast);
                     const isWindowSlot = windowSpecificSlots.includes(slot);
                     const isSelected = manualTime === slot;
+
                     return (
                       <button
                         key={slot}
                         type="button"
                         onClick={() => setManualTime(slot)}
-                        className={`py-2 px-2 rounded-lg text-xs font-mono tabular-nums font-semibold border transition-all touch-manipulation select-none active:scale-95 text-center ${
+                        title={
+                          isPast
+                            ? `Horário ${slot} já passou — clique para registar encaixe neste horário`
+                            : `Horário livre disponível às ${slot}`
+                        }
+                        className={`py-2 px-1.5 rounded-lg text-xs font-mono tabular-nums font-semibold border transition-all touch-manipulation select-none active:scale-95 text-center flex flex-col items-center justify-center ${
                           isSelected
-                            ? "bg-accent border-accent text-white shadow-sm"
+                            ? "bg-accent border-accent text-white shadow-md shadow-red-600/30 ring-1 ring-accent-light"
                             : isWindowSlot
-                            ? "bg-emerald-950/30 border-emerald-500/40 text-emerald-200 hover:border-emerald-400"
-                            : "bg-[#0b0b0b] border-zinc-800 text-zinc-300 active:bg-zinc-800"
+                            ? "bg-emerald-950/40 border-emerald-500/50 text-emerald-200 hover:border-emerald-400"
+                            : isPast
+                            ? "bg-[#070709] border-zinc-800/70 text-zinc-500 opacity-50 hover:opacity-85 hover:border-zinc-700"
+                            : "bg-[#0c1210] border-emerald-500/35 text-white hover:border-emerald-400 hover:bg-emerald-950/30 shadow-[0_0_10px_rgba(16,185,129,0.06)]"
                         }`}
                       >
-                        {slot}
+                        <span>{slot}</span>
+                        {isPast && !isSelected && (
+                          <span className="text-[8.5px] font-sans font-normal text-zinc-500 leading-none mt-0.5">
+                            passou
+                          </span>
+                        )}
                       </button>
                     );
                   })}

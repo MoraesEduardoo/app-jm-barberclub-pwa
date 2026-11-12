@@ -273,15 +273,19 @@ export default function AppointmentActionSheet({
               </span>
             </div>
 
-            {paid ? (
-              <span className="inline-flex items-center gap-1 text-emerald-400 text-xs font-semibold px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/25">
-                <CheckCircle2 size={13} /> Pago
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 text-amber-300 text-xs font-semibold px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/25">
-                <Clock3 size={13} /> A receber
-              </span>
-            )}
+              {paid ? (
+                <span className="inline-flex items-center gap-1 text-emerald-400 text-xs font-semibold px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                  <CheckCircle2 size={13} /> Pago
+                </span>
+              ) : isFiado ? (
+                <span className="inline-flex items-center gap-1 text-amber-300 text-xs font-semibold px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/35">
+                  <Clock3 size={13} /> Fiado
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-blue-300 text-xs font-semibold px-2.5 py-1 rounded-lg bg-blue-500/15 border border-blue-500/35">
+                  <Clock3 size={13} /> Confirmado
+                </span>
+              )}
           </div>
 
           {/* Cliente e Telefone */}
@@ -326,9 +330,15 @@ export default function AppointmentActionSheet({
 
             <div className="flex flex-col items-end gap-1 shrink-0">
               <span
-                className={`text-[10px] font-semibold rounded-md px-2 py-0.5 ${statusInfo.className}`}
+                className={`text-[10px] font-semibold rounded-md px-2 py-0.5 ${
+                  paid
+                    ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                    : isFiado
+                    ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                    : statusInfo.className
+                }`}
               >
-                {statusInfo.label}
+                {paid ? 'Pago' : isFiado ? 'Fiado' : statusInfo.label}
               </span>
               {isFrequentClient && (
                 <span className="inline-flex items-center gap-1 text-[10px] font-medium text-accent-light">
@@ -564,15 +574,16 @@ export default function AppointmentActionSheet({
               </div>
             )}
 
-            {/* Linha Secundária 2: Lembrete e Cancelar */}
-            <div className="grid grid-cols-2 gap-2.5">
+            {/* Linha Secundária 2: Botão de Ícone Limpo do WhatsApp (sem texto "Lembrete") + Cancelar */}
+            <div className="flex items-stretch gap-2.5">
               <button
                 type="button"
                 onClick={handleSendWhatsAppReminder}
-                className="h-11 px-3 rounded-xl bg-[#0c0c10] hover:bg-zinc-900 border border-zinc-800 hover:border-emerald-500/40 text-xs font-semibold text-zinc-200 hover:text-white flex items-center justify-center gap-2 active:scale-95 transition-all touch-manipulation"
+                title="Enviar lembrete via WhatsApp"
+                aria-label="Enviar lembrete via WhatsApp"
+                className="w-12 h-11 shrink-0 rounded-xl bg-emerald-950/30 hover:bg-emerald-950/50 border border-emerald-500/40 hover:border-emerald-400 text-emerald-400 hover:text-emerald-300 flex items-center justify-center active:scale-95 transition-all touch-manipulation"
               >
-                <MessageSquare size={15} className="text-emerald-400 shrink-0" />
-                <span className="truncate">Lembrete</span>
+                <MessageSquare size={18} className="text-emerald-400 shrink-0" />
               </button>
 
               {onChangeStatus && (
@@ -583,7 +594,7 @@ export default function AppointmentActionSheet({
                     onChangeStatus(appointment.id, 'cancelado');
                     onClose();
                   }}
-                  className="h-11 px-3 rounded-xl bg-[#0c0c10] hover:bg-red-950/30 border border-zinc-800 hover:border-accent/40 text-xs font-semibold text-zinc-400 hover:text-accent-light flex items-center justify-center gap-2 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+                  className="flex-1 h-11 px-3 rounded-xl bg-[#0c0c10] hover:bg-red-950/30 border border-zinc-800 hover:border-accent/40 text-xs font-semibold text-zinc-400 hover:text-accent-light flex items-center justify-center gap-2 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
                 >
                   <XCircle size={15} className="text-accent-light shrink-0" />
                   <span className="truncate">Cancelar</span>
