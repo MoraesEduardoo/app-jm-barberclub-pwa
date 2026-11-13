@@ -5,7 +5,6 @@ import {
   Package,
   Plus,
   Minus,
-  Check,
   Loader2,
   AlertCircle,
   ShoppingBag,
@@ -132,7 +131,6 @@ export default function AddProductSheet({
   const [loading, setLoading] = useState(false);
   const [seedingConvenience, setSeedingConvenience] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  // Mapa { [productId]: quantity } para seleção múltipla
   const [selectedMap, setSelectedMap] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -187,7 +185,6 @@ export default function AddProductSheet({
     loadProductsCatalog({ forceSpinner: false });
   }, [open, mode, loadProductsCatalog]);
 
-  // Filtra estritamente por modo ('conveniencia' vs 'produto') e garante trava de permissão
   const products = useMemo(() => {
     if (isConvenienceMode) {
       if (!isChief) return [];
@@ -201,17 +198,29 @@ export default function AddProductSheet({
     setSeedingConvenience(true);
     setError('');
     try {
-      await seedDefaultConvenienceProducts();
-      await loadProductsCatalog({ forceSpinner: true });
-      toast.success('Itens padrão de Conveniência carregados com sucesso!');
-    } catch {
-      setError('Não foi possível carregar os itens padrão de Conveniência.');
+      const res = await seedDefaultConvenienceProducts();
+      if (Array.isArray(res?.items) && res.items.length > 0) {
+        setAllProducts((prev) => {
+          const byName = new Map(
+            prev.map((p) => [String(p.name || '').toLowerCase().trim(), p])
+          );
+          for (const item of res.items) {
+            byName.set(String(item.name || '').toLowerCase().trim(), item);
+          }
+          const merged = Array.from(byName.values());
+          setCache(PRODUCTS_CACHE_KEY, merged);
+          return merged;
+        });
+      }
+      await loadProductsCatalog({ forceSpinner: false });
+      toast.success('Catálogo de Conveniência carregado!');
+    } catch (err) {
+      setError(err?.message || 'Não foi possível carregar os itens de Conveniência.');
     } finally {
       setSeedingConvenience(false);
     }
   }
 
-  // Lista detalhada dos itens selecionados no carrinho
   const selectedItems = useMemo(() => {
     const list = [];
     for (const product of products) {
@@ -288,15 +297,11 @@ export default function AddProductSheet({
   async function handleConfirm(e) {
     e.preventDefault();
     if (isConvenienceMode && !isChief) {
-      setError('Acesso restrito ao Barbeiro Chefe (Administrador).');
+      setError('Restrito ao Barbeiro Chefe.');
       return;
     }
     if (selectedItems.length === 0) {
-      setError(
-        isConvenienceMode
-          ? 'Selecione pelo menos um item de conveniência para adicionar à conta.'
-          : 'Selecione pelo menos um produto em estoque para adicionar.'
-      );
+      setError('Selecione pelo menos um item.');
       return;
     }
 
@@ -316,7 +321,6 @@ export default function AddProductSheet({
         return;
       }
 
-      // Atualiza imediatamente o estoque no cache local para próxima abertura instantânea
       if (Array.isArray(res?.addedItems) && res.addedItems.length > 0) {
         const stockMap = new Map(
           res.addedItems.map((item) => [item.productId, item.remainingStock])
@@ -333,7 +337,7 @@ export default function AddProductSheet({
       }
       onClose();
     } catch (err) {
-      setError(err?.message || 'Erro ao vincular itens ao atendimento.');
+      setError(err?.message || 'Erro ao vincular itens.');
     } finally {
       setSubmitting(false);
     }
@@ -343,28 +347,19 @@ export default function AddProductSheet({
     <BottomSheet
       open={open}
       onClose={onClose}
-      title={
-        isConvenienceMode
-          ? 'Conveniência • Bebidas & Snacks'
-          : 'Adicionar Produtos ao Atendimento'
-      }
+      title={isConvenienceMode ? 'Conveniência • Bebidas & Snacks' : 'Adicionar Produtos'}
     >
       {isConvenienceMode && !isChief ? (
-        <div className="rounded-2xl border border-zinc-800 bg-surface/60 p-6 flex flex-col items-center justify-center text-center gap-3">
-          <Lock size={24} className="text-zinc-500" />
-          <p className="text-xs text-zinc-400">
-            O módulo de Conveniência é exclusivo para o perfil do Barbeiro Chefe (Administrador).
-          </p>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 flex flex-col items-center justify-center text-center gap-2">
+          <Lock size={20} className="text-zinc-500" />
+          <p className="text-xs text-zinc-400">Restrito ao Barbeiro Chefe.</p>
         </div>
       ) : (
-        <form onSubmit={handleConfirm} className="space-y-4">
-          {/* Resumo do Atendimento Atual */}
-          <div className="rounded-2xl bg-[#070709] border border-zinc-800/90 p-3.5 flex items-center justify-between gap-3">
+        <form onSubmit={handleConfirm} className="space-y-3">
+          {/* Resumo Compacto do Atendimento */}
+          <div className="rounded-2xl bg-zinc-950 border border-zinc-800/90 p-3 flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <p className="text-[11px] text-zinc-500 uppercase tracking-wider font-semibold">
-                Cliente & Serviço
-              </p>
-              <p className="text-sm font-bold text-white truncate mt-0.5">
+              <p className="text-sm font-bold text-white truncate">
                 {appointment.client_name || 'Cliente'}
               </p>
               <p className="text-xs text-zinc-400 truncate">
@@ -372,7 +367,7 @@ export default function AddProductSheet({
               </p>
             </div>
             <div className="text-right shrink-0">
-              <p className="text-[11px] text-zinc-500">Valor Atual</p>
+              <p className="text-[10px] text-zinc-500 uppercase tracking-wider">Atual</p>
               <p className="text-sm font-bold text-zinc-200 font-mono tabular-nums">
                 R$ {currentApptTotal.toFixed(2).replace('.', ',')}
               </p>
@@ -383,18 +378,19 @@ export default function AddProductSheet({
             <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 px-3 py-2 flex items-center justify-between gap-2 text-[11px] text-emerald-300">
               <span className="inline-flex items-center gap-1.5 font-semibold">
                 <Coffee size={13} className="text-emerald-400 shrink-0" />
-                Conveniência (Exclusivo Chefe): 100% retido no Caixa Geral (0% comissão colab.)
+                Exclusivo Chefe
+              </span>
+              <span className="font-mono text-[10px] text-emerald-400 font-bold">
+                100% Caixa • 0% Colab.
               </span>
             </div>
           )}
 
-          {/* Lista de Itens com Seleção Múltipla e Controle Individual de Quantidade */}
+          {/* Lista de Itens */}
           <div className="space-y-2">
             <div className="flex items-center justify-between px-0.5">
               <span className="text-xs font-semibold text-zinc-300">
-                {isConvenienceMode
-                  ? 'Selecione as bebidas / snacks'
-                  : 'Selecione um ou mais produtos'}
+                {isConvenienceMode ? 'Bebidas & Snacks' : 'Catálogo'}
               </span>
               <div className="flex items-center gap-2">
                 {selectedItems.length > 0 && (
@@ -405,11 +401,10 @@ export default function AddProductSheet({
                         : 'text-accent-light bg-accent/15 border-accent/30'
                     }`}
                   >
-                    {selectedItems.length} selecionado{selectedItems.length > 1 ? 's' : ''} (
-                    {totalUnitsSelected} un.)
+                    {totalUnitsSelected} un.
                   </span>
                 )}
-                <span className="text-[11px] text-zinc-500">{products.length} no catálogo</span>
+                <span className="text-[11px] text-zinc-500">{products.length} itens</span>
               </div>
             </div>
 
@@ -418,51 +413,40 @@ export default function AddProductSheet({
                 {[...Array(3)].map((_, i) => (
                   <div
                     key={i}
-                    className="h-16 rounded-2xl bg-zinc-900/70 border border-zinc-800/70 animate-pulse flex items-center px-3 gap-3"
+                    className="h-14 rounded-2xl bg-zinc-950 border border-zinc-800/70 animate-pulse flex items-center px-3 gap-3"
                   >
-                    <div className="h-11 w-11 rounded-xl bg-zinc-800 shrink-0" />
-                    <div className="flex-1 space-y-2">
-                      <div className="h-3 w-2/3 rounded bg-zinc-800" />
-                      <div className="h-2.5 w-1/3 rounded bg-zinc-800/70" />
+                    <div className="h-10 w-10 rounded-xl bg-zinc-900 shrink-0" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-3 w-2/3 rounded bg-zinc-900" />
+                      <div className="h-2.5 w-1/3 rounded bg-zinc-900/70" />
                     </div>
                   </div>
                 ))}
-                <div className="flex items-center justify-center gap-2 pt-1 text-zinc-400 text-xs">
-                  <Loader2 size={14} className="animate-spin text-accent" />
-                  <span>Sincronizando estoque…</span>
-                </div>
               </div>
             ) : loadError && products.length === 0 ? (
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-5 text-center space-y-3">
-                <AlertCircle size={22} className="mx-auto text-amber-400" />
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-zinc-200">
-                    Não foi possível carregar o estoque agora.
-                  </p>
-                  <p className="text-[11px] text-zinc-500">
-                    Verifique sua conexão e tente atualizar a lista abaixo.
-                  </p>
-                </div>
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-center space-y-2.5">
+                <AlertCircle size={20} className="mx-auto text-amber-400" />
+                <p className="text-xs text-zinc-300">Falha ao sincronizar estoque.</p>
                 <button
                   type="button"
                   onClick={() => loadProductsCatalog({ forceSpinner: true })}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-semibold text-white hover:border-accent active:scale-95 transition-all"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-semibold text-white active:scale-95 transition-all"
                 >
-                  <RefreshCw size={13} />
-                  Tentar novamente
+                  <RefreshCw size={12} />
+                  Recarregar
                 </button>
               </div>
             ) : products.length === 0 ? (
-              <div className="rounded-2xl border border-zinc-800 bg-surface/60 p-6 text-center space-y-3">
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5 text-center space-y-3">
                 {isConvenienceMode ? (
-                  <Coffee size={24} className="mx-auto text-emerald-400" />
+                  <Coffee size={22} className="mx-auto text-emerald-400" />
                 ) : (
-                  <Package size={24} className="mx-auto text-zinc-600" />
+                  <Package size={22} className="mx-auto text-zinc-600" />
                 )}
                 <p className="text-xs text-zinc-400">
                   {isConvenienceMode
-                    ? 'Nenhum item de Conveniência registado ainda. Carregue o catálogo padrão de bebidas e snacks ou cadastre na aba Serviços > Conveniência.'
-                    : 'Nenhum produto registado no catálogo. Cadastre produtos na aba Serviços > Produtos.'}
+                    ? 'Catálogo de Conveniência vazio.'
+                    : 'Nenhum produto registado.'}
                 </p>
                 {isConvenienceMode && isChief && (
                   <button
@@ -473,11 +457,11 @@ export default function AddProductSheet({
                   >
                     {seedingConvenience ? (
                       <>
-                        <Loader2 size={14} className="animate-spin" /> Carregando Conveniência…
+                        <Loader2 size={13} className="animate-spin" /> Carregando…
                       </>
                     ) : (
                       <>
-                        <Sparkles size={14} /> Carregar Bebidas & Snacks Padrão (5)
+                        <Sparkles size={13} /> Carregar Bebidas & Snacks Padrão
                       </>
                     )}
                   </button>
@@ -505,17 +489,17 @@ export default function AddProductSheet({
                           handleToggleProduct(product);
                         }
                       }}
-                      className={`w-full text-left rounded-2xl border p-2.5 flex items-center gap-3 transition-all select-none ${
+                      className={`w-full text-left rounded-2xl border p-2.5 flex items-center gap-2.5 transition-all select-none ${
                         outOfStock
                           ? 'border-zinc-900 bg-zinc-950/50 opacity-45 cursor-not-allowed'
                           : isSelected
                           ? isConvenienceMode
-                            ? 'border-emerald-500 bg-emerald-500/10 shadow-[0_0_20px_-6px_rgba(16,185,129,0.45)] cursor-pointer'
-                            : 'border-accent bg-accent/10 shadow-[0_0_20px_-6px_rgba(225,29,72,0.45)] cursor-pointer'
-                          : 'border-zinc-800/90 bg-[#0b0b0e] hover:border-zinc-700 cursor-pointer active:scale-[0.99]'
+                            ? 'border-emerald-500 bg-emerald-500/10 cursor-pointer'
+                            : 'border-accent bg-accent/10 cursor-pointer'
+                          : 'border-zinc-800/90 bg-zinc-950 hover:border-zinc-700 cursor-pointer active:scale-[0.99]'
                       }`}
                     >
-                      <div className="h-12 w-12 rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800 shrink-0 flex items-center justify-center relative">
+                      <div className="h-11 w-11 rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800 shrink-0 flex items-center justify-center relative">
                         {product.image_url ? (
                           <img
                             src={product.image_url}
@@ -524,15 +508,15 @@ export default function AddProductSheet({
                             className="h-full w-full object-cover object-center"
                           />
                         ) : isConvenienceMode ? (
-                          <Coffee size={18} className="text-emerald-400" />
+                          <Coffee size={17} className="text-emerald-400" />
                         ) : (
-                          <Package size={18} className="text-zinc-600" />
+                          <Package size={17} className="text-zinc-600" />
                         )}
                       </div>
 
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-bold text-white truncate">{product.name}</p>
-                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <div className="flex items-center gap-2 mt-0.5">
                           <span
                             className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border ${
                               outOfStock
@@ -542,30 +526,29 @@ export default function AddProductSheet({
                                 : 'bg-zinc-900 border-zinc-800 text-zinc-400'
                             }`}
                           >
-                            {outOfStock ? 'Sem estoque' : `Estoque: ${stock} un.`}
+                            {outOfStock ? 'Esgotado' : `${stock} un.`}
                           </span>
                           <span className="text-[11px] font-mono tabular-nums text-zinc-300 font-semibold">
-                            R$ {unitPrice.toFixed(2).replace('.', ',')} / un.
+                            R$ {unitPrice.toFixed(2).replace('.', ',')}
                           </span>
                         </div>
                       </div>
 
-                      {/* Controle individual: se selecionado mostra stepper [- qty +], senão mostra botão de seleção */}
                       <div className="shrink-0 flex items-center gap-2">
                         {isSelected ? (
                           <div
                             onClick={(e) => e.stopPropagation()}
-                            className="flex items-center gap-1 bg-black/80 border border-zinc-700 rounded-xl p-1"
+                            className="flex items-center gap-1 bg-black border border-zinc-700 rounded-xl p-1"
                           >
                             <button
                               type="button"
                               onClick={(e) => handleStepProductQuantity(product, -1, e)}
-                              aria-label={`Diminuir quantidade de ${product.name}`}
+                              aria-label={`Diminuir ${product.name}`}
                               className="h-7 w-7 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 flex items-center justify-center text-white active:scale-90 transition-all"
                             >
-                              <Minus size={13} />
+                              <Minus size={12} />
                             </button>
-                            <div className="min-w-[34px] text-center px-1">
+                            <div className="min-w-[32px] text-center px-1">
                               <span className="block font-mono tabular-nums text-xs font-bold text-white leading-none">
                                 {qtySelected}x
                               </span>
@@ -581,26 +564,24 @@ export default function AddProductSheet({
                               type="button"
                               onClick={(e) => handleStepProductQuantity(product, 1, e)}
                               disabled={qtySelected >= stock}
-                              aria-label={`Aumentar quantidade de ${product.name}`}
+                              aria-label={`Aumentar ${product.name}`}
                               className="h-7 w-7 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 flex items-center justify-center text-white disabled:opacity-30 active:scale-90 transition-all"
                             >
-                              <Plus size={13} />
+                              <Plus size={12} />
                             </button>
                           </div>
                         ) : (
-                          <div className="text-right flex items-center gap-2">
-                            <span
-                              className={`h-6 w-6 rounded-full border flex items-center justify-center transition-colors ${
-                                outOfStock
-                                  ? 'border-zinc-800 bg-zinc-900/40 text-zinc-700'
-                                  : isConvenienceMode
-                                  ? 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-emerald-400 hover:text-white'
-                                  : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-accent-light hover:text-white'
-                              }`}
-                            >
-                              <Plus size={13} />
-                            </span>
-                          </div>
+                          <span
+                            className={`h-7 w-7 rounded-lg border flex items-center justify-center transition-colors ${
+                              outOfStock
+                                ? 'border-zinc-800 bg-zinc-900/40 text-zinc-700'
+                                : isConvenienceMode
+                                ? 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-emerald-500/50 hover:text-emerald-300'
+                                : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-accent/50 hover:text-white'
+                            }`}
+                          >
+                            <Plus size={13} />
+                          </span>
                         )}
                       </div>
                     </div>
@@ -610,72 +591,34 @@ export default function AddProductSheet({
             )}
           </div>
 
-          {/* Resumo dos Itens Selecionados e Novo Total do Atendimento */}
+          {/* Resumo dos Selecionados e Novo Total */}
           {selectedItems.length > 0 && (
-            <div className="rounded-2xl bg-[#070709] border border-zinc-800/90 p-3.5 space-y-2.5">
+            <div className="rounded-2xl bg-zinc-950 border border-zinc-800/90 p-3 space-y-2">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-zinc-400 font-medium flex items-center gap-1.5">
+                <span className="text-zinc-300 font-semibold flex items-center gap-1.5">
                   {isConvenienceMode ? (
                     <Coffee size={13} className="text-emerald-400" />
                   ) : (
                     <ShoppingBag size={13} className="text-accent-light" />
                   )}
-                  {isConvenienceMode
-                    ? `Conveniência selecionada (${selectedItems.length})`
-                    : `Produtos selecionados (${selectedItems.length})`}
+                  Selecionados ({totalUnitsSelected} un.)
                 </span>
                 <button
                   type="button"
                   onClick={() => setSelectedMap({})}
                   className="text-[11px] text-zinc-400 hover:text-rose-400 transition-colors"
                 >
-                  Limpar seleção
+                  Limpar
                 </button>
               </div>
 
-              <div className="space-y-1 max-h-28 overflow-y-auto pr-0.5">
-                {selectedItems.map((item) => (
-                  <div
-                    key={item.productId}
-                    className="flex items-center justify-between text-xs bg-black/60 border border-zinc-800/70 rounded-xl px-2.5 py-1.5"
-                  >
-                    <span className="text-zinc-200 truncate">
-                      <strong
-                        className={
-                          isConvenienceMode ? 'text-emerald-300' : 'text-accent-light'
-                        }
-                      >
-                        {item.quantity}x
-                      </strong>{' '}
-                      {item.product.name}
-                    </span>
-                    <span className="font-mono tabular-nums text-zinc-300 font-semibold shrink-0 ml-2">
-                      + R$ {item.subtotal.toFixed(2).replace('.', ',')}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="pt-2 border-t border-zinc-800/80 space-y-1">
-                <div className="flex items-center justify-between text-xs text-zinc-400">
-                  <span>
-                    {isConvenienceMode
-                      ? `Subtotal Conveniência (${totalUnitsSelected} un.)`
-                      : `Subtotal de produtos (${totalUnitsSelected} un.)`}
-                  </span>
-                  <span className="font-mono tabular-nums text-zinc-200 font-semibold">
-                    + R$ {addedTotal.toFixed(2).replace('.', ',')}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-xs pt-0.5">
-                  <span className="text-zinc-300 font-semibold flex items-center gap-1">
-                    <Sparkles size={12} className="text-emerald-400" />
-                    Novo Total do Atendimento
-                  </span>
-                  <span className="text-sm font-bold text-emerald-400 font-mono tabular-nums">
-                    R$ {newApptTotal.toFixed(2).replace('.', ',')}
-                  </span>
-                </div>
+              <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-xs">
+                <span className="text-zinc-400">
+                  + R$ {addedTotal.toFixed(2).replace('.', ',')}
+                </span>
+                <span className="text-sm font-bold text-emerald-400 font-mono tabular-nums">
+                  Novo Total: R$ {newApptTotal.toFixed(2).replace('.', ',')}
+                </span>
               </div>
             </div>
           )}
@@ -692,16 +635,10 @@ export default function AddProductSheet({
             disabled={submitting || selectedItems.length === 0}
           >
             {submitting
-              ? isConvenienceMode
-                ? 'Adicionando Conveniência…'
-                : 'Adicionando e atualizando estoque…'
+              ? 'Salvando…'
               : selectedItems.length > 0
-              ? `Confirmar ${totalUnitsSelected} ${
-                  totalUnitsSelected === 1 ? 'item' : 'itens'
-                } (+ R$ ${addedTotal.toFixed(2).replace('.', ',')})`
-              : isConvenienceMode
-              ? 'Selecione itens de Conveniência acima'
-              : 'Selecione os produtos acima'}
+              ? `Confirmar (+ R$ ${addedTotal.toFixed(2).replace('.', ',')})`
+              : 'Selecione acima'}
           </PrimaryButton>
         </form>
       )}

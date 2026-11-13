@@ -290,7 +290,7 @@ export default function AppointmentCard({
           disabled={busy}
           onClick={() => onSelect && onSelect(appointment)}
           style={{ minHeight: `${blockMinHeight}px` }}
-          className={`w-full text-left rounded-2xl border px-4 py-3 transition-all duration-150 flex flex-col justify-between group active:scale-[0.992] touch-manipulation ${cardSurfaceClass} ${
+          className={`w-full text-left rounded-2xl border p-3 transition-all duration-150 flex flex-col justify-between group active:scale-[0.992] touch-manipulation ${cardSurfaceClass} ${
             busy ? 'opacity-60 pointer-events-none' : ''
           }`}
         >
@@ -321,7 +321,7 @@ export default function AppointmentCard({
                 <span className={`font-bold ${startTimeClass}`}>{startTime}</span>
               ) : (
                 <span className="px-2 py-0.5 rounded-md bg-zinc-800/95 border border-zinc-700 text-zinc-200 font-semibold text-[10px]">
-                  Sem horário definido
+                  Sem hora
                 </span>
               )}
               <span className="text-zinc-600">·</span>
@@ -332,22 +332,32 @@ export default function AppointmentCard({
               {attachedProducts.length > 0 && (
                 <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-300/90">
                   <ShoppingBag size={10} className="text-amber-400 shrink-0" />
-                  +{attachedProducts.length} {attachedProducts.length === 1 ? 'prod.' : 'prods.'}
+                  +{attachedProducts.length}
                 </span>
               )}
-              <div className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${statusTextClass}`}>
-                {isCompleted ? (
-                  <CheckCircle2 size={11} className={`${completedIconColor} shrink-0`} />
-                ) : (
-                  <span className={`h-1.5 w-1.5 rounded-full ${statusDotColor} shrink-0`} />
-                )}
-                <span>{statusLabel}</span>
-              </div>
+              {paid ? (
+                <span
+                  title="Pago"
+                  aria-label="Pago"
+                  className="inline-flex items-center justify-center text-emerald-400"
+                >
+                  <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
+                </span>
+              ) : (
+                <div className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${statusTextClass}`}>
+                  {isCompleted ? (
+                    <CheckCircle2 size={12} className={`${completedIconColor} shrink-0`} />
+                  ) : (
+                    <span className={`h-1.5 w-1.5 rounded-full ${statusDotColor} shrink-0`} />
+                  )}
+                  <span>{statusLabel}</span>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Linha 2: Identificação do Cliente, Serviço/Profissional e Valor Total */}
-          <div className="flex items-center justify-between gap-3 pt-2.5">
+          <div className="flex items-center justify-between gap-2 pt-2">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
                 <h3 className="text-white font-bold text-sm sm:text-[15px] tracking-tight truncate">
@@ -355,7 +365,7 @@ export default function AppointmentCard({
                 </h3>
                 {appointment.is_walk_in && (
                   <span
-                    title="Encaixe / Sem hora marcada"
+                    title="Encaixe"
                     className="inline-flex items-center text-[10px] font-semibold text-amber-400 shrink-0"
                   >
                     <Zap size={11} />
@@ -363,7 +373,7 @@ export default function AppointmentCard({
                 )}
                 {isPreScheduled && (
                   <span
-                    title="Pré-agendamento recorrente"
+                    title="Pré-agendado"
                     className="inline-flex items-center text-[10px] font-semibold text-purple-300 shrink-0"
                   >
                     <Sparkles size={11} />
@@ -379,19 +389,14 @@ export default function AppointmentCard({
               </p>
             </div>
 
-            <div className="shrink-0 flex items-center gap-2">
+            <div className="shrink-0 flex items-center gap-1.5">
               {totalAmount > 0 && (
-                <div className="text-right">
-                  <div className="font-mono tabular-nums text-sm sm:text-[15px] font-bold text-white leading-none">
-                    R$ {totalAmount.toFixed(2).replace('.', ',')}
-                  </div>
-                  <span className="text-[10px] text-zinc-400 group-hover:text-zinc-200 transition-colors">
-                    Detalhes
-                  </span>
+                <div className="font-mono tabular-nums text-sm sm:text-[15px] font-bold text-white leading-none">
+                  R$ {totalAmount.toFixed(2).replace('.', ',')}
                 </div>
               )}
               <ChevronRight
-                size={16}
+                size={15}
                 className="text-zinc-500 group-hover:text-zinc-200 transition-colors shrink-0"
               />
             </div>
@@ -399,15 +404,15 @@ export default function AppointmentCard({
 
           {/* Linha 3 (Exclusiva para o Fecho Real do Expediente, ex: 20:30) */}
           {showEndOfShiftHighlight && endTime && (
-            <div className="mt-2.5 pt-2 border-t border-accent/25 flex items-center justify-between gap-2">
+            <div className="mt-2 pt-2 border-t border-accent/25 flex items-center justify-between gap-2">
               <span className="text-[11px] font-semibold text-zinc-200 tracking-tight truncate">
-                🏁 Fim do Expediente • Encerrado às{' '}
+                🏁 Fim do Expediente •{' '}
                 <span className="font-mono tabular-nums text-accent-light font-bold">
                   {endTime}
                 </span>
               </span>
               <span className="shrink-0 text-[10px] font-mono tabular-nums font-semibold text-accent-light">
-                Último do dia
+                Fecho
               </span>
             </div>
           )}

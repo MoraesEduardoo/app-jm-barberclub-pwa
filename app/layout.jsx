@@ -1,23 +1,23 @@
+import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
-import PWAUpdateListener from "@/components/admin/PWAUpdateListener";
+
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-jakarta",
+  display: "swap",
+});
 
 export const metadata = {
   title: "JM Barberclub — Painel do Barbeiro",
-  description:
-    "Painel administrativo e gestão de alta conversão da Barbearia JM Barberclub",
-  applicationName: "JM Barberclub",
+  description: "Agenda, caixa, clientes e gestão do JM Barberclub.",
   manifest: "/manifest.json",
-  icons: {
-    icon: "/icons/logo-192.png",
-    apple: "/icons/logo-192.png",
-  },
   appleWebApp: {
-    capable: true,
     statusBarStyle: "black-translucent",
     title: "JM Barberclub",
   },
-  formatDetection: {
-    telephone: false,
+  other: {
+    "mobile-web-app-capable": "yes",
   },
 };
 
@@ -27,14 +27,13 @@ export const viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#0f0f0f",
+  themeColor: "#000000",
 };
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="pt-BR" className="bg-black">
-      <body className="bg-black text-zinc-100 antialiased min-h-screen selection:bg-red-600/30 selection:text-white">
-        <PWAUpdateListener />
+    <html lang="pt-BR" className={`${jakarta.variable} dark`}>
+      <body className="bg-black text-white antialiased selection:bg-accent selection:text-white">
         {children}
       </body>
     </html>

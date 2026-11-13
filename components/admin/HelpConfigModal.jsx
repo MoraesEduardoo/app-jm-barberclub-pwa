@@ -1,82 +1,96 @@
-'use client';
+"use client";
 
-import { X, Smartphone, Globe, MessageSquare, Bell, Calendar } from 'lucide-react';
+import { Bell, Smartphone, Apple, Share, PlusSquare, CheckCircle2 } from "lucide-react";
+import BottomSheet from "./BottomSheet";
 
 export default function HelpConfigModal({ open, onClose }) {
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-surface border border-zinc-800 rounded-2xl w-full max-w-md p-5 text-left shadow-2xl relative max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">💡</span>
-            <div>
-              <h3 className="text-white font-bold text-base">Ajuda p/ Configurar</h3>
-              <p className="text-zinc-500 text-xs">Instruções rápidas de uso do sistema</p>
-            </div>
+    <BottomSheet open={open} onClose={onClose} title="Ajuda p/ Configurar">
+      <div className="space-y-3 pb-2">
+        {/* Card de Isolamento de Notificações Push por Perfil (barber_id) */}
+        <div className="rounded-2xl border border-zinc-800/90 bg-zinc-950 p-3 flex items-start gap-3">
+          <div className="h-9 w-9 rounded-xl bg-accent/15 border border-accent/30 flex items-center justify-center shrink-0">
+            <Bell size={17} className="text-accent-light" />
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-8 w-8 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="mt-4 space-y-4 text-xs text-zinc-300">
-          <div className="flex items-start gap-3 bg-elevated/60 p-3 rounded-xl border border-zinc-800/80">
-            <Globe size={18} className="text-accent shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-white text-sm">Link do Chatbot de Agendamento</p>
-              <p className="text-zinc-400 mt-1 leading-relaxed">
-                Compartilhe o link <strong className="text-white">https://chatbot-jmbarberclub.vercel.app/</strong> na bio do Instagram ou envie diretamente para os clientes agendarem em poucos toques.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3 bg-elevated/60 p-3 rounded-xl border border-zinc-800/80">
-            <Bell size={18} className="text-emerald-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-white text-sm">Notificações Push no Celular</p>
-              <p className="text-zinc-400 mt-1 leading-relaxed">
-                Toque no sininho no topo do painel e ative as notificações. Assim que um cliente marcar horário pelo chatbot, seu telemóvel vibrará com o aviso instantâneo.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3 bg-elevated/60 p-3 rounded-xl border border-zinc-800/80">
-            <Calendar size={18} className="text-blue-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-white text-sm">Expediente e Pausas</p>
-              <p className="text-zinc-400 mt-1 leading-relaxed">
-                Na aba <strong>Expediente</strong>, você pode ligar/desligar dias de trabalho, alterar horários de abertura e fechamento, e definir folgas pontuais.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3 bg-elevated/60 p-3 rounded-xl border border-zinc-800/80">
-            <Smartphone size={18} className="text-purple-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-white text-sm">Instalar como Aplicativo (PWA)</p>
-              <p className="text-zinc-400 mt-1 leading-relaxed">
-                No navegador do seu smartphone, clique em <em>Compartilhar</em> (iOS) ou nos <em>3 pontos</em> (Android) e escolha <strong>&quot;Adicionar à Tela de Início&quot;</strong> para abrir o painel em tela cheia como um app nativo.
-              </p>
-            </div>
+          <div className="min-w-0">
+            <p className="text-white font-semibold text-xs">
+              Notificações Isoladas por Perfil
+            </p>
+            <p className="text-zinc-400 text-xs mt-0.5 leading-relaxed">
+              Os alertas Push são vinculados ao seu <strong className="text-zinc-200">barber_id</strong>. Cada profissional recebe exclusivamente os avisos da sua própria agenda e clientes.
+            </p>
           </div>
         </div>
 
-        <div className="mt-5 pt-3 border-t border-zinc-800 flex justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-full bg-accent hover:bg-accent-hover text-black font-bold py-2.5 rounded-xl text-xs transition-colors"
-          >
-            Entendido
-          </button>
-        </div>
+        {/* Seção 1: Android / Chrome */}
+        <section className="rounded-2xl border border-zinc-800/90 bg-zinc-950 p-3 space-y-2.5">
+          <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs">
+            <Smartphone size={16} />
+            <h3>Android (Chrome)</h3>
+          </div>
+          <ol className="space-y-2 text-xs text-zinc-300">
+            <li className="flex items-start gap-2">
+              <span className="h-5 w-5 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400 font-bold text-[10px] flex items-center justify-center shrink-0">
+                1
+              </span>
+              <span>
+                Toque em <strong className="text-white">⋮</strong> no Chrome e selecione{" "}
+                <strong className="text-white">Instalar aplicativo</strong>.
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="h-5 w-5 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400 font-bold text-[10px] flex items-center justify-center shrink-0">
+                2
+              </span>
+              <span>
+                Abra o app instalado e toque no <strong className="text-white">sino</strong> no topo para ativar os alertas do seu perfil.
+              </span>
+            </li>
+          </ol>
+        </section>
+
+        {/* Seção 2: iPhone / iOS (Safari) */}
+        <section className="rounded-2xl border border-zinc-800/90 bg-zinc-950 p-3 space-y-2.5">
+          <div className="flex items-center gap-2 text-blue-400 font-semibold text-xs">
+            <Apple size={16} />
+            <h3>iPhone / iOS (Safari)</h3>
+          </div>
+          <ol className="space-y-2 text-xs text-zinc-300">
+            <li className="flex items-start gap-2">
+              <span className="h-5 w-5 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400 font-bold text-[10px] flex items-center justify-center shrink-0">
+                1
+              </span>
+              <span>
+                No <strong className="text-white">Safari</strong>, toque em{" "}
+                <strong className="text-white inline-flex items-center gap-1">
+                  Compartilhar <Share size={11} className="inline" />
+                </strong>{" "}
+                e em{" "}
+                <strong className="text-white inline-flex items-center gap-1">
+                  Tela de Início <PlusSquare size={11} className="inline" />
+                </strong>.
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="h-5 w-5 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400 font-bold text-[10px] flex items-center justify-center shrink-0">
+                2
+              </span>
+              <span>
+                Abra pela Tela de Início e ative o <strong className="text-white">sino</strong> para receber os alertas da sua agenda.
+              </span>
+            </li>
+          </ol>
+        </section>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full h-11 rounded-xl bg-accent hover:bg-accent-light text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors active:scale-[0.99]"
+        >
+          <CheckCircle2 size={15} />
+          Entendi
+        </button>
       </div>
-    </div>
+    </BottomSheet>
   );
 }

@@ -194,9 +194,22 @@ export default function ServicosPage() {
     if (!isChief) return;
     setSeedingConvenience(true);
     try {
-      await seedDefaultConvenienceProducts();
-      toast.success('Itens padrão de Conveniência carregados com sucesso!');
-      await loadCatalog({ silent: false });
+      const res = await seedDefaultConvenienceProducts();
+      if (Array.isArray(res?.items) && res.items.length > 0) {
+        setProducts((prev) => {
+          const byName = new Map(
+            prev.map((p) => [String(p.name || '').toLowerCase().trim(), p])
+          );
+          for (const item of res.items) {
+            byName.set(String(item.name || '').toLowerCase().trim(), item);
+          }
+          const merged = Array.from(byName.values());
+          setCache(PRODUCTS_KEY, merged);
+          return merged;
+        });
+      }
+      toast.success('Catálogo de Conveniência carregado!');
+      await loadCatalog({ silent: true });
     } catch {
       toast.error('Erro ao carregar catálogo de Conveniência.');
     } finally {
@@ -421,16 +434,18 @@ export default function ServicosPage() {
       ) : activeTab === 'convenience' && isChief ? (
         <>
           <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 px-3 py-2 mb-3 flex items-center justify-between gap-2 text-xs text-emerald-300">
-            <span className="inline-flex items-center gap-1.5 font-medium">
-              <Coffee size={14} className="text-emerald-400 shrink-0" />
-              Módulo Exclusivo do Barbeiro Chefe • 100% retido no Caixa Geral (0% comissão colab.)
+            <span className="inline-flex items-center gap-1.5 font-semibold">
+              <Coffee size={13} className="text-emerald-400 shrink-0" />
+              Exclusivo Chefe
+            </span>
+            <span className="font-mono text-[10px] text-emerald-400 font-bold">
+              100% Caixa • 0% Colab.
             </span>
           </div>
 
           <div className="flex items-center justify-between mb-3">
             <p className="text-zinc-400 text-xs font-medium">
-              {convenienceProducts.length} item{convenienceProducts.length !== 1 ? 's' : ''} de
-              Conveniência
+              {convenienceProducts.length} {convenienceProducts.length === 1 ? 'item' : 'itens'}
             </p>
             <button
               type="button"
@@ -441,7 +456,7 @@ export default function ServicosPage() {
               }}
               className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-full pl-2.5 pr-3 py-1.5 active:scale-95 transition-all touch-manipulation select-none shadow-sm"
             >
-              <Plus size={14} /> Nova Conveniência
+              <Plus size={14} /> Novo Item
             </button>
           </div>
 
@@ -452,18 +467,17 @@ export default function ServicosPage() {
               ))}
             </div>
           ) : convenienceProducts.length === 0 ? (
-            <div className="mt-8 rounded-2xl border border-zinc-800 bg-surface/60 p-6 flex flex-col items-center justify-center text-center gap-4">
-              <div className="h-12 w-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-                <Coffee size={22} />
+            <div className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-950 p-5 flex flex-col items-center justify-center text-center gap-3">
+              <div className="h-11 w-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                <Coffee size={20} />
               </div>
               <div className="space-y-1 max-w-xs">
-                <h3 className="text-white font-bold text-sm">Catálogo de Conveniência Vazio</h3>
-                <p className="text-zinc-400 text-xs leading-relaxed">
-                  Registe refrigerantes, águas, cervejas e snacks para incluir na conta do cliente
-                  (pagamento imediato ou Fiado) com retenção de 100% no caixa da barbearia.
+                <h3 className="text-white font-bold text-sm">Conveniência Vazia</h3>
+                <p className="text-zinc-400 text-xs">
+                  Bebidas e snacks (100% Caixa).
                 </p>
               </div>
-              <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full max-w-xs">
+              <div className="flex flex-col sm:flex-row items-center gap-2 w-full max-w-xs">
                 <button
                   type="button"
                   onClick={() => {
@@ -471,15 +485,15 @@ export default function ServicosPage() {
                     setEditingProduct(null);
                     setProductSheetOpen(true);
                   }}
-                  className="w-full flex items-center justify-center gap-1.5 h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-sm active:scale-95 transition-all"
+                  className="w-full flex items-center justify-center gap-1.5 h-10 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-sm active:scale-95 transition-all"
                 >
-                  <Plus size={14} /> Cadastrar Manualmente
+                  <Plus size={14} /> Novo Item
                 </button>
                 <button
                   type="button"
                   disabled={seedingConvenience}
                   onClick={handleSeedConvenience}
-                  className="w-full flex items-center justify-center gap-1.5 h-10 px-4 rounded-xl bg-elevated border border-zinc-700 hover:border-zinc-600 text-zinc-200 text-xs font-semibold active:scale-95 transition-all disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-1.5 h-10 px-3 rounded-xl bg-zinc-900 border border-zinc-700 hover:border-zinc-600 text-zinc-200 text-xs font-semibold active:scale-95 transition-all disabled:opacity-50"
                 >
                   {seedingConvenience ? (
                     <>
@@ -487,7 +501,7 @@ export default function ServicosPage() {
                     </>
                   ) : (
                     <>
-                      <Sparkles size={14} className="text-emerald-400" /> Padrão (5 itens)
+                      <Sparkles size={14} className="text-emerald-400" /> Carregar Bebidas & Snacks Padrão
                     </>
                   )}
                 </button>

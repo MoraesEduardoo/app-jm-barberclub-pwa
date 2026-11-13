@@ -223,31 +223,24 @@ export default function ClientDetailSheet({ client, open, onClose, onWhatsApp, o
           </div>
         </div>
 
-        {/* Ação de Exclusão do Cliente */}
+        {/* Ação de Exclusão Compacta */}
         <div className="pt-2 border-t border-zinc-800/80">
           {!confirmingDelete ? (
             <button
               type="button"
               onClick={() => setConfirmingDelete(true)}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/25 text-rose-400 font-semibold text-xs transition-all active:scale-[0.99] touch-manipulation"
+              className="w-full h-10 flex items-center justify-center gap-1.5 px-3 rounded-xl bg-zinc-950 hover:bg-rose-950/30 border border-zinc-800 hover:border-rose-500/40 text-rose-400 font-semibold text-xs transition-all active:scale-[0.99] touch-manipulation"
             >
-              <Trash2 size={15} />
-              <span>Excluir Cliente</span>
+              <Trash2 size={14} />
+              <span>Excluir</span>
             </button>
           ) : (
-            <div className="bg-rose-950/25 border border-rose-500/30 rounded-2xl p-3.5 space-y-3">
-              <div className="flex items-start gap-2.5">
-                <div className="h-8 w-8 rounded-lg bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0 mt-0.5">
-                  <AlertTriangle size={16} />
-                </div>
-                <div>
-                  <p className="text-white font-bold text-xs">
-                    Confirmar exclusão de {client.name}?
-                  </p>
-                  <p className="text-zinc-400 text-[11px] mt-0.5 leading-relaxed">
-                    O cliente será removido da lista de clientes, mantendo intactos os relatórios financeiros do caixa.
-                  </p>
-                </div>
+            <div className="bg-rose-950/25 border border-rose-500/30 rounded-2xl p-3 space-y-2.5">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={15} className="text-rose-400 shrink-0" />
+                <p className="text-white font-semibold text-xs truncate">
+                  Excluir {client.name}?
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
@@ -255,7 +248,7 @@ export default function ClientDetailSheet({ client, open, onClose, onWhatsApp, o
                   type="button"
                   disabled={deleting}
                   onClick={() => setConfirmingDelete(false)}
-                  className="py-2.5 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 font-semibold text-xs transition-all touch-manipulation disabled:opacity-50"
+                  className="h-9 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 font-semibold text-xs transition-all touch-manipulation disabled:opacity-50"
                 >
                   Cancelar
                 </button>
@@ -263,17 +256,17 @@ export default function ClientDetailSheet({ client, open, onClose, onWhatsApp, o
                   type="button"
                   disabled={deleting}
                   onClick={handleConfirmDelete}
-                  className="py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 touch-manipulation disabled:opacity-50"
+                  className="h-9 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 touch-manipulation disabled:opacity-50"
                 >
                   {deleting ? (
                     <>
-                      <Loader2 size={14} className="animate-spin" />
-                      <span>Excluindo...</span>
+                      <Loader2 size={13} className="animate-spin" />
+                      <span>Excluindo…</span>
                     </>
                   ) : (
                     <>
-                      <Trash2 size={14} />
-                      <span>Confirmar Exclusão</span>
+                      <Trash2 size={13} />
+                      <span>Confirmar</span>
                     </>
                   )}
                 </button>

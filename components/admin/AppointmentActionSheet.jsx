@@ -217,7 +217,7 @@ export default function AppointmentActionSheet({
 
   function handleSendWhatsAppReminder() {
     if (!appointment.client_phone) {
-      toast.warning('Telefone do cliente não cadastrado.');
+      toast.warning('Telefone não cadastrado.');
       return;
     }
 
@@ -232,18 +232,18 @@ export default function AppointmentActionSheet({
 
     const url = getWhatsAppClickToChatUrl(appointment.client_phone, text);
     if (!url) {
-      toast.warning('Número de telefone inválido para WhatsApp.');
+      toast.warning('Telefone inválido.');
       return;
     }
 
     window.open(url, '_blank', 'noopener,noreferrer');
-    toast.success(`Lembrete de agendamento gerado para ${firstName}!`);
+    toast.success(`Lembrete enviado para ${firstName}!`);
   }
 
   async function handleRemoveProduct(item) {
     if (removingKey) return;
     if (item.isConvenience && !isChief) {
-      toast.warning('Apenas o Barbeiro Chefe pode alterar itens de Conveniência.');
+      toast.warning('Restrito ao Barbeiro Chefe.');
       return;
     }
     setRemovingKey(item.key);
@@ -256,23 +256,17 @@ export default function AppointmentActionSheet({
         toast.error(res.error);
         return;
       }
-      toast.success(
-        item.isConvenience
-          ? 'Item de conveniência removido e devolvido ao estoque.'
-          : 'Produto removido e devolvido ao estoque.'
-      );
+      toast.success('Item removido.');
       if (onProductRemoved) {
         onProductRemoved(res);
       }
     } catch {
-      toast.error('Não foi possível remover o item.');
+      toast.error('Erro ao remover item.');
     } finally {
       setRemovingKey(null);
     }
   }
 
-  // Lista visível de produtos: barbeiros comuns veem apenas produtos de barbearia;
-  // Barbeiro Chefe vê produtos de barbearia e itens de conveniência.
   const visibleRegularProducts = regularProducts;
   const visibleConvenienceProducts = isChief ? convenienceProducts : [];
 
@@ -280,16 +274,16 @@ export default function AppointmentActionSheet({
     <BottomSheet
       open={open}
       onClose={onClose}
-      title="Detalhes do Agendamento"
+      title="Atendimento"
     >
-      <div className="space-y-4">
+      <div className="space-y-3">
         {/* Bloco Principal: Horário, Status e Cliente */}
-        <div className="rounded-2xl bg-[#070709] border border-zinc-800/90 p-4 space-y-3">
-          {/* Topo: Faixa de Horário + Status de Pagamento */}
+        <div className="rounded-2xl bg-zinc-950 border border-zinc-800/90 p-3 space-y-2.5">
+          {/* Topo: Faixa de Horário + Status */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 font-mono tabular-nums text-sm font-bold text-white bg-zinc-900 border border-zinc-800 px-2.5 py-1 rounded-lg">
-                <Clock size={13} className="text-accent-light" />
+              <span className="inline-flex items-center gap-1.5 font-mono tabular-nums text-xs font-bold text-white bg-zinc-900 border border-zinc-800 px-2.5 py-1 rounded-lg">
+                <Clock size={12} className="text-accent-light" />
                 {startTime} – {endTime}
               </span>
               <span className="text-xs text-zinc-500 font-mono tabular-nums">
@@ -298,26 +292,29 @@ export default function AppointmentActionSheet({
             </div>
 
             {paid ? (
-              <span className="inline-flex items-center gap-1 text-emerald-400 text-xs font-semibold px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-                <CheckCircle2 size={13} /> Pago
+              <span
+                title="Pago"
+                className="inline-flex items-center gap-1 text-emerald-400 text-xs font-semibold px-2 py-0.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30"
+              >
+                <CheckCircle2 size={13} className="text-emerald-400" />
               </span>
             ) : isFiado ? (
-              <span className="inline-flex items-center gap-1 text-amber-300 text-xs font-semibold px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/35">
-                <Clock3 size={13} /> Fiado
+              <span className="inline-flex items-center gap-1 text-amber-300 text-xs font-semibold px-2 py-0.5 rounded-lg bg-amber-500/15 border border-amber-500/35">
+                <Clock3 size={12} /> Fiado
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 text-blue-300 text-xs font-semibold px-2.5 py-1 rounded-lg bg-blue-500/15 border border-blue-500/35">
-                <Clock3 size={13} /> Confirmado
+              <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-lg ${statusInfo.className}`}>
+                <Clock3 size={12} /> {statusInfo.label}
               </span>
             )}
           </div>
 
           {/* Cliente e Telefone */}
-          <div className="pt-1 border-t border-zinc-800/70 flex items-start justify-between gap-3">
+          <div className="pt-2 border-t border-zinc-800/70 flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <User size={15} className="text-zinc-400 shrink-0" />
-                <h3 className="text-base font-bold text-white truncate">
+              <div className="flex items-center gap-1.5">
+                <User size={14} className="text-zinc-400 shrink-0" />
+                <h3 className="text-sm font-bold text-white truncate">
                   {appointment.client_name || 'Cliente'}
                 </h3>
               </div>
@@ -325,25 +322,25 @@ export default function AppointmentActionSheet({
                 <button
                   type="button"
                   onClick={handleCopyPhone}
-                  title="Clique para copiar o telefone"
+                  title="Copiar telefone"
                   aria-label={`Copiar telefone ${formattedPhone}`}
                   className={`mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 -ml-2 rounded-lg text-xs font-mono tabular-nums transition-all active:scale-95 touch-manipulation select-none group ${
                     copiedPhone
                       ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/70 border border-transparent'
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-transparent'
                   }`}
                 >
                   {copiedPhone ? (
                     <>
-                      <Check size={12} className="text-emerald-400 shrink-0" />
-                      <span>Copiado!</span>
+                      <Check size={11} className="text-emerald-400 shrink-0" />
+                      <span>Copiado</span>
                     </>
                   ) : (
                     <>
-                      <Phone size={12} className="text-zinc-500 group-hover:text-zinc-300 shrink-0" />
+                      <Phone size={11} className="text-zinc-500 group-hover:text-zinc-300 shrink-0" />
                       <span>{formattedPhone}</span>
                       <Copy
-                        size={11}
+                        size={10}
                         className="text-zinc-500 group-hover:text-zinc-300 transition-colors shrink-0"
                       />
                     </>
@@ -353,35 +350,24 @@ export default function AppointmentActionSheet({
             </div>
 
             <div className="flex flex-col items-end gap-1 shrink-0">
-              <span
-                className={`text-[10px] font-semibold rounded-md px-2 py-0.5 ${
-                  paid
-                    ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                    : isFiado
-                    ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                    : statusInfo.className
-                }`}
-              >
-                {paid ? 'Pago' : isFiado ? 'Fiado' : statusInfo.label}
-              </span>
               {isFrequentClient && (
                 <span className="inline-flex items-center gap-1 text-[10px] font-medium text-accent-light">
-                  <Crown size={10} /> Cliente Fiel
+                  <Crown size={10} /> Fiel
                 </span>
               )}
               {appointment.is_walk_in && (
                 <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-400">
-                  <Zap size={10} /> Encaixe / Sem hora
+                  <Zap size={10} /> Encaixe
                 </span>
               )}
             </div>
           </div>
 
           {/* Resumo do Serviço e Valor */}
-          <div className="pt-2.5 border-t border-zinc-800/70 flex items-center justify-between gap-3">
+          <div className="pt-2 border-t border-zinc-800/70 flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <p className="text-[11px] text-zinc-500">Serviço selecionado</p>
-              <p className="text-sm font-semibold text-zinc-100 truncate">
+              <p className="text-[10px] text-zinc-500 uppercase tracking-wider">Serviço</p>
+              <p className="text-xs font-semibold text-zinc-100 truncate">
                 {serviceName}
                 {barberName ? (
                   <span className="text-zinc-400 font-normal"> · {barberName}</span>
@@ -389,65 +375,61 @@ export default function AppointmentActionSheet({
               </p>
             </div>
             <div className="text-right shrink-0">
-              <p className="text-[11px] text-zinc-500">Total</p>
-              <p className="text-base font-bold text-white font-mono tabular-nums">
+              <p className="text-[10px] text-zinc-500 uppercase tracking-wider">Total</p>
+              <p className="text-sm font-bold text-white font-mono tabular-nums">
                 R$ {totalAmount.toFixed(2).replace('.', ',')}
               </p>
             </div>
           </div>
 
           {isPreScheduled && (
-            <div className="pt-2 border-t border-zinc-800/70 flex items-center gap-1.5 text-xs text-blue-300 font-medium">
-              <RefreshCw size={12} className="text-blue-400 shrink-0" />
-              <span>Pré-agendamento recorrente garantido via chatbot</span>
+            <div className="pt-2 border-t border-zinc-800/70 flex items-center gap-1.5 text-[11px] text-blue-300 font-medium">
+              <RefreshCw size={11} className="text-blue-400 shrink-0" />
+              <span>Pré-agendado</span>
             </div>
           )}
 
           {cleanNotes && (
             <div className="pt-2 border-t border-zinc-800/70">
-              <p className="text-xs text-zinc-300 bg-zinc-900/90 border border-zinc-800 rounded-xl px-3 py-2 italic">
+              <p className="text-xs text-zinc-300 bg-zinc-900/90 border border-zinc-800 rounded-xl px-2.5 py-1.5 italic">
                 {cleanNotes}
               </p>
             </div>
           )}
 
-          {/* Foto de Referência se existir */}
           {appointment.reference_photo && (
             <div className="pt-2 border-t border-zinc-800/70">
               <a
                 href={appointment.reference_photo.image_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2.5 rounded-xl border border-zinc-800 bg-zinc-900/90 p-1.5 pr-3 active:opacity-80"
+                className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/90 p-1.5 pr-3 active:opacity-80"
               >
                 <img
                   src={appointment.reference_photo.image_url}
-                  alt={appointment.reference_photo.title || 'Referência de corte'}
+                  alt={appointment.reference_photo.title || 'Referência'}
                   referrerPolicy="no-referrer"
                   loading="lazy"
-                  className="h-10 w-10 rounded-lg object-cover"
+                  className="h-9 w-9 rounded-lg object-cover"
                 />
-                <span className="text-xs text-zinc-300">
-                  Referência:{' '}
-                  <span className="text-white font-semibold">
-                    {appointment.reference_photo.title}
-                  </span>
+                <span className="text-xs text-white font-semibold truncate">
+                  {appointment.reference_photo.title || 'Referência'}
                 </span>
               </a>
             </div>
           )}
         </div>
 
-        {/* Lista de Produtos de Barbearia Vinculados ao Atendimento */}
+        {/* Lista de Produtos de Barbearia */}
         {visibleRegularProducts.length > 0 && (
-          <div className="rounded-2xl bg-[#070709] border border-zinc-800/90 p-3.5 space-y-2">
+          <div className="rounded-2xl bg-zinc-950 border border-zinc-800/90 p-3 space-y-2">
             <div className="flex items-center justify-between text-xs">
               <span className="inline-flex items-center gap-1.5 text-amber-400 font-semibold">
-                <ShoppingBag size={13} /> Produtos no Atendimento
+                <ShoppingBag size={12} /> Produtos
               </span>
               {serviceBaseAmount > 0 && (
                 <span className="text-zinc-500 font-mono tabular-nums text-[11px]">
-                  Serviço: R$ {serviceBaseAmount.toFixed(2).replace('.', ',')}
+                  Serv.: R$ {serviceBaseAmount.toFixed(2).replace('.', ',')}
                 </span>
               )}
             </div>
@@ -455,7 +437,7 @@ export default function AppointmentActionSheet({
               {visibleRegularProducts.map((item) => (
                 <div
                   key={item.key}
-                  className="flex items-center justify-between gap-2 text-xs bg-black/70 border border-zinc-800/80 rounded-xl px-3 py-2"
+                  className="flex items-center justify-between gap-2 text-xs bg-black border border-zinc-800/80 rounded-xl px-2.5 py-1.5"
                 >
                   <span className="text-zinc-200 font-medium truncate">
                     {item.label}
@@ -465,10 +447,10 @@ export default function AppointmentActionSheet({
                       type="button"
                       onClick={() => handleRemoveProduct(item)}
                       disabled={removingKey === item.key}
-                      title="Remover produto e devolver ao estoque"
-                      className="h-7 w-7 flex items-center justify-center text-zinc-400 hover:text-rose-400 rounded-lg hover:bg-zinc-900 transition-colors shrink-0"
+                      title="Remover"
+                      className="h-6 w-6 flex items-center justify-center text-zinc-400 hover:text-rose-400 rounded-lg hover:bg-zinc-900 transition-colors shrink-0"
                     >
-                      <X size={14} />
+                      <X size={13} />
                     </button>
                   )}
                 </div>
@@ -477,22 +459,22 @@ export default function AppointmentActionSheet({
           </div>
         )}
 
-        {/* Lista de Itens de Conveniência (Exclusivo para o Barbeiro Chefe) */}
+        {/* Lista de Itens de Conveniência (Exclusivo Chefe) */}
         {visibleConvenienceProducts.length > 0 && (
-          <div className="rounded-2xl bg-[#070908] border border-emerald-500/30 p-3.5 space-y-2">
+          <div className="rounded-2xl bg-zinc-950 border border-emerald-500/30 p-3 space-y-2">
             <div className="flex items-center justify-between text-xs">
               <span className="inline-flex items-center gap-1.5 text-emerald-400 font-semibold">
-                <Coffee size={13} /> Conveniência na Conta (100% Caixa)
+                <Coffee size={12} /> Conveniência
               </span>
-              <span className="text-emerald-300/80 font-mono tabular-nums text-[11px]">
-                0% comissão colab.
+              <span className="text-emerald-300/80 font-mono tabular-nums text-[10px] font-semibold">
+                100% Caixa
               </span>
             </div>
             <div className="space-y-1.5">
               {visibleConvenienceProducts.map((item) => (
                 <div
                   key={item.key}
-                  className="flex items-center justify-between gap-2 text-xs bg-black/70 border border-emerald-500/20 rounded-xl px-3 py-2"
+                  className="flex items-center justify-between gap-2 text-xs bg-black border border-emerald-500/20 rounded-xl px-2.5 py-1.5"
                 >
                   <span className="text-zinc-200 font-medium truncate">
                     {item.label}
@@ -502,10 +484,10 @@ export default function AppointmentActionSheet({
                       type="button"
                       onClick={() => handleRemoveProduct(item)}
                       disabled={removingKey === item.key}
-                      title="Remover item de conveniência e devolver ao estoque"
-                      className="h-7 w-7 flex items-center justify-center text-zinc-400 hover:text-rose-400 rounded-lg hover:bg-zinc-900 transition-colors shrink-0"
+                      title="Remover"
+                      className="h-6 w-6 flex items-center justify-center text-zinc-400 hover:text-rose-400 rounded-lg hover:bg-zinc-900 transition-colors shrink-0"
                     >
-                      <X size={14} />
+                      <X size={13} />
                     </button>
                   )}
                 </div>
@@ -514,10 +496,10 @@ export default function AppointmentActionSheet({
           </div>
         )}
 
-        {/* Painel de Ações do Atendimento (v2.8.2) */}
+        {/* Painel de Ações Compactas (v2.8.2) */}
         {!isCancelled && (
-          <div className="space-y-2.5 pt-1">
-            {/* Linha Principal de Baixa: Finalizar e Receber + Fiado */}
+          <div className="space-y-2 pt-0.5">
+            {/* Linha Principal de Baixa: Receber + Fiado */}
             {!paid && (
               <div className="flex items-stretch gap-2">
                 {onOpenPayment && (
@@ -528,11 +510,11 @@ export default function AppointmentActionSheet({
                       onClose();
                       onOpenPayment(appointment);
                     }}
-                    className="flex-1 h-12 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 active:scale-[0.99] transition-all touch-manipulation disabled:opacity-50"
+                    className="flex-1 h-11 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/20 active:scale-[0.99] transition-all touch-manipulation disabled:opacity-50"
                   >
-                    <Wallet size={17} className="shrink-0" />
+                    <Wallet size={15} className="shrink-0" />
                     <span className="truncate">
-                      Finalizar e Receber (R$ {totalAmount.toFixed(2).replace('.', ',')})
+                      Receber R$ {totalAmount.toFixed(2).replace('.', ',')}
                     </span>
                   </button>
                 )}
@@ -545,10 +527,10 @@ export default function AppointmentActionSheet({
                       onCompleteFiado(appointment);
                       onClose();
                     }}
-                    title="Dar baixa e liberar agenda enviando para Contas a Receber"
-                    className="shrink-0 h-12 px-4 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 hover:text-amber-200 font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+                    title="Concluir no Fiado"
+                    className="shrink-0 h-11 px-3.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
                   >
-                    <Clock3 size={16} className="text-amber-400 shrink-0" />
+                    <Clock3 size={14} className="text-amber-400 shrink-0" />
                     <span>Fiado</span>
                   </button>
                 )}
@@ -559,7 +541,7 @@ export default function AppointmentActionSheet({
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 flex items-center justify-between gap-2 text-xs text-amber-200">
                 <span className="inline-flex items-center gap-1.5 font-semibold">
                   <Clock3 size={13} className="text-amber-400 shrink-0" />
-                  Atendimento concluído no Fiado (Contas a Receber)
+                  Pendente (Fiado)
                 </span>
                 <span className="font-mono tabular-nums font-bold text-amber-300">
                   R$ {totalAmount.toFixed(2).replace('.', ',')}
@@ -567,7 +549,7 @@ export default function AppointmentActionSheet({
               </div>
             )}
 
-            {/* Linha Secundária 1: Editar Serviço, + Produto e + Conveniência (Conveniência restrito ao Barbeiro Chefe) */}
+            {/* Linha Compacta de Ações Secundárias (Outline/Ghost) */}
             <div
               className={`grid ${
                 isChief && onAddConvenience ? 'grid-cols-3' : 'grid-cols-2'
@@ -581,10 +563,10 @@ export default function AppointmentActionSheet({
                     onClose();
                     onEditService(appointment);
                   }}
-                  className="h-11 px-2.5 rounded-xl bg-[#0c0c10] hover:bg-zinc-900 border border-blue-500/35 text-xs font-semibold text-blue-200 hover:text-white flex items-center justify-center gap-1.5 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+                  className="h-10 px-2.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-blue-500/40 text-xs font-semibold text-zinc-200 flex items-center justify-center gap-1.5 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
                 >
-                  <Scissors size={14} className="text-blue-400 shrink-0" />
-                  <span className="truncate">Editar Serviço</span>
+                  <Scissors size={13} className="text-blue-400 shrink-0" />
+                  <span className="truncate">Editar</span>
                 </button>
               )}
 
@@ -596,9 +578,9 @@ export default function AppointmentActionSheet({
                     onClose();
                     onAddProduct(appointment);
                   }}
-                  className="h-11 px-2.5 rounded-xl bg-[#0c0c10] hover:bg-zinc-900 border border-amber-500/35 text-xs font-semibold text-amber-300 flex items-center justify-center gap-1.5 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+                  className="h-10 px-2.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-amber-500/40 text-xs font-semibold text-zinc-200 flex items-center justify-center gap-1.5 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
                 >
-                  <ShoppingBag size={14} className="text-amber-400 shrink-0" />
+                  <ShoppingBag size={13} className="text-amber-400 shrink-0" />
                   <span className="truncate">+ Produto</span>
                 </button>
               )}
@@ -611,10 +593,10 @@ export default function AppointmentActionSheet({
                     onClose();
                     onAddConvenience(appointment);
                   }}
-                  title="Adicionar bebida ou snack de Conveniência (Exclusivo Chefe)"
-                  className="h-11 px-2.5 rounded-xl bg-[#0c0c10] hover:bg-emerald-950/30 border border-emerald-500/35 text-xs font-semibold text-emerald-300 hover:text-emerald-200 flex items-center justify-center gap-1.5 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+                  title="Conveniência (Exclusivo Chefe)"
+                  className="h-10 px-2.5 rounded-xl bg-zinc-950 hover:bg-emerald-950/30 border border-zinc-800 hover:border-emerald-500/40 text-xs font-semibold text-emerald-300 flex items-center justify-center gap-1.5 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
                 >
-                  <Coffee size={14} className="text-emerald-400 shrink-0" />
+                  <Coffee size={13} className="text-emerald-400 shrink-0" />
                   <span className="truncate">+ Conveniência</span>
                 </button>
               )}
@@ -622,7 +604,7 @@ export default function AppointmentActionSheet({
 
             {/* Ações de Pré-Agendamento / Confirmação */}
             {(isPreScheduled || isPending) && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {isPreScheduled && onOpenPreSchedule && (
                   <button
                     type="button"
@@ -631,10 +613,10 @@ export default function AppointmentActionSheet({
                       onClose();
                       onOpenPreSchedule(appointment);
                     }}
-                    className="h-11 px-3 rounded-xl bg-blue-950/40 hover:bg-blue-950/60 border border-blue-500/40 text-xs font-bold text-blue-200 flex items-center justify-center gap-2 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+                    className="h-10 px-3 rounded-xl bg-zinc-950 hover:bg-blue-950/40 border border-blue-500/35 text-xs font-semibold text-blue-200 flex items-center justify-center gap-1.5 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
                   >
-                    <CalendarClock size={15} className="text-blue-400 shrink-0" />
-                    <span>Gerenciar Pré-Agendamento</span>
+                    <CalendarClock size={14} className="text-blue-400 shrink-0" />
+                    <span>Pré-agendamento</span>
                   </button>
                 )}
 
@@ -646,30 +628,30 @@ export default function AppointmentActionSheet({
                       onChangeStatus(appointment.id, 'confirmado');
                       onClose();
                     }}
-                    className="h-11 px-3 rounded-xl bg-emerald-950/30 hover:bg-emerald-950/50 border border-emerald-500/40 text-xs font-semibold text-emerald-300 flex items-center justify-center gap-2 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+                    className="h-10 px-3 rounded-xl bg-zinc-950 hover:bg-emerald-950/30 border border-emerald-500/35 text-xs font-semibold text-emerald-300 flex items-center justify-center gap-1.5 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
                   >
-                    <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
-                    <span>Confirmar Presença</span>
+                    <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
+                    <span>Confirmar</span>
                   </button>
                 )}
               </div>
             )}
 
-            {/* Linha Secundária 2: Botão de Ícone Limpo do WhatsApp (balão com telefone dentro em verde) + Cancelar */}
-            <div className="flex items-stretch gap-2.5">
+            {/* Linha Final Compacta: WhatsApp + Cancelar */}
+            <div className="flex items-stretch gap-2">
               <button
                 type="button"
                 onClick={handleSendWhatsAppReminder}
-                title="Enviar lembrete via WhatsApp"
-                aria-label="Enviar lembrete via WhatsApp"
-                className="w-12 h-11 shrink-0 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/35 hover:border-emerald-500/60 text-emerald-500 flex items-center justify-center active:scale-95 transition-all touch-manipulation"
+                title="WhatsApp"
+                aria-label="WhatsApp"
+                className="w-11 h-10 shrink-0 rounded-xl bg-zinc-950 hover:bg-emerald-500/15 border border-zinc-800 hover:border-emerald-500/40 text-emerald-400 flex items-center justify-center active:scale-95 transition-all touch-manipulation"
               >
                 <span className="relative inline-flex items-center justify-center">
-                  <MessageCircle size={22} strokeWidth={2} className="text-emerald-500" />
+                  <MessageCircle size={20} strokeWidth={2} className="text-emerald-400" />
                   <Phone
-                    size={9.5}
+                    size={8.5}
                     strokeWidth={2.4}
-                    className="text-emerald-500 fill-emerald-500 absolute"
+                    className="text-emerald-400 fill-emerald-400 absolute"
                   />
                 </span>
               </button>
@@ -682,9 +664,9 @@ export default function AppointmentActionSheet({
                     onChangeStatus(appointment.id, 'cancelado');
                     onClose();
                   }}
-                  className="flex-1 h-11 px-3 rounded-xl bg-[#0c0c10] hover:bg-red-950/30 border border-zinc-800 hover:border-accent/40 text-xs font-semibold text-zinc-400 hover:text-accent-light flex items-center justify-center gap-2 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+                  className="flex-1 h-10 px-3 rounded-xl bg-zinc-950 hover:bg-red-950/30 border border-zinc-800 hover:border-accent/40 text-xs font-semibold text-zinc-400 hover:text-accent-light flex items-center justify-center gap-1.5 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
                 >
-                  <XCircle size={15} className="text-accent-light shrink-0" />
+                  <XCircle size={14} className="text-accent-light shrink-0" />
                   <span className="truncate">Cancelar</span>
                 </button>
               )}
