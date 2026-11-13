@@ -20,6 +20,7 @@ import {
   Scissors,
   Copy,
   Check,
+  ArrowUpDown,
 } from 'lucide-react';
 import BottomSheet from './BottomSheet';
 import { toast } from '@/lib/toast';
@@ -102,6 +103,7 @@ export default function AppointmentActionSheet({
   onAddProduct,
   onAddConvenience,
   onEditService,
+  onMoveAppointment,
   onOpenPreSchedule,
   onProductRemoved,
 }) {
@@ -180,7 +182,7 @@ export default function AppointmentActionSheet({
   );
 
   const serviceName =
-    appointment.services?.name || appointment.service || 'Serviço';
+    appointment.service || appointment.services?.name || 'Serviço';
   const barberName = appointment.barbers?.name || '';
   const formattedPhone = formatPhoneBR(appointment.client_phone) || appointment.client_phone;
 
@@ -279,9 +281,9 @@ export default function AppointmentActionSheet({
       <div className="space-y-3">
         {/* Bloco Principal: Horário, Status e Cliente */}
         <div className="rounded-2xl bg-zinc-950 border border-zinc-800/90 p-3 space-y-2.5">
-          {/* Topo: Faixa de Horário + Status */}
+          {/* Topo: Faixa de Horário + Botão Rápido Mover + Status */}
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="inline-flex items-center gap-1.5 font-mono tabular-nums text-xs font-bold text-white bg-zinc-900 border border-zinc-800 px-2.5 py-1 rounded-lg">
                 <Clock size={12} className="text-accent-light" />
                 {startTime} – {endTime}
@@ -289,6 +291,20 @@ export default function AppointmentActionSheet({
               <span className="text-xs text-zinc-500 font-mono tabular-nums">
                 {durationMin} min
               </span>
+              {!isCancelled && onMoveAppointment && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    onClose();
+                    onMoveAppointment(appointment);
+                  }}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/90 hover:border-accent/50 text-[11px] font-semibold text-zinc-200 hover:text-white active:scale-95 transition-all touch-manipulation"
+                >
+                  <ArrowUpDown size={11} className="text-accent-light shrink-0" />
+                  <span>Mover</span>
+                </button>
+              )}
             </div>
 
             {paid ? (
@@ -550,11 +566,7 @@ export default function AppointmentActionSheet({
             )}
 
             {/* Linha Compacta de Ações Secundárias (Outline/Ghost) */}
-            <div
-              className={`grid ${
-                isChief && onAddConvenience ? 'grid-cols-3' : 'grid-cols-2'
-              } gap-2`}
-            >
+            <div className="grid grid-cols-2 gap-2">
               {onEditService && (
                 <button
                   type="button"
@@ -567,6 +579,21 @@ export default function AppointmentActionSheet({
                 >
                   <Scissors size={13} className="text-blue-400 shrink-0" />
                   <span className="truncate">Editar</span>
+                </button>
+              )}
+
+              {onMoveAppointment && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    onClose();
+                    onMoveAppointment(appointment);
+                  }}
+                  className="h-10 px-2.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-accent/40 text-xs font-semibold text-zinc-200 flex items-center justify-center gap-1.5 active:scale-95 transition-all touch-manipulation disabled:opacity-50"
+                >
+                  <ArrowUpDown size={13} className="text-accent-light shrink-0" />
+                  <span className="truncate">Mover Horário</span>
                 </button>
               )}
 

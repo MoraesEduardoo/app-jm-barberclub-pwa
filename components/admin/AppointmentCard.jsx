@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle2, ShoppingBag, Sparkles, Zap, ChevronRight } from 'lucide-react';
+import { CheckCircle2, ShoppingBag, Sparkles, Zap, ChevronRight, ArrowUpDown } from 'lucide-react';
 import { isPreScheduledAppointment } from '@/lib/pre-scheduled';
 import { parseAppointmentNotes } from './AddProductSheet';
 
@@ -34,6 +34,9 @@ export function getAppointmentStartTime(appointment) {
   if (!appointment) return '';
   if (appointment.appointment_time) {
     return String(appointment.appointment_time).slice(0, 5);
+  }
+  if (appointment.start_time) {
+    return String(appointment.start_time).slice(0, 5);
   }
   if (
     appointment.appointment_date &&
@@ -98,6 +101,7 @@ function getIntermediateTicks(startTime, durationMin) {
 export default function AppointmentCard({
   appointment,
   onSelect,
+  onMove,
   isLast = false,
   closingTime = '20:30',
   busy = false,
@@ -105,6 +109,7 @@ export default function AppointmentCard({
   const isPreScheduled = isPreScheduledAppointment(appointment);
   const paid = appointment.payment_status === 'pago';
   const rawStatus = (appointment.status || 'confirmado').toLowerCase().trim();
+  const isCancelled = rawStatus === 'cancelado' || rawStatus === 'cancelled';
   const isCompleted =
     paid ||
     rawStatus === 'concluido' ||
@@ -129,7 +134,7 @@ export default function AppointmentCard({
   const showCompletedEndTimeBlue = Boolean(isCompleted && !showEndOfShiftHighlight);
 
   const serviceName =
-    appointment.services?.name || appointment.service || 'Serviço';
+    appointment.service || appointment.services?.name || 'Serviço';
   const barberName = appointment.barbers?.name || '';
 
   const totalAmount = Number(
@@ -285,16 +290,24 @@ export default function AppointmentCard({
 
       {/* Coluna Direita: Bloco Vertical Estruturado do Agendamento */}
       <div className="flex-1 min-w-0 py-1.5">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onSelect && onSelect(appointment)}
+        <div
+          role="button"
+          tabIndex={busy ? -1 : 0}
+          onClick={() => {
+            if (!busy && onSelect) onSelect(appointment);
+          }}
+          onKeyDown={(e) => {
+            if (!busy && (e.key === 'Enter' || e.key === ' ')) {
+              e.preventDefault();
+              if (onSelect) onSelect(appointment);
+            }
+          }}
           style={{ minHeight: `${blockMinHeight}px` }}
-          className={`w-full text-left rounded-2xl border p-3 transition-all duration-150 flex flex-col justify-between group active:scale-[0.992] touch-manipulation ${cardSurfaceClass} ${
+          className={`w-full text-left rounded-2xl border p-3 transition-all duration-150 flex flex-col justify-between group cursor-pointer active:scale-[0.992] touch-manipulation ${cardSurfaceClass} ${
             busy ? 'opacity-60 pointer-events-none' : ''
           }`}
         >
-          {/* Linha 1: Faixa de Horário + Duração (Esquerda) e Status do Atendimento (Direita) */}
+          {/* Linha 1: Faixa de Horário + Duração (Esquerda) e Mover + Status do Atendimento (Direita) */}
           <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-800/70">
             <div className="flex items-center gap-1.5 font-mono tabular-nums text-[11px]">
               {startTime && endTime ? (
@@ -329,6 +342,21 @@ export default function AppointmentCard({
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
+              {onMove && !isCancelled && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMove(appointment);
+                  }}
+                  title="Mover horário do atendimento"
+                  aria-label="Mover horário do atendimento"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/80 hover:border-zinc-500 text-[10px] font-semibold text-zinc-300 hover:text-white active:scale-95 transition-all touch-manipulation"
+                >
+                  <ArrowUpDown size={10} className="text-accent-light shrink-0" />
+                  <span>Mover</span>
+                </button>
+              )}
               {attachedProducts.length > 0 && (
                 <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-300/90">
                   <ShoppingBag size={10} className="text-amber-400 shrink-0" />
@@ -416,7 +444,7 @@ export default function AppointmentCard({
               </span>
             </div>
           )}
-        </button>
+        </div>
       </div>
     </div>
   );

@@ -33,6 +33,7 @@ import AppointmentActionSheet from "@/components/admin/AppointmentActionSheet";
 import PaymentSheet from "@/components/admin/PaymentSheet";
 import AddProductSheet from "@/components/admin/AddProductSheet";
 import EditServiceSheet from "@/components/admin/EditServiceSheet";
+import MoveAppointmentSheet from "@/components/admin/MoveAppointmentSheet";
 import WalkInSheet from "@/components/admin/WalkInSheet";
 import ClientCyclesSheet from "@/components/admin/ClientCyclesSheet";
 import PreScheduleSheet from "@/components/admin/PreScheduleSheet";
@@ -262,11 +263,10 @@ export default function AgendaPage() {
   const [productTarget, setProductTarget] = useState(null);
   const [productModalMode, setProductModalMode] = useState("produto"); // 'produto' | 'conveniencia'
   const [editServiceTarget, setEditServiceTarget] = useState(null);
+  const [moveTarget, setMoveTarget] = useState(null);
   const [preScheduleTarget, setPreScheduleTarget] = useState(null);
   const [filterMode, setFilterMode] = useState("all"); // 'all' | 'confirmado' | 'concluido' | 'pre_scheduled'
   const [walkInOpen, setWalkInOpen] = useState(false);
-  const [walkInInitialTime, setWalkInInitialTime] = useState("");
-  const [walkInWindowContext, setWalkInWindowContext] = useState(null);
   const [cyclesOpen, setCyclesOpen] = useState(false);
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);
@@ -276,8 +276,6 @@ export default function AgendaPage() {
     setActiveTab("agenda");
 
     const openFromNavbar = () => {
-      setWalkInInitialTime("");
-      setWalkInWindowContext(null);
       setWalkInOpen(true);
     };
 
@@ -547,8 +545,6 @@ export default function AgendaPage() {
 
   function handleCloseWalkIn(result) {
     setWalkInOpen(false);
-    setWalkInInitialTime("");
-    setWalkInWindowContext(null);
     if (result?.created) {
       invalidateCache("appointments:");
       invalidateCache("finance:");
@@ -900,7 +896,7 @@ export default function AgendaPage() {
               </p>
               <p className="text-zinc-300 text-xs">
                 {filterMode === "all"
-                  ? `Todos os horários (${shopClosingTime === "12:30" ? "08:00 às 12:30" : "09:00 às 20:30"}) estão livres para encaixe.`
+                  ? `Todos os horários (${shopClosingTime === "12:30" ? "08:00 às 12:30" : "09:00 às 20:30"}) estão disponíveis na agenda.`
                   : "Altere o filtro acima para visualizar os demais atendimentos do dia."}
               </p>
             </div>
@@ -916,14 +912,12 @@ export default function AgendaPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setWalkInInitialTime("");
-                  setWalkInWindowContext(null);
                   setWalkInOpen(true);
                 }}
                 className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-accent/15 border border-accent/40 text-xs text-accent-light hover:bg-accent/25 font-bold transition-all"
               >
                 <UserPlus size={14} />
-                + Encaixar atendimento
+                + Novo atendimento
               </button>
             )}
           </div>
@@ -936,17 +930,16 @@ export default function AgendaPage() {
                 <span>Linha do Tempo</span>
               </div>
               <span className="text-[11px] text-zinc-400">
-                Vagas livres e ocupações do dia
+                Toque em Mover para reorganizar horários
               </span>
             </div>
 
             <div className="relative space-y-1">
               {timelineItems.map((item, index) => {
                 if (item.type === "gap") {
-                  // Altura proporcional ao tamanho do período livre com espaçamento claro
                   const gapMinHeight = Math.max(
-                    50,
-                    Math.min(116, Math.round(item.gapMinutes * 0.72 + 28))
+                    44,
+                    Math.min(96, Math.round(item.gapMinutes * 0.6 + 24))
                   );
 
                   return (
@@ -981,48 +974,26 @@ export default function AgendaPage() {
                         </span>
                       </div>
 
-                      {/* Coluna Direita: Faixa Minimalista de Período Livre (Atalho Fluido de Encaixe) */}
+                      {/* Coluna Direita: Faixa Informativa Limpa de Período Livre (Sem botão rígido de Encaixe) */}
                       <div className="flex-1 min-w-0 py-1.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const targetBarberId =
-                              scopeBarberId ||
-                              item.barberId ||
-                              viewedBarber?.id ||
-                              barber?.id ||
-                              null;
-                            setWalkInInitialTime(item.fromTime);
-                            setWalkInWindowContext({
-                              startTime: item.fromTime,
-                              endTime: item.toTime,
-                              gapMinutes: item.gapMinutes,
-                              barberId: targetBarberId,
-                              date,
-                            });
-                            setWalkInOpen(true);
-                          }}
+                        <div
                           style={{ minHeight: `${gapMinHeight}px` }}
-                          className="w-full text-left rounded-xl border border-dashed border-zinc-800/95 bg-[#07070a]/90 bg-[repeating-linear-gradient(-45deg,rgba(255,255,255,0.018)_0px,rgba(255,255,255,0.018)_5px,transparent_5px,transparent_11px)] hover:border-zinc-700 hover:bg-[#0c0c12] active:scale-[0.995] transition-all px-3.5 py-2.5 flex items-center justify-between gap-3 group touch-manipulation"
+                          className="w-full rounded-xl border border-dashed border-zinc-800/85 bg-[#07070a]/75 px-3.5 py-2 flex items-center justify-between gap-3"
                         >
                           <div className="flex flex-col justify-center min-w-0">
-                            <span className="text-[10px] font-medium text-zinc-400 group-hover:text-zinc-300 transition-colors truncate">
+                            <span className="text-[10px] font-medium text-zinc-400 truncate">
                               {item.fluidLabel}
                             </span>
                             <div className="flex items-center gap-2 mt-0.5 min-w-0">
-                              <span className="font-mono tabular-nums text-xs sm:text-sm font-bold text-white group-hover:text-accent-light transition-colors">
+                              <span className="font-mono tabular-nums text-xs font-bold text-zinc-300">
                                 {item.fromTime} – {item.toTime}
                               </span>
                               <span className="text-[10px] text-zinc-500 truncate">
-                                · vaga disponível
+                                · {item.durationLabel} livre
                               </span>
                             </div>
                           </div>
-
-                          <span className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700/90 text-[11px] font-semibold text-zinc-200 group-hover:border-accent/50 group-hover:bg-accent/15 group-hover:text-accent-light transition-all whitespace-nowrap">
-                            + Encaixar
-                          </span>
-                        </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -1037,6 +1008,7 @@ export default function AgendaPage() {
                     closingTime={shopClosingTime}
                     busy={busyId === item.appointment.id}
                     onSelect={(appt) => setSelectedAppointmentId(appt.id)}
+                    onMove={(appt) => setMoveTarget(appt)}
                   />
                 );
               })}
@@ -1089,10 +1061,53 @@ export default function AgendaPage() {
           setProductTarget(appt);
         }}
         onEditService={setEditServiceTarget}
+        onMoveAppointment={setMoveTarget}
         onOpenPreSchedule={setPreScheduleTarget}
         onProductRemoved={() => {
           invalidateCache(cacheKeys.products());
           invalidateCache("finance:");
+          load({ silent: true });
+        }}
+      />
+
+      <MoveAppointmentSheet
+        open={Boolean(moveTarget)}
+        onClose={() => setMoveTarget(null)}
+        appointment={moveTarget}
+        existingAppointments={appointments}
+        closingTime={shopClosingTime}
+        onMoved={(res) => {
+          if (moveTarget?.id && res?.startTime) {
+            const formattedStart = `${String(res.startTime).slice(0, 5)}:00`;
+            const formattedEnd = res.endTime
+              ? `${String(res.endTime).slice(0, 5)}:00`
+              : moveTarget.end_time;
+
+            syncAppointmentsState((prev) => {
+              const updated = prev.map((a) =>
+                a.id === moveTarget.id
+                  ? {
+                      ...a,
+                      appointment_time: formattedStart,
+                      start_time: formattedStart,
+                      end_time: formattedEnd,
+                      duration_minutes: res.durationMinutes ?? a.duration_minutes,
+                    }
+                  : a
+              );
+              return [...updated].sort((x, y) => {
+                const tx = String(x.appointment_time || "99:99").slice(0, 5);
+                const ty = String(y.appointment_time || "99:99").slice(0, 5);
+                return tx.localeCompare(ty);
+              });
+            });
+          }
+          invalidateCache("appointments:");
+          toast.success(
+            res?.startTime && res?.endTime
+              ? `Atendimento movido para ${res.startTime} – ${res.endTime}!`
+              : "Horário do atendimento atualizado!"
+          );
           load({ silent: true });
         }}
       />
@@ -1120,8 +1135,12 @@ export default function AgendaPage() {
                       client_phone:
                         res?.clientPhone !== undefined ? res.clientPhone : a.client_phone,
                       service_id: res?.serviceId || a.service_id,
+                      service_ids: res?.serviceIds || a.service_ids,
                       service: res?.serviceName || a.service,
                       duration_minutes: res?.durationMinutes ?? a.duration_minutes,
+                      end_time: res?.endTime
+                        ? `${String(res.endTime).slice(0, 5)}:00`
+                        : a.end_time,
                       price: res?.newTotal ?? a.price,
                       total_price: res?.newTotal ?? a.total_price,
                       services: {
@@ -1199,8 +1218,6 @@ export default function AgendaPage() {
         canPickBarber={canViewAll}
         existingAppointments={appointments}
         initialDate={date}
-        initialTime={walkInInitialTime}
-        initialWindow={walkInWindowContext}
       />
 
       <ClientCyclesSheet
