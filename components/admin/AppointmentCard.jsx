@@ -1,6 +1,14 @@
 'use client';
 
-import { CheckCircle2, ShoppingBag, Sparkles, Zap, ChevronRight, ArrowUpDown } from 'lucide-react';
+import {
+  CheckCircle2,
+  ShoppingBag,
+  Sparkles,
+  Zap,
+  ChevronRight,
+  ArrowUpDown,
+  GripVertical,
+} from 'lucide-react';
 import { isPreScheduledAppointment } from '@/lib/pre-scheduled';
 import { parseAppointmentNotes } from './AddProductSheet';
 
@@ -102,6 +110,8 @@ export default function AppointmentCard({
   appointment,
   onSelect,
   onMove,
+  onDragHandlePointerDown,
+  isDragging = false,
   isLast = false,
   closingTime = '20:30',
   busy = false,
@@ -305,13 +315,33 @@ export default function AppointmentCard({
           style={{ minHeight: `${blockMinHeight}px` }}
           className={`w-full text-left rounded-2xl border p-3 transition-all duration-150 flex flex-col justify-between group cursor-pointer active:scale-[0.992] touch-manipulation ${cardSurfaceClass} ${
             busy ? 'opacity-60 pointer-events-none' : ''
+          } ${
+            isDragging
+              ? 'ring-2 ring-emerald-400 border-emerald-400/90 opacity-85 scale-[0.985] shadow-[0_0_25px_rgba(16,185,129,0.3)]'
+              : ''
           }`}
         >
-          {/* Linha 1: Faixa de Horário + Duração (Esquerda) e Mover + Status do Atendimento (Direita) */}
+          {/* Linha 1: Alça de Arraste (Grab Handle) + Faixa de Horário + Duração (Esquerda) e Mover + Status (Direita) */}
           <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-800/70">
-            <div className="flex items-center gap-1.5 font-mono tabular-nums text-[11px]">
+            <div className="flex items-center gap-1.5 font-mono tabular-nums text-[11px] min-w-0">
+              {!isCancelled && onDragHandlePointerDown && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Segure e arraste para mover o atendimento"
+                  title="Segure e arraste para mover na timeline"
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    onDragHandlePointerDown(e, appointment);
+                  }}
+                  className="touch-none select-none cursor-grab active:cursor-grabbing -ml-1.5 mr-0.5 p-1.5 rounded-lg text-zinc-400 hover:text-emerald-400 hover:bg-zinc-900/90 active:bg-emerald-500/20 active:text-emerald-300 transition-colors shrink-0 flex items-center justify-center"
+                >
+                  <GripVertical size={15} />
+                </div>
+              )}
               {startTime && endTime ? (
-                <span className="font-bold">
+                <span className="font-bold truncate">
                   <span className={startTimeClass}>{startTime}</span>
                   <span className="text-zinc-600 mx-1">–</span>
                   <span
@@ -338,7 +368,7 @@ export default function AppointmentCard({
                 </span>
               )}
               <span className="text-zinc-600">·</span>
-              <span className="text-zinc-400 font-medium">{durationMin} min</span>
+              <span className="text-zinc-400 font-medium shrink-0">{durationMin} min</span>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">

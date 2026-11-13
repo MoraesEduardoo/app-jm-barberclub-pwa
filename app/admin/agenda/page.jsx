@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { UserPlus, AlertCircle, RefreshCcw, Sparkles, Clock } from "lucide-react";
+import {
+  UserPlus,
+  AlertCircle,
+  RefreshCcw,
+  Sparkles,
+  Clock,
+  GripVertical,
+  ArrowDownToLine,
+} from "lucide-react";
 import { useBarber } from "@/lib/barber-context";
 import { useNotifications } from "@/lib/notifications";
 import { endSession } from "@/lib/session";
@@ -13,6 +21,7 @@ import {
   confirmAppointment,
   rescheduleAppointment,
   completeAppointmentFiado,
+  moveAppointmentTime,
 } from "@/lib/actions/appointments";
 import {
   cacheKeys,
@@ -92,7 +101,10 @@ function getShopClosingTimeForDate(dateStr) {
  * intercalando agendamentos confirmados/concluídos e faixas minimalistas
  * de Janela Livre nos períodos disponíveis.
  */
-function buildTimelineItems(appointmentsList, { closingTime = "20:30", includeTrailingGap = true } = {}) {
+function buildTimelineItems(
+  appointmentsList,
+  { openingTime = "09:00", closingTime = "20:30", includeTrailingGap = true } = {}
+) {
   if (!Array.isArray(appointmentsList) || appointmentsList.length === 0) {
     return [];
   }
@@ -107,7 +119,8 @@ function buildTimelineItems(appointmentsList, { closingTime = "20:30", includeTr
   });
 
   const items = [];
-  let prevEndMin = null;
+  const openMin = timeStrToMinutes(openingTime) ?? 9 * 60;
+  let prevEndMin = includeTrailingGap ? openMin : null;
   let prevBarberId = null;
 
   sorted.forEach((appt, idx) => {
@@ -118,8 +131,7 @@ function buildTimelineItems(appointmentsList, { closingTime = "20:30", includeTr
     const endMin = timeStrToMinutes(endStr);
     const currentBarberId = appt.barbers?.id || appt.barber_id || null;
 
-    // Qualquer janela livre >= 10 min entre o término anterior e o próximo início
-    // é exibida como faixa minimalista com espaçamento definido e atalho de encaixe
+    // Qualquer janela livre >= 10 min (desde a abertura ou entre atendimentos) vira Zona de Drop na timeline
     if (prevEndMin !== null && startMin !== null && startMin - prevEndMin >= 10) {
       const gapMinutes = startMin - prevEndMin;
       const firstTick = Math.ceil((prevEndMin + 10) / 30) * 30;
@@ -135,6 +147,8 @@ function buildTimelineItems(appointmentsList, { closingTime = "20:30", includeTr
         key: `gap-${prevEndMin}-${startMin}-${idx}`,
         ticks,
         gapMinutes,
+        fromMin: prevEndMin,
+        toMin: startMin,
         fromTime: minutesToTimeStr(prevEndMin),
         toTime: startStr,
         barberId: prevBarberId || currentBarberId,
@@ -181,6 +195,8 @@ function buildTimelineItems(appointmentsList, { closingTime = "20:30", includeTr
       key: `gap-trailing-${prevEndMin}-${closeMin}`,
       ticks,
       gapMinutes,
+      fromMin: prevEndMin,
+      toMin: closeMin,
       fromTime: minutesToTimeStr(prevEndMin),
       toTime: closingTime,
       barberId: prevBarberId,
@@ -268,6 +284,8 @@ export default function AgendaPage() {
   const [filterMode, setFilterMode] = useState("all"); // 'all' | 'confirmado' | 'concluido' | 'pre_scheduled'
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [cyclesOpen, setCyclesOpen] = useState(false);
+  const [dragState, setDragState] = useState(null);
+  const dragStateRef = useRef(null);
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);
 
@@ -723,6 +741,318 @@ export default function AgendaPage() {
     [appointments, selectedAppointmentId]
   );
 
+  /**
+   * Valida se um atendimento (`dragAppt`, duração `durationMin`) pode ser posicionado em `candidateStartMin`
+   * sem ultrapassar o fim do expediente (`shopClosingTime`) e sem colidir com outros agendamentos ativos.
+   */
+  const validateDropSlot = useCallback(
+    (dragAppt, candidateStartMin, durationMin) => {
+      const openMin = shopClosingTime === "12:30" ? 8 * 60 : 9 * 60;
+      const closeMin = timeStrToMinutes(shopClosingTime) ?? 20 * 60 + 30;
+      const endMin = candidateStartMin + durationMin;
+
+      if (candidateStartMin < openMin) {
+        return {
+          valid: false,
+          reason: "Horário anterior à abertura do expediente.",
+        };
+      }
+      if (endMin > closeMin) {
+        return {
+          valid: false,
+          reason: `Ultrapassa o fim do expediente (${shopClosingTime}).`,
+        };
+      }
+
+      const targetBarberId = dragAppt.barbers?.id || dragAppt.barber_id || null;
+      for (const other of activeAppointments) {
+        if (!other || String(other.id) === String(dragAppt.id)) continue;
+        if (targetBarberId) {
+          const otherBarberId = other.barbers?.id || other.barber_id || null;
+          if (otherBarberId && String(otherBarberId) !== String(targetBarberId)) continue;
+        }
+        const oStart = timeStrToMinutes(getAppointmentStartTime(other));
+        const oDur = getAppointmentDuration(other);
+        const oEnd = timeStrToMinutes(getAppointmentEndTime(other, getAppointmentStartTime(other), oDur));
+        if (oStart === null || oEnd === null) continue;
+
+        if (candidateStartMin < oEnd && endMin > oStart) {
+          return {
+            valid: false,
+            reason: `Conflito com ${other.client_name || "outro atendimento"} (${minutesToTimeStr(
+              oStart
+            )} – ${minutesToTimeStr(oEnd)}).`,
+          };
+        }
+      }
+
+      return { valid: true, reason: null };
+    },
+    [activeAppointments, shopClosingTime]
+  );
+
+  /**
+   * Calcula o slot de 10 em 10 minutos para uma Zona de Drop ("Intervalo livre"),
+   * levando em conta se o atendimento arrastado é adjacente ao próprio intervalo.
+   */
+  const resolveGapDropEvaluation = useCallback(
+    (gapItem, dragAppt, durationMin, clientY = null, rect = null) => {
+      if (!gapItem || !dragAppt) return { valid: false };
+
+      const apptStartMin = timeStrToMinutes(getAppointmentStartTime(dragAppt));
+      const apptEndMin =
+        apptStartMin !== null ? apptStartMin + getAppointmentDuration(dragAppt) : null;
+
+      // Se o intervalo livre é imediatamente adjacente ao próprio agendamento arrastado,
+      // a faixa útil disponível une o espaço do próprio card + o intervalo livre
+      let effectiveFromMin = gapItem.fromMin ?? timeStrToMinutes(gapItem.fromTime) ?? 540;
+      let effectiveToMin = gapItem.toMin ?? timeStrToMinutes(gapItem.toTime) ?? 1230;
+
+      if (apptEndMin !== null && Math.abs(apptEndMin - effectiveFromMin) <= 1) {
+        effectiveFromMin = Math.min(effectiveFromMin, apptStartMin);
+      }
+      if (apptStartMin !== null && Math.abs(apptStartMin - effectiveToMin) <= 1) {
+        effectiveToMin = Math.max(effectiveToMin, apptEndMin);
+      }
+
+      const availableSpan = effectiveToMin - effectiveFromMin;
+      if (availableSpan < durationMin) {
+        return {
+          valid: false,
+          snapStartTime: gapItem.fromTime,
+          snapEndTime: minutesToTimeStr((gapItem.fromMin ?? 540) + durationMin),
+          reason: `Intervalo livre (${gapItem.durationLabel}) menor que ${durationMin} min.`,
+        };
+      }
+
+      // Gera todos os pontos de início (de 10 em 10 min) dentro deste intervalo que são 100% válidos
+      const validCandidates = [];
+      for (
+        let slotMin = effectiveFromMin;
+        slotMin + durationMin <= effectiveToMin;
+        slotMin += 10
+      ) {
+        if (slotMin === apptStartMin) continue;
+        const check = validateDropSlot(dragAppt, slotMin, durationMin);
+        if (check.valid) {
+          validCandidates.push(slotMin);
+        }
+      }
+
+      if (validCandidates.length === 0) {
+        const fallbackCheck = validateDropSlot(dragAppt, effectiveFromMin, durationMin);
+        return {
+          valid: false,
+          snapStartTime: minutesToTimeStr(effectiveFromMin),
+          snapEndTime: minutesToTimeStr(effectiveFromMin + durationMin),
+          reason: fallbackCheck.reason || "Sem horário compatível neste intervalo.",
+        };
+      }
+
+      let chosenMin = validCandidates[0];
+      if (clientY !== null && rect && rect.height > 0 && validCandidates.length > 1) {
+        const ratio = Math.max(0, Math.min(0.999, (clientY - rect.top) / rect.height));
+        const idx = Math.min(
+          validCandidates.length - 1,
+          Math.floor(ratio * validCandidates.length)
+        );
+        chosenMin = validCandidates[idx];
+      }
+
+      return {
+        valid: true,
+        snapStartMin: chosenMin,
+        snapStartTime: minutesToTimeStr(chosenMin),
+        snapEndTime: minutesToTimeStr(chosenMin + durationMin),
+        reason: null,
+      };
+    },
+    [validateDropSlot]
+  );
+
+  /**
+   * Inicia o arraste (Drag-and-Drop) exclusivamente a partir da alça `GripVertical`.
+   */
+  const handleDragHandlePointerDown = useCallback(
+    (e, appt) => {
+      if (!appt || busyId) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (filterMode !== "all") {
+        setFilterMode("all");
+      }
+
+      const durationMin = getAppointmentDuration(appt);
+      const startStr = getAppointmentStartTime(appt);
+      const endStr = getAppointmentEndTime(appt, startStr, durationMin);
+
+      const initialDrag = {
+        appointment: appt,
+        durationMin,
+        origStartTime: startStr,
+        origEndTime: endStr,
+        pointerX: e.clientX,
+        pointerY: e.clientY,
+        hoveredGapKey: null,
+        snapStartTime: null,
+        snapEndTime: null,
+        isValidDrop: false,
+        invalidReason: null,
+      };
+
+      dragStateRef.current = initialDrag;
+      setDragState(initialDrag);
+    },
+    [busyId, filterMode]
+  );
+
+  useEffect(() => {
+    if (!dragState?.appointment) return;
+
+    const currentAppt = dragState.appointment;
+    const durationMin = dragState.durationMin;
+
+    function handlePointerMove(e) {
+      if (!dragStateRef.current) return;
+
+      // Auto-scroll suave nas extremidades do ecrã do telemóvel durante o arraste
+      const viewportH = window.innerHeight || 800;
+      if (e.clientY < 88) {
+        window.scrollBy({ top: -10, behavior: "auto" });
+      } else if (e.clientY > viewportH - 96) {
+        window.scrollBy({ top: 10, behavior: "auto" });
+      }
+
+      const dropNodes = document.querySelectorAll("[data-drop-gap-key]");
+      let matchedGapKey = null;
+      let matchedEval = null;
+
+      dropNodes.forEach((node) => {
+        const rect = node.getBoundingClientRect();
+        if (e.clientY >= rect.top - 6 && e.clientY <= rect.bottom + 6) {
+          const key = node.getAttribute("data-drop-gap-key");
+          const gapItem = timelineItems.find((it) => it.type === "gap" && it.key === key);
+          if (gapItem) {
+            matchedGapKey = key;
+            matchedEval = resolveGapDropEvaluation(
+              gapItem,
+              currentAppt,
+              durationMin,
+              e.clientY,
+              rect
+            );
+          }
+        }
+      });
+
+      const nextState = {
+        ...dragStateRef.current,
+        pointerX: e.clientX,
+        pointerY: e.clientY,
+        hoveredGapKey: matchedGapKey,
+        snapStartTime: matchedEval?.snapStartTime || null,
+        snapEndTime: matchedEval?.snapEndTime || null,
+        isValidDrop: Boolean(matchedEval?.valid),
+        invalidReason: matchedEval?.reason || null,
+      };
+
+      dragStateRef.current = nextState;
+      setDragState(nextState);
+    }
+
+    async function handlePointerUp() {
+      const finalDrag = dragStateRef.current;
+      dragStateRef.current = null;
+      setDragState(null);
+
+      if (!finalDrag?.hoveredGapKey) return;
+
+      if (!finalDrag.isValidDrop || !finalDrag.snapStartTime) {
+        if (finalDrag.invalidReason) {
+          toast.warning(finalDrag.invalidReason);
+        }
+        return;
+      }
+
+      const newStart = finalDrag.snapStartTime;
+      const newEnd = finalDrag.snapEndTime;
+      const apptId = finalDrag.appointment.id;
+      const formattedStart = `${newStart}:00`;
+      const formattedEnd = `${newEnd}:00`;
+
+      // Snap otimista instantâneo na timeline
+      const previousAppointments = appointments;
+      setBusyId(apptId);
+
+      syncAppointmentsState((prev) => {
+        const updated = prev.map((a) =>
+          a.id === apptId
+            ? {
+                ...a,
+                appointment_time: formattedStart,
+                start_time: formattedStart,
+                end_time: formattedEnd,
+                duration_minutes: durationMin,
+              }
+            : a
+        );
+        return [...updated].sort((x, y) => {
+          const tx = String(x.appointment_time || "99:99").slice(0, 5);
+          const ty = String(y.appointment_time || "99:99").slice(0, 5);
+          return tx.localeCompare(ty);
+        });
+      });
+
+      try {
+        const res = await moveAppointmentTime({
+          appointmentId: apptId,
+          newStartTime: newStart,
+        });
+
+        if (res?.error === "AUTH_EXPIRED") {
+          endSession();
+          return;
+        }
+
+        if (!res?.success) {
+          syncAppointmentsState(previousAppointments);
+          const msg = res?.error || "Não foi possível mover o atendimento.";
+          toast.error(msg);
+          return;
+        }
+
+        invalidateCache("appointments:");
+        invalidateCache("finance:");
+        toast.success(`Atendimento reposicionado para ${res.startTime} – ${res.endTime}!`);
+        load({ silent: true });
+      } catch {
+        syncAppointmentsState(previousAppointments);
+        toast.error("Sem conexão ao salvar o novo horário.");
+      } finally {
+        setBusyId(null);
+      }
+    }
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: true });
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+  }, [
+    dragState?.appointment,
+    dragState?.durationMin,
+    timelineItems,
+    resolveGapDropEvaluation,
+    appointments,
+    syncAppointmentsState,
+    load,
+  ]);
+
   return (
     <div className="px-4 pt-4 pb-8 relative">
       {/* Assistente de Primeiro Acesso / Bootstrap quando o banco está limpo */}
@@ -929,28 +1259,97 @@ export default function AgendaPage() {
                 <Clock size={12} className="text-accent-light" />
                 <span>Linha do Tempo</span>
               </div>
-              <span className="text-[11px] text-zinc-400">
-                Toque em Mover para reorganizar horários
+              <span className="text-[11px] text-zinc-400 flex items-center gap-1">
+                <GripVertical size={11} className="text-emerald-400" />
+                <span>Segure na alça para arrastar ou toque em Mover</span>
               </span>
             </div>
+
+            {/* Pílula Flutuante de Feedback Durante o Arraste (Mobile Drag HUD) */}
+            {dragState?.appointment && (
+              <div className="sticky top-14 z-30 mb-3 rounded-2xl border border-emerald-400/60 bg-zinc-950/95 backdrop-blur-md px-3.5 py-2.5 shadow-[0_8px_30px_rgba(16,185,129,0.22)] flex items-center justify-between gap-2 animate-in fade-in">
+                <div className="min-w-0 flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-white truncate">
+                      Movendo: {dragState.appointment.client_name || "Cliente"} (
+                      {dragState.durationMin} min)
+                    </p>
+                    <p className="text-[11px] text-emerald-300 truncate">
+                      {dragState.hoveredGapKey
+                        ? dragState.isValidDrop
+                          ? `Solte para fixar às ${dragState.snapStartTime} – ${dragState.snapEndTime}`
+                          : dragState.invalidReason || "Intervalo incompatível"
+                        : "Arraste até um Intervalo livre destacado em verde"}
+                    </p>
+                  </div>
+                </div>
+                {dragState.isValidDrop && dragState.snapStartTime && (
+                  <span className="shrink-0 font-mono tabular-nums text-xs font-extrabold text-black bg-emerald-400 px-2.5 py-1 rounded-lg">
+                    {dragState.snapStartTime} – {dragState.snapEndTime}
+                  </span>
+                )}
+              </div>
+            )}
 
             <div className="relative space-y-1">
               {timelineItems.map((item, index) => {
                 if (item.type === "gap") {
+                  const isDraggingAny = Boolean(dragState?.appointment);
+                  const isHoveredGap =
+                    isDraggingAny && dragState?.hoveredGapKey === item.key;
+
+                  const gapEval = isDraggingAny
+                    ? resolveGapDropEvaluation(
+                        item,
+                        dragState.appointment,
+                        dragState.durationMin
+                      )
+                    : null;
+                  const canDropInGap = Boolean(gapEval?.valid);
+
                   const gapMinHeight = Math.max(
-                    44,
-                    Math.min(96, Math.round(item.gapMinutes * 0.6 + 24))
+                    isDraggingAny ? 64 : 44,
+                    Math.min(112, Math.round(item.gapMinutes * 0.65 + (isDraggingAny ? 34 : 24)))
                   );
+
+                  let dropZoneClasses =
+                    "border-dashed border-zinc-800/85 bg-[#07070a]/75";
+                  if (isDraggingAny) {
+                    if (isHoveredGap && canDropInGap) {
+                      dropZoneClasses =
+                        "border-2 border-dashed border-emerald-300 bg-emerald-500/20 shadow-[0_0_25px_rgba(16,185,129,0.28)] scale-[1.01]";
+                    } else if (canDropInGap) {
+                      dropZoneClasses =
+                        "border-2 border-dashed border-emerald-500/80 bg-emerald-950/30 shadow-[0_0_16px_rgba(16,185,129,0.14)]";
+                    } else {
+                      dropZoneClasses =
+                        "border border-dashed border-rose-500/35 bg-rose-950/15 opacity-70";
+                    }
+                  }
 
                   return (
                     <div
                       key={item.key}
+                      data-drop-gap-key={item.key}
                       className="relative flex items-stretch gap-3 sm:gap-4 select-none"
                     >
                       {/* Coluna Esquerda: Eixo Cronológico do Período Livre */}
                       <div className="w-14 sm:w-16 shrink-0 flex flex-col justify-between items-end pr-3 py-2 relative">
-                        <div className="absolute right-0 top-0 bottom-0 w-px border-r border-dashed border-zinc-800/85" />
-                        <span className="absolute -right-[3.5px] top-1/2 -translate-y-1/2 h-2 w-2 rounded-full border border-zinc-600 bg-oled z-10" />
+                        <div
+                          className={`absolute right-0 top-0 bottom-0 w-px border-r border-dashed ${
+                            isDraggingAny && canDropInGap
+                              ? "border-emerald-400/80"
+                              : "border-zinc-800/85"
+                          }`}
+                        />
+                        <span
+                          className={`absolute -right-[3.5px] top-1/2 -translate-y-1/2 h-2 w-2 rounded-full border z-10 ${
+                            isDraggingAny && canDropInGap
+                              ? "border-emerald-300 bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]"
+                              : "border-zinc-600 bg-oled"
+                          }`}
+                        />
 
                         <span className="font-mono tabular-nums text-[10px] font-medium text-zinc-400 leading-none">
                           {item.fromTime}
@@ -974,25 +1373,62 @@ export default function AgendaPage() {
                         </span>
                       </div>
 
-                      {/* Coluna Direita: Faixa Informativa Limpa de Período Livre (Sem botão rígido de Encaixe) */}
+                      {/* Coluna Direita: Faixa de Intervalo Livre & Drop Zone Interativa */}
                       <div className="flex-1 min-w-0 py-1.5">
                         <div
                           style={{ minHeight: `${gapMinHeight}px` }}
-                          className="w-full rounded-xl border border-dashed border-zinc-800/85 bg-[#07070a]/75 px-3.5 py-2 flex items-center justify-between gap-3"
+                          className={`w-full rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 transition-all duration-150 ${dropZoneClasses}`}
                         >
                           <div className="flex flex-col justify-center min-w-0">
-                            <span className="text-[10px] font-medium text-zinc-400 truncate">
-                              {item.fluidLabel}
+                            <span
+                              className={`text-[10px] font-semibold truncate ${
+                                isDraggingAny && canDropInGap
+                                  ? "text-emerald-300"
+                                  : isDraggingAny && !canDropInGap
+                                  ? "text-rose-300"
+                                  : "text-zinc-400"
+                              }`}
+                            >
+                              {isDraggingAny
+                                ? canDropInGap
+                                  ? isHoveredGap
+                                    ? "✨ Solte aqui para reposicionar o atendimento"
+                                    : "⬇ Zona disponível para soltar atendimento"
+                                  : gapEval?.reason || "Intervalo insuficiente"
+                                : item.fluidLabel}
                             </span>
                             <div className="flex items-center gap-2 mt-0.5 min-w-0">
-                              <span className="font-mono tabular-nums text-xs font-bold text-zinc-300">
+                              <span
+                                className={`font-mono tabular-nums text-xs font-bold ${
+                                  isDraggingAny && canDropInGap
+                                    ? "text-white"
+                                    : "text-zinc-300"
+                                }`}
+                              >
                                 {item.fromTime} – {item.toTime}
                               </span>
-                              <span className="text-[10px] text-zinc-500 truncate">
+                              <span className="text-[10px] text-zinc-400 truncate">
                                 · {item.durationLabel} livre
                               </span>
                             </div>
                           </div>
+
+                          {isDraggingAny && canDropInGap && (
+                            <span
+                              className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-mono tabular-nums text-[11px] font-bold transition-all ${
+                                isHoveredGap
+                                  ? "bg-emerald-400 text-black shadow-md"
+                                  : "bg-emerald-500/20 border border-emerald-400/50 text-emerald-200"
+                              }`}
+                            >
+                              <ArrowDownToLine size={12} />
+                              <span>
+                                {isHoveredGap && dragState?.snapStartTime
+                                  ? `${dragState.snapStartTime} – ${dragState.snapEndTime}`
+                                  : `${gapEval.snapStartTime} – ${gapEval.snapEndTime}`}
+                              </span>
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1007,8 +1443,10 @@ export default function AgendaPage() {
                     isLast={isLastItem}
                     closingTime={shopClosingTime}
                     busy={busyId === item.appointment.id}
+                    isDragging={dragState?.appointment?.id === item.appointment.id}
                     onSelect={(appt) => setSelectedAppointmentId(appt.id)}
                     onMove={(appt) => setMoveTarget(appt)}
+                    onDragHandlePointerDown={handleDragHandlePointerDown}
                   />
                 );
               })}
