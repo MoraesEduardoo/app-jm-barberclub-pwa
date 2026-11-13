@@ -262,50 +262,80 @@ export default function ServicosPage() {
 
   return (
     <div className="px-4 pt-4 pb-32">
-      {/* Seletor Serviços / Produtos / Conveniência (Conveniência restrito ao Barbeiro Chefe) */}
+      {/* Seletor Minimalista por Ícones: Serviços / Produtos / Conveniência */}
       <div
         className={`grid ${
           isChief ? 'grid-cols-3' : 'grid-cols-2'
-        } gap-1.5 bg-surface border border-zinc-800 rounded-xl p-1 mb-4`}
+        } gap-1.5 bg-zinc-950 border border-zinc-800/90 rounded-xl p-1 mb-4`}
       >
         <button
           type="button"
+          title="Serviços"
+          aria-label="Serviços"
           onClick={() => setActiveTab('services')}
-          className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+          className={`flex items-center justify-center gap-1.5 h-10 rounded-lg transition-all active:scale-[0.98] touch-manipulation ${
             activeTab === 'services'
               ? 'bg-accent text-white shadow-sm'
-              : 'text-zinc-400 hover:text-white'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-900/60'
           }`}
         >
-          <Scissors size={14} />
-          <span>Serviços ({services.length})</span>
+          <Scissors size={16} className="shrink-0" />
+          <span
+            className={`font-mono tabular-nums text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none ${
+              activeTab === 'services'
+                ? 'bg-black/25 text-white'
+                : 'bg-zinc-900 text-zinc-400 border border-zinc-800'
+            }`}
+          >
+            {services.length}
+          </span>
         </button>
 
         <button
           type="button"
+          title="Produtos"
+          aria-label="Produtos"
           onClick={() => setActiveTab('products')}
-          className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+          className={`flex items-center justify-center gap-1.5 h-10 rounded-lg transition-all active:scale-[0.98] touch-manipulation ${
             activeTab === 'products'
               ? 'bg-accent text-white shadow-sm'
-              : 'text-zinc-400 hover:text-white'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-900/60'
           }`}
         >
-          <Package size={14} />
-          <span>Produtos ({regularProducts.length})</span>
+          <Package size={16} className="shrink-0" />
+          <span
+            className={`font-mono tabular-nums text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none ${
+              activeTab === 'products'
+                ? 'bg-black/25 text-white'
+                : 'bg-zinc-900 text-zinc-400 border border-zinc-800'
+            }`}
+          >
+            {regularProducts.length}
+          </span>
         </button>
 
         {isChief && (
           <button
             type="button"
+            title="Conveniência"
+            aria-label="Conveniência"
             onClick={() => setActiveTab('convenience')}
-            className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+            className={`flex items-center justify-center gap-1.5 h-10 rounded-lg transition-all active:scale-[0.98] touch-manipulation ${
               activeTab === 'convenience'
                 ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-white'
+                : 'text-zinc-400 hover:text-white hover:bg-zinc-900/60'
             }`}
           >
-            <Coffee size={14} />
-            <span>Conveniência ({convenienceProducts.length})</span>
+            <Coffee size={16} className="shrink-0" />
+            <span
+              className={`font-mono tabular-nums text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none ${
+                activeTab === 'convenience'
+                  ? 'bg-black/25 text-white'
+                  : 'bg-zinc-900 text-zinc-400 border border-zinc-800'
+              }`}
+            >
+              {convenienceProducts.length}
+            </span>
           </button>
         )}
       </div>
