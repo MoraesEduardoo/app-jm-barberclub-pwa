@@ -37,6 +37,7 @@ import PendingClientDebtSheet, {
   PendingClientRow,
 } from "@/components/admin/PendingClientDebtSheet";
 import PaymentSheet from "@/components/admin/PaymentSheet";
+import RevenueBreakdownSheet from "@/components/admin/RevenueBreakdownSheet";
 
 const RANGES = [
   { key: "hoje", label: "Hoje" },
@@ -84,6 +85,7 @@ export default function FinanceiroPage() {
   const [summary, setSummary] = useState(() => getCache(financeCacheKey) || null);
   const [loading, setLoading] = useState(() => !getCache(financeCacheKey));
   const [settlementOpen, setSettlementOpen] = useState(false);
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [selectedClientKey, setSelectedClientKey] = useState(null);
   const [paymentTarget, setPaymentTarget] = useState(null);
   const requestIdRef = useRef(0);
@@ -120,6 +122,21 @@ export default function FinanceiroPage() {
       pendingClientGroups.find((g) => g.key === selectedClientKey) || null,
     [pendingClientGroups, selectedClientKey]
   );
+
+  const activePeriodLabel = useMemo(() => {
+    if (range === "hoje") return "Hoje";
+    if (range === "semana") return `Semana · ${formatWeekRangePT(selectedWeekStart, true)}`;
+    if (range === "mes") return `Mês · ${formatMonthYearPT(selectedMonth)}`;
+    return "Período";
+  }, [range, selectedWeekStart, selectedMonth]);
+
+  const activeBarberLabel = useMemo(() => {
+    if (!effectiveScope) return "Todos os barbeiros";
+    const found = team.find((m) => String(m.id) === String(effectiveScope));
+    if (found?.name) return found.name;
+    if (barber && String(barber.id) === String(effectiveScope)) return barber.name;
+    return "Barbeiro selecionado";
+  }, [effectiveScope, team, barber]);
 
   function changeScope(id) {
     if (isChefe) selectBarber(id === "todos" ? null : id);
@@ -363,17 +380,30 @@ export default function FinanceiroPage() {
       ) : (
         <>
           <div className="grid grid-cols-2 gap-2.5 mb-4">
-            <div className="bg-surface border border-zinc-800 rounded-xl p-3.5">
-              <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-medium mb-1">
-                <TrendingUp size={13} /> Faturado
+            <button
+              type="button"
+              onClick={() => setBreakdownOpen(true)}
+              aria-label="Ver detalhamento do faturamento por categorias"
+              className="group bg-surface hover:bg-zinc-900/90 border border-zinc-800 hover:border-emerald-500/40 rounded-xl p-3.5 text-left transition-all active:scale-[0.98] touch-manipulation select-none focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+            >
+              <div className="flex items-center justify-between gap-1.5 mb-1">
+                <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-medium">
+                  <TrendingUp size={13} /> Faturado
+                </div>
+                <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-zinc-900/90 border border-zinc-800 group-hover:border-emerald-500/40 text-zinc-400 group-hover:text-emerald-400 transition-colors">
+                  <ChevronRight size={12} />
+                </span>
               </div>
-              <p className="text-white font-bold text-lg">
+              <p className="text-white font-bold text-lg font-mono tabular-nums">
                 {formatBRL(summary.totalFaturado)}
               </p>
-              <p className="text-zinc-500 text-[11px]">
-                {summary.pagos.length} pagamento(s)
+              <p className="text-zinc-500 text-[11px] flex items-center justify-between gap-1">
+                <span>{summary.pagos.length} pagamento(s)</span>
+                <span className="text-[10px] text-emerald-400/80 font-medium">
+                  Detalhes
+                </span>
               </p>
-            </div>
+            </button>
             <div className="bg-surface border border-zinc-800 rounded-xl p-3.5">
               <div className="flex items-center gap-1.5 text-accent-light text-xs font-medium mb-1">
                 <AlertCircle size={13} /> A receber
@@ -523,6 +553,18 @@ export default function FinanceiroPage() {
           invalidateCache("appointments:");
           load({ silent: true });
         }}
+      />
+
+      {/* Modal de Detalhamento do Faturamento por Categorias (Serviços, Produtos, Conveniência) */}
+      <RevenueBreakdownSheet
+        open={breakdownOpen}
+        onClose={() => setBreakdownOpen(false)}
+        summary={summary}
+        from={initialFrom}
+        to={initialTo}
+        scopeBarberId={effectiveScope}
+        periodLabel={activePeriodLabel}
+        barberLabel={activeBarberLabel}
       />
 
       {isChefe && (
