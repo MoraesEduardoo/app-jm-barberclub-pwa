@@ -541,6 +541,12 @@ export default function FinanceiroPage() {
         onClose={() => setSelectedClientKey(null)}
         clientGroup={selectedClientGroup}
         onSelectPayment={(appt) => setPaymentTarget(appt)}
+        onBatchSettled={() => {
+          setSelectedClientKey(null);
+          invalidateCache("finance:");
+          invalidateCache("appointments:");
+          load({ silent: true });
+        }}
       />
 
       {/* Modal de Registro de Pagamento integrado ao Histórico do Cliente */}

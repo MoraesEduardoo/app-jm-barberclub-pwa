@@ -1,0 +1,501 @@
+# Documentação Técnica e Funcional Exaustiva — Painel Administrativo JM Barberclub (v2.8.2) & Especificação de Portabilidade para BarberFlows
+
+> **Propósito do Documento:** Servir como **Gabarito Absoluto de Engenharia Reversa e Arquitetura** do Painel Administrativo do **JM Barberclub (v2.8.2)** (Next.js App Router + Tailwind CSS + Supabase) e seu **Mapeamento Direto 1:1 para o Ecossistema Multi-Tenant BarberFlows**. Nenhuma regra de negócio, assinatura de função, estado de componente, cálculo matemático ou contrato de banco de dados foi omitido.
+
+---
+
+## 1. ARQUITETURA DE LAYOUT E NAVEGAÇÃO DO PAINEL ADMIN
+
+### 1.1. Mapeamento Completo de Rotas, Sub-rotas e Módulos (`/app/admin/*`)
+O Painel Administrativo opera sob um `AdminLayout` central (`/app/admin/layout.jsx`) que encapsula o contexto global de autenticação e permissões (`BarberProvider` em `/lib/barber-context.js`) e o motor de notificações em tempo real isoladas por profissional (`NotificationProvider` em `/lib/notifications.js`).
+
+| Rota / Caminho | Chave de Aba (`activeTab`) | Módulo Funcional | Nível de Acesso (RBAC) |
+| :--- | :--- | :--- | :--- |
+| `/admin` ou `/admin/agenda` | `agenda` | **Agenda Operacional & Timeline Interativa** (Atendimentos do dia, Drag-and-Drop de 10 em 10 min, Pré-Agendamento, Encaixes, Baixa de Pagamento e Fiado). | Todos (`admin`, `manager`, `barber`). Colaborador comum vê apenas a própria agenda, salvo se possuir `view_all_appointments`. |
+| `/admin/servicos` | `servicos` | **Catálogo Unificado (Serviços, Produtos e Conveniência)** com barra superior minimalista de ícones (`Scissors`, `Package`, `Coffee`) + badge numérico. | Leitura para todos; Criação/Edição/Exclusão exige `manage_services` ou `role === 'admin' \| 'manager'`. Aba Conveniência exclusiva do Chefe (`admin`). |
+| `/admin/expediente` | `expediente` | **Gestão de Expediente Semanal, Pausas, Folgas e Exceções** (Horários por dia da semana `0..6`, intervalos de almoço e bloqueios de agenda). | Próprio expediente para `barber`; Edição de outros barbeiros exige `manage_schedule_others` ou liderança. |
+| `/admin/equipe` | `equipe` | **Gestão de Colaboradores, Comissões Individuais, Especialidades (`custom_duration` / `custom_price`) e Permissões Granulares**. | Visualização conforme cargo; Edição de alíquotas, cargos e acertos exclusiva do Chefe (`admin`). |
+| `/admin/financeiro` | `financeiro` | **Caixa, Faturamento, Detalhamento por Categorias (Drill-Down) & Contas a Receber (Fiados)**. Inclui abas *"Quem pagou"* e *"Quem não pagou"* agrupado por cliente. | Sem `manage_finance`, o servidor força `scopeBarberId = ctx.barber.id` (vê apenas o próprio caixa/comissão). Com `manage_finance` / `admin`, filtra entre `"Todos"` ou qualquer barbeiro. |
+| `/admin/financeiro/completo` | `financeiro` | **DRE Gerencial, Livro Caixa Completo, Despesas Operacionais (`cash_flow` / `cash_entries`) e Saldo Líquido**. | **Exclusivo Chefe (`requireChefe`)**. Redireciona qualquer outro cargo. |
+| `/admin/clientes` | `clientes` | **Base Consolidada de Clientes (CRM)** indexada por telefone normalizado, com filtros (*Todos*, *Fiéis 3+ cortes*, *Atrasados >30 dias*, *Novos*). | Todos (escopo filtrado por barbeiro ou global conforme `view_all_appointments`). |
+| `/admin/cancelados` | `cancelados` | **Auditoria de Cancelamentos e No-Shows** com motivo, autor do cancelamento e carimbo de data/hora. | Todos os barbeiros autenticados (escopo próprio ou global). |
+| `/admin/galeria` | `galeria` | **Portfólio & Galeria de Cortes** integrada ao Supabase Storage (`gallery`). | Todos os barbeiros autenticados. |
+
+#### Função de Resolução de Rota Ativa (`resolveTabFromPathname`)
+Localizada em `/app/admin/layout.jsx`:
+- Se `pathname` for `/`, `/admin` ou começar com `/admin/agenda`, força `activeTab = 'agenda'` e executa `router.replace('/admin/agenda')` na montagem inicial.
+- Faz *prefetch* automático (`router.prefetch`) de todas as rotas principais e secundárias assim que o `BottomNav` monta, além de executar `warmupAdminTabsData()` no `onPointerEnter` / `onTouchStart` para latência zero (`0ms`) na troca de abas.
+
+---
+
+### 1.2. Estrutura Visual Responsiva e Design System (OLED Dark)
+
+#### Paleta de Cores e Tokens Visuais
+- **Tema Base (OLED True Black):**
+  - Fundo primário da aplicação: `#000000` (`bg-black`) e `#0A0A0C` / `#09090d` (`bg-zinc-950`, `bg-surface`).
+  - Superfícies elevadas (cards, inputs, drawers): `#121216` / `bg-zinc-900/90` (`bg-elevated`) com bordas de alto contraste sutil `border-zinc-800/90` ou `border-zinc-900`.
+- **Acentos Cromáticos (Mapeamento JM Barberclub $\rightarrow$ BarberFlows):**
+  - **No JM Barberclub (`v2.8.2`):** Cor primária de destaque em Vermelho Carmesim (`#DC2626` / `bg-red-600`, `text-accent`, `text-accent-light`) e Esmeralda (`#10B981` / `text-emerald-400`) para confirmações financeiras.
+  - **No BarberFlows (Target Port):** Substituição direta do token `accent` para **Amarelo Ouro (`#FACC15` / `yellow-400`)** com texto de contraste escuro (`text-black font-bold`) em CTAs primários, mantendo `bg-[#000000]` e `bg-[#0A0A0C]` nos containers OLED.
+- **Tipografia:**
+  - Valores monetários, horários (`HH:MM`), durações (`30 min`), contadores e telefones utilizam obrigatoriamente `font-mono tabular-nums` para alinhamento vertical perfeito em listas financeiras e na timeline.
+
+#### Comportamento Responsivo: Desktop vs. Mobile (Thumb-Zone)
+1. **Mobile First (Pílula Flutuante Inferior — `BottomNav.jsx`):**
+   - Posicionada fixa na zona do polegar (`fixed inset-x-0 bottom-0 z-40 px-3.5 pb-[calc(env(safe-area-inset-bottom,0px)+12px)]`).
+   - Container em formato pílula translúcida: `mx-auto max-w-md rounded-full bg-zinc-950/90 backdrop-blur-md border border-zinc-900 shadow-2xl px-2 py-1`.
+   - **4 Abas Laterais Simétricas:**
+     - Esquerda: `Agenda` (`CalendarDays`), `Serviços` (`Scissors`).
+     - Direita: `Expediente` (`Clock`), `Equipa` (`Users2`).
+     - Indicador ativo superior em cada aba: barra luminosa `h-1 w-5 rounded-full` no topo do ícone ativo.
+   - **Botão Central Flutuante Elevado (FAB `+`):**
+     - Sobressai da pílula com `-mt-6 h-13 w-13 sm:h-14 sm:w-14 rounded-full ring-4 ring-black/95 shadow-lg`.
+     - Dispara o evento customizado `window.dispatchEvent(new CustomEvent('jm:open-walkin'))` se já estiver na Agenda, ou define `window.__jmOpenWalkInOnMount = true` e navega para `/admin/agenda` abrindo imediatamente o modal de Novo Atendimento / Encaixe.
+2. **Desktop (Sidebar Fixa + Header Operacional — Padrão BarberFlows):**
+   - Em viewports `lg:` ($\ge 1024\text{px}$), a navegação expande-se em **Sidebar Vertical Fixa** à esquerda (`w-64 bg-[#0A0A0C] border-r border-zinc-900`) listando diretamente todos os módulos (Agenda, Caixa, Fiados, Catálogo, Colaboradores, Clientes, Configurações), enquanto em telas `< 1024px` preserva a barra inferior flutuante (`BottomNav`) + Gaveta Lateral (`HamburgerDrawer`).
+
+---
+
+### 1.3. Arquitetura de Modais (`BottomSheet`), Gavetas (`HamburgerDrawer`), Tooltips, Toasts e Tecla `Escape`
+
+1. **`BottomSheet.jsx` (Modal Universal via React Portal):**
+   - Renderizado diretamente em `document.body` via `createPortal(content, document.body)`. Isso impede que ancestrais com `backdrop-filter` ou `transform` quebrem o posicionamento fixo no iOS Safari.
+   - **Bloqueio de Scroll Seguro:** Ao abrir (`open === true`), salva `document.body.style.overflow` e aplica `document.body.style.overflow = 'hidden'`, restaurando no cleanup sem perder a posição de scroll da timeline.
+   - **Altura Dinâmica:** `max-h-[88dvh]` para adaptação automática quando o teclado virtual do telemóvel abre.
+   - **Fecho Global com `Escape` e Backdrop:**
+     - Clique no backdrop (`bg-black/75 backdrop-blur-sm`), clique no botão `X` superior direito ou acionamento da tecla `Escape` (`keydown` listener global `if (e.key === 'Escape') onClose()`) fecha imediatamente o modal/gaveta ativo no topo da pilha.
+2. **`HamburgerDrawer.jsx` (Gaveta de Navegação Secundária e Ações Rápidas):**
+   - Acessada pelo botão de menu no `Header.jsx`.
+   - Exibe perfil do barbeiro logado, badge de cargo (`Chefe`, `Gerente`, `Barbeiro`), versão do sistema (`v2.8.2`), links para **Caixa & Faturamento**, **Financeiro Completo (DRE)** (se Chefe), **Acerto de Comissões** (`onOpenSettlement`), **Ciclos de Retorno / Recorrências** (`onOpenRecorrencias`), **Clientes**, **Cancelados**, **Galeria**, **Ajuda p/ Configurar PWA** (`HelpConfigModal`) e botão de **Encerrar Sessão**.
+3. **`ToastStack.jsx` & `/lib/toast.js` (Sistema Global de Alertas e Feedback):**
+   - Barramento de eventos leve (`toast.success(msg)`, `toast.error(msg)`, `toast.info(msg)`).
+   - Renderiza notificações empilhadas no topo da viewport (`z-[60]`) com auto-dismiss configurável (padrão `3500ms`), ícones semânticos (`CheckCircle2`, `AlertCircle`, `Info`) e animação de entrada/saída suave.
+
+---
+
+## 2. MÓDULO 1: AGENDA OPERACIONAL & TIMELINE DE ATENDIMENTOS
+
+### 2.1. Filtros de Visualização por Barbeiro e Seletor de Datas
+
+#### Filtro de Escopo por Profissional (`scopeBarberId`)
+- **Regra de Permissão:**
+  - Se `isLeadership(barber)` (`role === 'admin' || role === 'manager'`) ou `hasPermission(barber, 'view_all_appointments')`: exibe barra horizontal de pílulas no topo da Agenda com **`Todos`** (`selectedBarberId = null`) + um botão para cada barbeiro ativo da equipe (ex: **Matheus**, **William**).
+  - Se colaborador sem permissão global: o filtro fica oculto e o backend força `effectiveBarberId = ctx.barber.id`.
+
+#### Seletor de Datas (`DateStepper.jsx` e Atalhos Rápidos)
+- **Navegação Temporal:**
+  - Setas laterais (`ChevronLeft` / `ChevronRight`) que avançam ou retrocedem 1 dia (`shiftDate(selectedDate, -1 | +1)`) no fuso horário oficial da barbearia (`America/Fortaleza`, `UTC-3`).
+  - Atalhos rápidos contextuais: **Ontem**, **Hoje** (botão de retorno rápido sempre visível quando `selectedDate !== todayInShop()`) e **Amanhã**.
+  - **Calendário Nativo Integrado:** Toque sobre o rótulo central da data abre o seletor de data (`<input type="date" />` sobreposto com `opacity-0 cursor-pointer` ou modal de calendário), permitindo saltar para qualquer data passada ou futura.
+
+---
+
+### 2.2. Regras da Grade de Horários (Slots de 10 em 10 Minutos e Duração Dinâmica)
+
+#### Motor de Geração de Slots (`/lib/slots.js` e `/lib/actions/appointments.js`)
+1. **Granularidade Estrita de 10 Minutos (`SLOT_STEP_MINUTES = 10`):**
+   - Toda a malha de tempo da barbearia é discretizada em passos de **10 minutos** (`09:00`, `09:10`, `09:20`, `09:30`, ..., até o fecho do expediente, ex: `20:30` de Segunda a Sábado e `12:30` aos Domingos).
+   - Função `roundUpToNextSlot(date)`: arredonda qualquer horário atual para o próximo múltiplo de 10 minutos (`Math.ceil(minutes / 10) * 10`).
+2. **Resolução Hierárquica de Duração e Preço (`resolveBarberServiceDetails` & `resolveMultipleBarberServicesDetails`):**
+   - Para um único serviço: consulta em paralelo `services` (`duration_minutes`, `price`) e `barber_services` (`custom_duration`, `custom_price` filtrando por `barber_id` e `service_id`).
+   - Fórmula de precedência:
+     $$\text{durationMinutes} = \text{barber\_services.custom\_duration} \ ?? \ \text{services.duration\_minutes} \ ?? \ 30$$
+     $$\text{price} = \text{barber\_services.custom\_price} \ ?? \ \text{services.price} \ ?? \ 0$$
+   - **Múltiplos Serviços Combinados (`service_ids: uuid[]` ou string `"Corte + Barba + Sobrancelha"`):**
+     - `resolveMultipleBarberServicesDetails(supabase, barberId, serviceIdsInput, fallbackServiceText)` resolve todos os serviços selecionados, soma as durações individuais de cada serviço para aquele barbeiro ($\sum \text{durationMinutes}_i$) e soma os preços ($\sum \text{price}_i$).
+     - Calcula automaticamente o horário de término exato:
+       $$\text{end\_time} = \text{start\_time} + \sum_{i=1}^{n} \text{durationMinutes}_i$$
+3. **Cálculo de Janelas Ocupadas (`extractBusyRangesFromAppointments`) e Intervalos Livres:**
+   - Na Timeline (`/app/admin/agenda/page.jsx`), o dia é percorrido do `scheduleStart` (`09:00`) ao `scheduleEnd` (`20:30`).
+   - Entre dois atendimentos consecutivos $[t_{\text{end}, k}, t_{\text{start}, k+1})$, se houver diferença $\ge 10\text{ min}$, o sistema renderiza um bloco interativo de **"Intervalo livre"** exibindo a janela exata (ex: `10:20 — 11:00 · 40 min livres`).
+4. **Liberação Antecipada de Agenda (`computeEarlyCompletionTiming`):**
+   - Quando um atendimento do dia atual (`isToday`) é concluído (via pagamento ou fiado) **antes** do horário previsto de término (`nowMin < scheduledEndMin`), o sistema recalcula a duração real arredondada para cima em blocos de 10 minutos (`Math.max(10, Math.ceil((nowMin - startMin) / 10) * 10)`), atualiza `end_time` e libera imediatamente os minutos restantes (`freedMinutes`) na timeline para novos agendamentos!
+
+---
+
+### 2.3. Prevenção de Conflitos de Horário (Anti-Double Booking) e Máquina de Estados
+
+#### Prevenção de Conflitos e Concorrência
+1. **Validação Transacional de Sobreposição:**
+   - Dois intervalos $[S_1, E_1)$ e $[S_2, E_2)$ do mesmo barbeiro na mesma data entram em conflito se, e somente se:
+     $$S_1 < E_2 \quad \land \quad E_1 > S_2$$
+   - Antes de criar (`createWalkIn`), editar duração (`updateAppointmentService`) ou mover (`moveAppointmentTime`), o servidor consulta todos os agendamentos ativos do barbeiro na data e bloqueia qualquer sobreposição, além de validar se $S_1 \ge \text{openMin}$ e $E_1 \le \text{closeMin}$ (limites do expediente) e se não há bloqueio em `barber_exceptions`, `blocked_dates` ou `barber_leaves`.
+   - No banco de dados Supabase, a função RPC transacional / índice parcial único impede *Race Conditions* (dois clientes tentando reservar o mesmo horário simultaneamente).
+
+#### Mapeamento Estrito de Status do Agendamento (JM Barberclub $\leftrightarrow$ BarberFlows)
+Para portabilidade 100% compatível com o schema estrito em inglês do **BarberFlows**, aplica-se a seguinte tabela de estados:
+
+| Estado Funcional | Valor em `JM Barberclub` | Valor Estrito em `BarberFlows` (`appointments.status`) | Comportamento na Grade de Horários |
+| :--- | :--- | :--- | :--- |
+| **Agendado / Confirmado** | `'agendado'` / `'confirmado'` | `'scheduled'` | **Ocupa o slot** na timeline; permite mover, editar serviços, anexar produtos, concluir ou cancelar. |
+| **Concluído** | `'concluido'` | `'completed'` | Atendimento finalizado. Se concluído mais cedo hoje, encolhe o `end_time` liberando os slots seguintes. |
+| **Cancelado** | `'cancelado'` | `'canceled'` | **Libera imediatamente os slots** na timeline (`status !== 'canceled'`); grava registo de auditoria com motivo. |
+| **Não Compareceu (Falta)** | `'ausente'` / `'no_show'` | `'no_show'` | Libera o slot ou mantém registo histórico de falta sem gerar receita no caixa. |
+
+---
+
+### 2.4. Movimentação Flexível (Drag-and-Drop Mobile + Modal Mover), Encaixe Rápido e Edição
+
+1. **Arrastar e Soltar na Timeline (`AppointmentCard.jsx` + `/app/admin/agenda/page.jsx`):**
+   - **Alça Dedicada (`GripVertical`):** Cada cartão de atendimento possui uma alça de arraste exclusiva à esquerda (`touch-none cursor-grab active:cursor-grabbing`). O arraste **só inicia** ao segurar na alça, preservando 100% a rolagem vertical nativa da tela no telemóvel.
+   - **Zonas de Drop (`Intervalo livre`):** Durante o arraste (`draggingAppointment !== null`), todos os blocos de *"Intervalo livre"* na timeline transformam-se em Drop Zones destacadas com borda tracejada verde brilhante (`border-2 border-dashed border-emerald-500/80 bg-emerald-950/25`).
+   - **Snap Automático de 10 em 10 Minutos:** Ao mover o dedo sobre um intervalo livre de mais de 10 minutos, calcula a posição vertical relativa (`offsetY / rect.height`) e faz *snap* automático em múltiplos de 10 minutos (`Math.floor(rawOffsetMin / 10) * 10`), exibindo em tempo real o badge `"Soltar em HH:MM"`.
+   - **Validação e Persistência (`moveAppointmentTime`):** Verifica se a duração total do atendimento cabe no intervalo livre antes de soltar; atualiza otimisticamente a UI e persiste `appointment_time`, `end_time` e `duration_minutes` no Supabase.
+2. **Modal de Reposicionamento Rápido (`MoveAppointmentSheet.jsx`):**
+   - Alternativa acessível via clique em *"Mover Horário"* dentro do `AppointmentActionSheet`, listando todos os slots livres do dia que comportam a duração total do atendimento.
+3. **Novo Atendimento / Encaixe (`WalkInSheet.jsx` e `PreScheduleSheet.jsx`):**
+   - Permite selecionar Barbeiro, Data (incluindo dias anteriores para lançamentos retroativos ou dias futuros), Múltiplos Serviços, Horário na grelha completa do expediente (`09:00` ao fecho, destacando slots futuros e identificando visualmente horários passados) e Cliente (com busca instantânea e autocompletar por nome ou telefone).
+4. **Edição Completa de Atendimento (`EditServiceSheet.jsx` $\rightarrow$ `updateAppointmentService`):**
+   - Permite editar simultaneamente:
+     - **Dados Cadastrais do Cliente:** Nome (`clientName`) e Telemóvel/WhatsApp (`clientPhone`), sincronizando automaticamente na tabela de clientes via `upsertClientByPhone`.
+     - **Múltiplos Serviços (`selectedServiceIds: []`):** Checkboxes interativos que somam em tempo real o novo tempo total (`duration_minutes`), o novo `end_time` e o novo preço total (`servicePrice + productsSubtotal`), recalculando também a comissão do barbeiro.
+
+---
+
+## 3. MÓDULO 2: CHECKOUT, CAIXA E RATEIO DE COMISSÕES
+
+### 3.1. Modal de Baixa de Comanda (`CheckoutPaymentModal` / `PaymentSheet` + `AddProductSheet`)
+
+#### Inclusão de Produtos e Conveniência com Baixa Automática de Estoque
+- **Fluxo de Adição (`addProductToAppointment`):**
+  1. Valida se o produto existe e se `product.stock_quantity >= item.quantity`. Caso contrário, bloqueia com erro explícito informando o saldo disponível.
+  2. Abate imediatamente o estoque no banco (`stock_quantity = currentStock - item.quantity`) com lista de *rollback* (`updatedStockRollbacks`) caso a atualização da comanda falhe.
+  3. Regista os itens na comanda (em `appointment_items` no BarberFlows e serializado em `appointments.notes` + `appointment_convenience_items` no JM Barberclub no formato `[PRODUTO:<id>:<qty>:<unitPrice>] <qty>x <Nome> (R$ <subtotal>)` ou `[CONVENIENCIA:<id>:<qty>:<unitPrice>]`).
+  4. **Estorno de Produto (`removeProductFromAppointment`):** Ao remover um item da comanda antes ou depois, devolve exatamente `qty` unidades ao `stock_quantity` do produto e recalcula o total e a comissão.
+
+#### Aplicação de Desconto em Reais (R$) com Rateio Proporcional (Regra de Checkout)
+Quando o operador aplica um desconto em reais ($D \ge 0$) no fechamento da comanda (`CheckoutPaymentModal` / `registerPayment` quando `parsedAmount < grossTotal`):
+- Seja:
+  - $S_{\text{bruto}}$ = Subtotal bruto dos Serviços
+  - $P_{\text{bruto}}$ = Subtotal bruto dos Produtos de barbearia
+  - $C_{\text{bruto}}$ = Subtotal bruto de Conveniência
+  - $T_{\text{bruto}} = S_{\text{bruto}} + P_{\text{bruto}} + C_{\text{bruto}}$ = Valor Bruto Total da Comanda
+  - $D = \max(0, T_{\text{bruto}} - T_{\text{cobrado}})$ = Desconto em Reais (R$) aplicado no checkout
+- **Fórmula de Rateio Proporcional do Desconto entre Serviços e Produtos:**
+  Para que nem a barbearia nem o barbeiro sejam prejudicados desproporcionalmente pelo desconto concedido no caixa, o desconto $D$ é distribuído proporcionalmente ao peso de cada categoria no total bruto:
+  $$w_S = \frac{S_{\text{bruto}}}{T_{\text{bruto}}}, \quad w_P = \frac{P_{\text{bruto}}}{T_{\text{bruto}}}, \quad w_C = \frac{C_{\text{bruto}}}{T_{\text{bruto}}}$$
+  $$S_{\text{líquido}} = \text{round}\left(S_{\text{bruto}} - D \cdot w_S, 2\right)$$
+  $$P_{\text{líquido}} = \text{round}\left(P_{\text{bruto}} - D \cdot w_P, 2\right)$$
+  $$C_{\text{líquido}} = \text{round}\left(T_{\text{cobrado}} - S_{\text{líquido}} - P_{\text{líquido}}, 2\right)$$
+- Caso o valor cobrado no checkout seja editado manualmente para menos que a soma, o motor `calculateAppointmentFinance` ajusta a base líquida sobre a qual incidem os percentuais de comissão.
+
+---
+
+### 3.2. Regras Exatas de Rateio de Comissão (`/lib/commission.js`)
+
+O motor central `calculateAppointmentFinance(appointment, barber)` e `getBarberCommissionRates(barber)` implementa duas regras de negócio distintas baseadas no perfil do profissional:
+
+1. **Proprietário / Barbeiro Chefe (`isOwnerBarber(barber)` — `barber.role === 'admin'` ou nome `"Matheus"`):**
+   - **Taxa sobre Serviços (`OWNER_SERVICE_RATE`):** `100%`
+   - **Taxa sobre Produtos (`OWNER_PRODUCT_RATE`):** `100%`
+   - **Taxa sobre Conveniência (`OWNER_CONVENIENCE_RATE`):** `100%`
+   - **Retenção do Caixa da Barbearia (`shopRetentionAmount`):** `R$ 0,00` (100% do valor faturado fica consolidado para o proprietário/caixa).
+2. **Colaboradores / Barbeiros Parceiros (ex: William e demais membros com `role === 'barber'` ou `'manager'`):**
+   - **Taxa sobre Serviços (`serviceRate`):** `barber.commission_percent ?? barber.commission_rate ?? 50%` (`DEFAULT_COLLABORATOR_SERVICE_RATE = 50`).
+   - **Taxa sobre Produtos de Barbearia (`productRate`):** `barber.product_commission_percent ?? 10%` (`DEFAULT_COLLABORATOR_PRODUCT_RATE = 10`).
+   - **Taxa sobre Conveniência (`convenienceRate`):** `0%` (`COLLABORATOR_CONVENIENCE_RATE = 0` — 100% da receita de bebidas/snacks é retida para o caixa geral da barbearia).
+   - **Cálculo Exato da Comissão do Colaborador:**
+     $$\text{serviceCommission} = \text{round}\left(S_{\text{líquido}} \times \frac{\text{serviceRate}}{100}, 2\right)$$
+     $$\text{productCommission} = \text{round}\left(P_{\text{líquido}} \times \frac{\text{productRate}}{100}, 2\right)$$
+     $$\text{commissionAmount} = \text{serviceCommission} + \text{productCommission}$$
+     $$\text{shopRetentionAmount} = T_{\text{cobrado}} - \text{commissionAmount}$$
+
+---
+
+### 3.3. Formas de Liquidação, Detalhamento por Categorias e Livro Caixa (`cash_flow` / `cash_entries`)
+
+#### Formas de Liquidação Suportadas
+- **`pix`** (`Pix` — ícone `QrCode`)
+- **`dinheiro` / `cash`** (`Dinheiro` — ícone `Banknote`)
+- **`cartao` / `card`** (`Cartão` — ícone `CreditCard`)
+
+#### Efeitos Atômicos ao Confirmar Pagamento (`registerPayment` / RPC `register_payment_atomic`)
+1. Atualiza o agendamento para `status = 'concluido'` (`'completed'` no BarberFlows), `payment_status = 'pago'` (`'paid'`), `payment_method`, `price = parsedAmount`, `total_price = parsedAmount`, `barber_commission_amount = commissionAmount`.
+2. Regista a entrada financeira correspondente no Livro Caixa (`cash_flow` / `cash_entries`) com `type = 'income'` (`'entrada'`), `category = 'atendimento'`, `amount = parsedAmount`, `payment_method`, `barber_id` e `appointment_id`.
+
+#### Card "Faturado" Interativo e Modal de Drill-Down (`RevenueBreakdownSheet.jsx`)
+- No painel `/admin/financeiro`, o card principal **Faturado** é um botão interativo com indicador `ChevronRight` + `"Detalhes"`.
+- Ao clicar, abre o modal **`Detalhamento do Faturamento`** (`getRevenueBreakdown({ from, to, scopeBarberId })`), que separa cirurgicamente todos os recebimentos confirmados do período e barbeiro selecionados em:
+  1. **Serviços** (`servicosFaturadoBruto`, quantidade de atendimentos, lista agrupada por serviço e percentual sobre o total).
+  2. **Produtos** (`produtosFaturadoBruto`, unidades vendidas, lista agrupada por produto e percentual).
+  3. **Conveniência** (`convenienciaFaturadoBruto`, itens vendidos, lista agrupada por bebida/snack e percentual).
+- Garante invariante contábil estrita:
+  $$\text{Subtotal}_{\text{Serviços}} + \text{Subtotal}_{\text{Produtos}} + \text{Subtotal}_{\text{Conveniência}} \equiv \text{Total Faturado}$$
+
+---
+
+### 3.4. Módulo de Despesas/Saídas Operacionais e Apuração do Saldo Líquido (`/admin/financeiro/completo`)
+
+- **Gestão de Despesas (`listExpenses`, `createExpense`, `updateExpense`, `deleteExpense` em `/lib/actions/finance.js`):**
+  - Categorias de saída suportadas: `aluguel`, `produtos` (reposição de estoque), `contas` (água, luz, internet), `salarios` (gerado automaticamente também pelo fechamento de comissões `executeCommissionSettlement` com recibo `JM-REC-YYYYMMDD-XXXX`), `marketing`, `manutencao`, `outros`.
+- **Apuração em Tempo Real (`getFullFinanceOverview`):**
+  - Executa em paralelo `buildFinanceSummary` (Receita Bruta Total `totalFaturado` e Contas a Receber `totalPendente`) e `queryExpenses` (Despesas `totalDespesas` e agrupamento `porCategoria`).
+  - **Fórmula do Saldo Líquido da Barbearia:**
+    $$\text{Saldo Líquido} = \text{Total Faturado Confirmado} - \sum \text{Despesas Operacionais e Acertos de Comissão}$$
+
+---
+
+## 4. MÓDULO 3: GESTÃO DE FIADOS E CONTAS A RECEBER
+
+### 4.1. Registro de Atendimento no Fiado (`completeAppointmentFiado`)
+- Acionado diretamente no `AppointmentActionSheet` pelo botão **"Finalizar no Fiado / Pendurar"**.
+- Atualiza o agendamento para:
+  - `status = 'concluido'` (`'completed'`)
+  - `payment_status = 'pendente'` (`'unpaid'` / registo ativo em `fiado_records` com `status = 'pending'`)
+  - `payment_method = 'fiado'`
+  - Calcula e preserva `barber_commission_amount = fin.commissionAmount` (que passa a compor o indicador **"Comissão a receber"** do barbeiro).
+  - Se concluído antes do horário previsto hoje, executa `computeEarlyCompletionTiming` para liberar imediatamente os slots de 10 min restantes na agenda.
+
+### 4.2. Agrupamento Inteligente por Cliente (`groupPendingAppointmentsByClient` em `PendingClientDebtSheet.jsx`)
+- Na aba **"Quem não pagou"** em `/admin/financeiro`, os atendimentos pendentes **não** ficam soltos; eles são consolidados por cliente usando chave hierárquica de desduplicação:
+  1. `cleanPhone` (telefone normalizado com $\ge 8$ dígitos e $\neq \text{'00000000000'}$) $\rightarrow$ chave `phone:<cleanPhone>`
+  2. `client_id` (UUID do cliente) $\rightarrow$ chave `cid:<clientId>`
+  3. `normName` (nome normalizado em minúsculas) $\rightarrow$ chave `name:<normName>`
+- **Estrutura de cada Grupo (`clientGroup`):**
+  - `clientId`, `clientName`, `clientPhone`, `cleanPhone`
+  - `appointments`: array de comandas pendentes ordenado da mais recente para a mais antiga
+  - `count`: total de comandas/serviços pendentes do cliente
+  - `totalDebt`: soma acumulada da dívida ($\sum \text{amount}_i$)
+  - `totalCommission`: soma da comissão retida aguardando quitação ($\sum \text{commission\_amount}_i$)
+  - `barberNames`: lista de profissionais que atenderam o cliente
+  - `serviceNames`: resumo dos serviços realizados
+- **Ordenação de Prioridade de Cobrança:**
+  - A lista de devedores é ordenada de forma decrescente pelo **Maior Saldo Devedor (`b.totalDebt - a.totalDebt`)**, com desempate pelo maior número de comandas acumuladas (`b.count - a.count`).
+
+### 4.3. Fluxo de Quitação: Individual vs. "Quitar Tudo em Lote" por Cliente
+1. **Quitação Individual de Comanda:**
+   - Dentro do modal `PendingClientDebtSheet`, cada comanda histórica exibe data, hora, profissional, serviços, produtos anexados, valor e botão **"Registrar pagamento"**.
+   - Ao clicar, abre o `PaymentSheet` para aquela comanda específica, permitindo escolher a forma de pagamento (`pix`, `cartao`, `dinheiro`) e confirmar via `registerPayment`.
+2. **Quitação em Lote ("Quitar Tudo em Lote" por Cliente — Especificação BarberFlows `settleCustomerFiadoBatch`):**
+   - Quando o cliente possui múltiplas notas promissórias em aberto (`clientGroup.count > 1`) e paga o valor integral acumulado (`clientGroup.totalDebt`) de uma só vez:
+   - Seleciona-se o método de liquidação (`pix`, `cash`, `card`) para o lote.
+   - Em uma única operação atômica:
+     - Atualiza todas as comandas do grupo (`appointmentIds`) para `payment_status = 'pago'` e `payment_method = method` (e `fiado_records.status = 'settled'`, `settled_at = now()`).
+     - Gera os lançamentos correspondentes de entrada no Livro Caixa (`cash_entries` / `cash_flow`) na data do recebimento efetivo.
+     - Transfere automaticamente as comissões de todas as comandas quitadas da coluna *"Comissão A Receber"* para *"Comissão Faturada / Liberada"* dos respectivos barbeiros que executaram cada serviço original.
+
+---
+
+## 5. MÓDULO 4: CADASTROS E CONFIGURAÇÕES DO SISTEMA (CATÁLOGO E EQUIPE)
+
+### 5.1. Gestão de Catálogo Unificado (`/app/admin/servicos/page.jsx`)
+- **Navegação Superior Minimalista (Apenas Ícones + Contador):**
+  - 3 botões superiores sem texto:
+    - Ícone `Scissors` (Serviços) + badge numérico `services.length`
+    - Ícone `Package` (Produtos de Barbearia) + badge numérico `barberProducts.length`
+    - Ícone `Coffee` (Conveniência — visível apenas para o Chefe) + badge numérico `convenienceProducts.length`
+- **Gestão de Serviços (`/lib/actions/services.js` + `ServiceFormSheet.jsx`):**
+  - Campos: `name`, `description`, `price` (R$), `duration_minutes` (múltiplos de 10 min: `10, 20, 30, 40, 50, 60...`), `image_url` (upload para Supabase Storage), `active` / `is_active`, `display_order`.
+  - **Vínculo com Barbeiros (`barber_services`):** Cada barbeiro pode ter `custom_duration` e `custom_price` configurados individualmente em `TeamMemberSpecialtiesSheet.jsx`.
+- **Gestão de Produtos e Conveniência (`/lib/actions/products.js` + `ProductFormSheet.jsx`):**
+  - Campos: `name`, `description`, `price`, `stock_quantity` (controle rigoroso de saldo em estoque), `category` (`'barbearia'` vs `'conveniencia'`), `is_convenience` (`boolean`), `image_url`, `is_active`, `display_order`.
+  - Função `seedDefaultConvenienceProducts()` permite popular com 1 clique o catálogo inicial de bebidas e snacks (Água, Refrigerante, Long Neck, Energético, Snack).
+
+### 5.2. Gestão de Colaboradores e Alíquotas Individuais (`/app/admin/equipe/page.jsx` & `/lib/actions/team.js`)
+- **Componentes do Módulo:**
+  - `TeamMemberCard.jsx`: exibe foto, nome, telefone, cargo (`admin`, `manager`, `barber`), chave Pix (`pix_key`), alíquota de comissão (`commission_percent`), switches de permissões (`PERMISSION_KEYS`) e botões para abrir:
+    - `TeamMemberScheduleSheet.jsx`: escala semanal de horários (`barber_schedules`) com abertura, fecho e intervalo de pausa/almoço (`break_start`, `break_end`).
+    - `TeamMemberExceptionsSheet.jsx`: folgas e bloqueios específicos por data (`barber_exceptions` / `barber_leaves`).
+    - `TeamMemberSpecialtiesSheet.jsx`: tempo personalizado (`custom_duration`) e preço específico por serviço (`barber_services`).
+    - `TeamMemberCashSheet.jsx`: extrato financeiro individual do colaborador.
+  - `AddMemberSheet.jsx`: cadastro de novo barbeiro com criação sincronizada em `auth.users` / `barbers`.
+
+### 5.3. Integração de Clientes por Telefone Normalizado (`upsertClientByPhone` & `/lib/actions/clients.js`)
+- **Regra de Chave Primária Lógica por Telefone:**
+  - Todo número de telefone passa por normalização estrita de dígitos: `const cleanPhone = String(phone || '').replace(/\D/g, '')`.
+  - Durante qualquer criação de encaixe (`createWalkIn`), agendamento (`createPreSchedule`) ou edição de atendimento (`updateAppointmentService`), a função `upsertClientByPhone(supabase, { name, phone, existingClientId })` é executada automaticamente:
+    1. Procura registo existente em `clients` (`customers` no BarberFlows) onde `phone == cleanPhone` ou `id == existingClientId`.
+    2. Se encontrar, atualiza o nome (preservando nomes reais sobre placeholders como `"Cliente avulso"`) e `updated_at`.
+    3. Se não encontrar, executa `upsert({ name, phone: cleanPhone }, { onConflict: 'phone' })`.
+- **Classificação Automática de Fidelidade e Retenção (`listClients` + `ClientCyclesSheet.jsx`):**
+  - Calcula `daysSinceLast` (dias desde o último corte), `completedAppointments` e `totalSpent`:
+    - `status = 'fiel'`: $\ge 3$ atendimentos concluídos e em dia ($\le 30$ dias).
+    - `status = 'atrasado'`: $> 30$ dias desde o último atendimento (alimenta também o motor de **Ciclos de Retorno / Recorrências** com disparo rápido de WhatsApp para reativação do cliente).
+    - `status = 'novo'`: $\le 1$ atendimento realizado.
+- **Exclusão Segura com Anonimização Financeira (`deleteClient`):**
+  - Ao excluir um cliente da base de CRM, o sistema **não** apaga os agendamentos pagos do histórico financeiro; em vez disso, desvincula `client_id = null` e anonimiza `client_phone = '00000000000'` em `appointments`, mantendo o Livro Caixa 100% íntegro.
+
+---
+
+## 6. INTEGRAÇÃO COM SUPABASE (POSTGREST, RLS E SERVER ACTIONS) — MAPEAMENTO BARBERFLOWS
+
+### 6.1. Dicionário Completo de Tabelas (Mapeamento JM Barberclub $\rightarrow$ BarberFlows Multi-Tenant)
+
+No **BarberFlows**, todas as tabelas abaixo possuem a coluna obrigatória `tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE` com índices compostos iniciados por `(tenant_id, ...)`:
+
+#### 1. `public.tenants` (Unidades / Barbearias no SaaS BarberFlows)
+- `id` (`uuid`, PK, `default gen_random_uuid()`)
+- `slug` (`text`, UNIQUE — ex: `'jm-barberclub'`)
+- `name` (`text`, NOT NULL — ex: `'JM Barberclub'`)
+- `timezone` (`text`, NOT NULL, default `'America/Fortaleza'`)
+- `currency` (`text`, default `'BRL'`)
+- `theme_accent` (`text`, default `'#FACC15'`)
+- `settings` (`jsonb` — regras globais de slot step `10`, abertura/fecho padrão)
+- `created_at`, `updated_at` (`timestamptz`)
+
+#### 2. `public.barbers` (Profissionais e Operadores do Painel)
+- `id` (`uuid`, PK)
+- `tenant_id` (`uuid`, FK $\rightarrow$ `tenants.id`, NOT NULL)
+- `user_id` (`uuid`, FK $\rightarrow$ `auth.users.id`, UNIQUE por tenant)
+- `name` (`text`, NOT NULL)
+- `phone` (`text` — normalizado apenas dígitos para login/lookup via RPC)
+- `role` (`text`, CHECK `role IN ('admin', 'manager', 'barber')`, default `'barber'`)
+- `is_owner` (`boolean`, default `false` — `true` para Matheus / Proprietário com 100% de comissão)
+- `commission_percent` (`numeric(5,2)`, default `50.00` — alíquota sobre serviços)
+- `product_commission_percent` (`numeric(5,2)`, default `10.00` — alíquota sobre produtos)
+- `convenience_commission_percent` (`numeric(5,2)`, default `0.00`)
+- `pix_key` (`text`, nullable)
+- `avatar_url` (`text`, nullable)
+- `permissions` (`jsonb`, default `'{"manage_services":false,"manage_schedule_others":false,"view_all_appointments":false,"manage_finance":false}'`)
+- `active` (`boolean`, default `true`)
+- `created_at`, `updated_at` (`timestamptz`)
+
+#### 3. `public.customers` (Equivalente a `public.clients` no JM Barberclub)
+- `id` (`uuid`, PK)
+- `tenant_id` (`uuid`, FK $\rightarrow$ `tenants.id`, NOT NULL)
+- `phone` (`text`, NOT NULL — apenas dígitos; **Constraint UNIQUE `(tenant_id, phone)`**)
+- `name` (`text`, NOT NULL)
+- `email` (`text`, nullable)
+- `notes` (`text`, nullable)
+- `created_at`, `updated_at` (`timestamptz`)
+
+#### 4. `public.catalog_items` (Unifica `public.services` e `public.products` + `public.barber_services`)
+- `id` (`uuid`, PK)
+- `tenant_id` (`uuid`, FK $\rightarrow$ `tenants.id`, NOT NULL)
+- `item_type` (`text`, NOT NULL, CHECK `item_type IN ('service', 'product', 'convenience')`)
+- `name` (`text`, NOT NULL)
+- `description` (`text`, nullable)
+- `price` (`numeric(10,2)`, NOT NULL, default `0.00`)
+- `duration_minutes` (`integer`, nullable — preenchido quando `item_type = 'service'`, default `30`)
+- `stock_quantity` (`integer`, nullable — preenchido quando `item_type IN ('product', 'convenience')`, default `0`)
+- `image_url` (`text`, nullable)
+- `display_order` (`integer`, default `0`)
+- `is_active` (`boolean`, default `true`)
+- `created_at`, `updated_at` (`timestamptz`)
+- *Tabela auxiliar de customização por barbeiro (`public.barber_catalog_overrides` / `public.barber_services`):*
+  - `(tenant_id, barber_id, catalog_item_id)` com `custom_duration` (`integer`) e `custom_price` (`numeric(10,2)`).
+
+#### 5. `public.appointments` (Agendamentos e Atendimentos da Timeline)
+- `id` (`uuid`, PK)
+- `tenant_id` (`uuid`, FK $\rightarrow$ `tenants.id`, NOT NULL)
+- `barber_id` (`uuid`, FK $\rightarrow$ `barbers.id`, NOT NULL)
+- `customer_id` (`uuid`, FK $\rightarrow$ `customers.id`, nullable — `client_id` no JM)
+- `customer_name` (`text`, NOT NULL — `client_name` no JM)
+- `customer_phone` (`text`, NOT NULL — `client_phone` / `clean_phone` no JM)
+- `appointment_date` (`date`, NOT NULL — `YYYY-MM-DD`)
+- `start_time` (`time`, NOT NULL — `appointment_time` no JM, formato `HH:MM:00`)
+- `end_time` (`time`, NOT NULL — calculado pela soma das durações dos serviços)
+- `duration_minutes` (`integer`, NOT NULL, default `30`)
+- `status` (`text`, NOT NULL, CHECK `status IN ('scheduled', 'completed', 'canceled', 'no_show')`)
+- `payment_status` (`text`, NOT NULL, CHECK `payment_status IN ('pending', 'paid', 'fiado')`)
+- `payment_method` (`text`, nullable, CHECK `payment_method IN ('pix', 'cash', 'card', 'fiado')`)
+- `gross_amount` (`numeric(10,2)`, NOT NULL, default `0.00`)
+- `discount_amount` (`numeric(10,2)`, NOT NULL, default `0.00`)
+- `total_price` (`numeric(10,2)`, NOT NULL, default `0.00` — valor líquido final cobrado)
+- `barber_commission_amount` (`numeric(10,2)`, NOT NULL, default `0.00`)
+- `shop_retention_amount` (`numeric(10,2)`, NOT NULL, default `0.00`)
+- `is_walk_in` (`boolean`, default `false`)
+- `notes` (`text`, nullable)
+- `cancellation_reason` (`text`, nullable)
+- `created_at`, `updated_at` (`timestamptz`)
+
+#### 6. `public.appointment_items` (Itens da Comanda: Múltiplos Serviços, Produtos e Conveniência)
+- `id` (`uuid`, PK)
+- `tenant_id` (`uuid`, FK $\rightarrow$ `tenants.id`, NOT NULL)
+- `appointment_id` (`uuid`, FK $\rightarrow$ `appointments.id` ON DELETE CASCADE, NOT NULL)
+- `catalog_item_id` (`uuid`, FK $\rightarrow$ `catalog_items.id`, nullable)
+- `item_type` (`text`, NOT NULL, CHECK `item_type IN ('service', 'product', 'convenience')`)
+- `item_name` (`text`, NOT NULL)
+- `quantity` (`integer`, NOT NULL, default `1`)
+- `unit_price` (`numeric(10,2)`, NOT NULL)
+- `discount_allocated` (`numeric(10,2)`, NOT NULL, default `0.00` — desconto rateado proporcionalmente)
+- `subtotal` (`numeric(10,2)`, NOT NULL — `(quantity * unit_price) - discount_allocated`)
+- `duration_minutes` (`integer`, default `0`)
+- `commission_rate_applied` (`numeric(5,2)`, NOT NULL)
+- `commission_amount` (`numeric(10,2)`, NOT NULL)
+- `created_at` (`timestamptz`)
+
+#### 7. `public.cash_entries` (Equivalente a `public.cash_flow` no JM Barberclub — Livro Caixa)
+- `id` (`uuid`, PK)
+- `tenant_id` (`uuid`, FK $\rightarrow$ `tenants.id`, NOT NULL)
+- `barber_id` (`uuid`, FK $\rightarrow$ `barbers.id`, nullable — autor do lançamento ou profissional vinculado)
+- `appointment_id` (`uuid`, FK $\rightarrow$ `appointments.id` ON DELETE SET NULL, nullable)
+- `fiado_record_id` (`uuid`, FK $\rightarrow$ `fiado_records.id` ON DELETE SET NULL, nullable)
+- `entry_type` (`text`, NOT NULL, CHECK `entry_type IN ('income', 'expense')`)
+- `category` (`text`, NOT NULL — `'service_checkout'`, `'fiado_settlement'`, `'commission_payout'`, `'aluguel'`, `'produtos'`, `'contas'`, `'salarios'`, `'outros'`)
+- `payment_method` (`text`, nullable, CHECK `payment_method IN ('pix', 'cash', 'card')`)
+- `amount` (`numeric(10,2)`, NOT NULL)
+- `description` (`text`, nullable)
+- `occurred_at` (`timestamptz`, NOT NULL, default `now()`)
+- `created_at` (`timestamptz`)
+
+#### 8. `public.fiado_records` (Notas Promissórias / Contas a Receber de Clientes)
+- `id` (`uuid`, PK)
+- `tenant_id` (`uuid`, FK $\rightarrow$ `tenants.id`, NOT NULL)
+- `customer_id` (`uuid`, FK $\rightarrow$ `customers.id`, nullable)
+- `customer_name` (`text`, NOT NULL)
+- `customer_phone` (`text`, NOT NULL)
+- `appointment_id` (`uuid`, FK $\rightarrow$ `appointments.id` ON DELETE CASCADE, NOT NULL, UNIQUE)
+- `barber_id` (`uuid`, FK $\rightarrow$ `barbers.id`, NOT NULL)
+- `amount` (`numeric(10,2)`, NOT NULL — saldo devedor da comanda)
+- `commission_amount` (`numeric(10,2)`, NOT NULL — comissão retida que será liberada na quitação)
+- `status` (`text`, NOT NULL, CHECK `status IN ('pending', 'settled', 'canceled')`, default `'pending'`)
+- `settled_payment_method` (`text`, nullable, CHECK `settled_payment_method IN ('pix', 'cash', 'card')`)
+- `settled_at` (`timestamptz`, nullable)
+- `settled_by_barber_id` (`uuid`, FK $\rightarrow$ `barbers.id`, nullable)
+- `created_at`, `updated_at` (`timestamptz`)
+
+---
+
+### 6.2. Isolamento Multi-Tenant (`tenant_id`), Row Level Security (RLS) e Padrão de Server Actions
+
+#### 1. Funções Helper de Segurança no PostgreSQL (`SECURITY DEFINER`)
+Para evitar recursão infinita nas políticas de RLS ao consultar a tabela `barbers`, o banco define duas funções `STABLE SECURITY DEFINER`:
+```sql
+CREATE OR REPLACE FUNCTION public.current_tenant_id()
+RETURNS uuid
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT tenant_id FROM public.barbers WHERE user_id = auth.uid() AND active = true LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION public.current_barber_role()
+RETURNS text
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT role FROM public.barbers WHERE user_id = auth.uid() AND active = true LIMIT 1;
+$$;
+```
+
+#### 2. Políticas de Row Level Security (RLS) por Tabela
+- **Isolamento Estrito de Tenant (`RESTRICTIVE`):**
+  Em todas as 8 tabelas (`barbers`, `customers`, `catalog_items`, `appointments`, `appointment_items`, `cash_entries`, `fiado_records`), aplica-se a política base:
+  ```sql
+  CREATE POLICY "tenant_isolation_policy" ON public.<table_name>
+    AS RESTRICTIVE
+    FOR ALL
+    TO authenticated
+    USING (tenant_id = public.current_tenant_id())
+    WITH CHECK (tenant_id = public.current_tenant_id());
+  ```
+- **Isolamento de Notificações e Caixa por Barbeiro:**
+  - Na tabela `notifications`, `USING (tenant_id = public.current_tenant_id() AND barber_id = (SELECT id FROM public.barbers WHERE user_id = auth.uid()))`, garantindo que cada barbeiro (ex: William, Matheus) receba única e exclusivamente os alertas da sua própria agenda.
+  - Na tabela `cash_entries` (Despesas e DRE), operações de `INSERT/UPDATE/DELETE` onde `entry_type = 'expense'` exigem `public.current_barber_role() = 'admin'`.
+
+#### 3. Contrato de Guardas de Autenticação nas Server Actions (`/lib/auth-server.js`)
+Todas as Server Actions (`"use server"`) seguem o pipeline invariante:
+1. **`requireBarber()`:**
+   - Valida a sessão JWT do Supabase (`supabase.auth.getUser()`) ou o cookie assinado da sessão do barbeiro.
+   - Carrega o registo do barbeiro logado (`id`, `tenant_id`, `role`, `permissions`, `commission_percent`).
+   - Se inválido ou inativo, retorna `{ error: 'AUTH_EXPIRED' }`, fazendo o cliente invocar `endSession()` imediatamente.
+2. **`requireChefe()`:**
+   - Executa `requireBarber()` e verifica `barber.role === 'admin'`. Caso contrário, retorna `{ error: 'FORBIDDEN' }`.
+3. **Injeção Forçada de `tenant_id` e `scopeBarberId` no Servidor:**
+   - O cliente **nunca** dita o `tenant_id` nem pode escalar o `scopeBarberId`.
+   - Toda query PostgREST nas Server Actions injeta `.eq('tenant_id', ctx.barber.tenant_id)` e, para colaboradores sem a permissão específica (`VIEW_ALL_APPOINTMENTS` ou `MANAGE_FINANCE`), força `.eq('barber_id', ctx.barber.id)`.
+4. **Invalidação de Cache em Camadas (`revalidatePath` + `admin-cache.js`):**
+   - Toda mutação executa `revalidatePath('/admin/agenda')`, `revalidatePath('/admin/financeiro')`, `revalidatePath('/admin/clientes')` no servidor e aciona `invalidateCache('appointments:')` / `invalidateCache('finance:')` no cliente, garantindo consistência imediata entre a Timeline, o Caixa, o Estoque e o módulo de Fiados.

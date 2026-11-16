@@ -12,10 +12,16 @@ import {
   Copy,
   Check,
   Wallet,
+  QrCode,
+  CreditCard,
+  Banknote,
+  Loader2,
 } from "lucide-react";
 import BottomSheet from "./BottomSheet";
 import { formatPhoneBR } from "@/lib/whatsapp";
 import { extractProductsFromNotes } from "@/lib/commission";
+import { settleCustomerFiadoBatch } from "@/lib/actions/appointments";
+import { toast } from "@/lib/toast";
 
 function formatBRL(value) {
   return `R$ ${Number(value || 0)
@@ -252,13 +258,18 @@ export default function PendingClientDebtSheet({
   onClose,
   clientGroup,
   onSelectPayment,
+  onBatchSettled,
 }) {
   const [copiedPhone, setCopiedPhone] = useState(false);
+  const [batchMethod, setBatchMethod] = useState("pix");
+  const [batchLoading, setBatchLoading] = useState(false);
   const copyTimerRef = useRef(null);
 
   useEffect(() => {
     if (!open) {
       setCopiedPhone(false);
+      setBatchLoading(false);
+      setBatchMethod("pix");
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
     }
   }, [open, clientGroup?.key]);
@@ -361,29 +372,105 @@ export default function PendingClientDebtSheet({
             </span>
           </div>
 
-          {/* Card de Destaque da Dívida Total Acumulada */}
-          <div className="rounded-xl border border-accent/35 bg-gradient-to-r from-[#170609] via-[#0e080b] to-[#09090d] p-3.5 flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
-                Dívida Total Acumulada
-              </p>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                Soma de {clientGroup.count}{" "}
-                {clientGroup.count === 1
-                  ? "serviço não pago"
-                  : "serviços não pagos"}
-              </p>
+          {/* Card de Destaque da Dívida Total Acumulada + Quitação em Lote */}
+          <div className="rounded-xl border border-accent/35 bg-gradient-to-r from-[#170609] via-[#0e080b] to-[#09090d] p-3.5 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
+                  Dívida Total Acumulada
+                </p>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Soma de {clientGroup.count}{" "}
+                  {clientGroup.count === 1
+                    ? "serviço não pago"
+                    : "serviços não pagos"}
+                </p>
+              </div>
+
+              <div className="text-right shrink-0">
+                <p className="font-mono tabular-nums text-xl font-extrabold text-accent-light leading-none">
+                  {formatBRL(clientGroup.totalDebt)}
+                </p>
+                {clientGroup.totalCommission > 0 && (
+                  <p className="font-mono tabular-nums text-[11px] text-zinc-300 mt-1">
+                    Comissão: {formatBRL(clientGroup.totalCommission)}
+                  </p>
+                )}
+              </div>
             </div>
 
-            <div className="text-right shrink-0">
-              <p className="font-mono tabular-nums text-xl font-extrabold text-accent-light leading-none">
-                {formatBRL(clientGroup.totalDebt)}
-              </p>
-              {clientGroup.totalCommission > 0 && (
-                <p className="font-mono tabular-nums text-[11px] text-zinc-300 mt-1">
-                  Comissão: {formatBRL(clientGroup.totalCommission)}
-                </p>
-              )}
+            {/* Quitação Total / Em Lote por Cliente */}
+            <div className="pt-2.5 border-t border-zinc-800/80 space-y-2">
+              <div className="grid grid-cols-3 gap-1.5">
+                {[
+                  { key: "pix", label: "Pix", icon: QrCode },
+                  { key: "cartao", label: "Cartão", icon: CreditCard },
+                  { key: "dinheiro", label: "Dinheiro", icon: Banknote },
+                ].map(({ key, label, icon: Icon }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    disabled={batchLoading}
+                    onClick={() => setBatchMethod(key)}
+                    className={`flex items-center justify-center gap-1.5 h-8 rounded-lg border text-xs font-semibold transition-all touch-manipulation ${
+                      batchMethod === key
+                        ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-300"
+                        : "border-zinc-800 bg-zinc-900/70 text-zinc-400 hover:text-white"
+                    }`}
+                  >
+                    <Icon size={13} />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                disabled={batchLoading}
+                onClick={async () => {
+                  setBatchLoading(true);
+                  try {
+                    const ids = (clientGroup.appointments || []).map((a) => a.id);
+                    const res = await settleCustomerFiadoBatch({
+                      appointmentIds: ids,
+                      paymentMethod: batchMethod,
+                      customerName: clientGroup.clientName,
+                    });
+                    if (res?.error) {
+                      toast.error(res.error);
+                    } else {
+                      toast.success(
+                        `Fiado de ${clientGroup.clientName} quitado (${formatBRL(
+                          res.totalSettledAmount
+                        )})!`
+                      );
+                      onBatchSettled?.(res);
+                      onClose?.();
+                    }
+                  } catch {
+                    toast.error("Não foi possível quitar as pendências em lote.");
+                  } finally {
+                    setBatchLoading(false);
+                  }
+                }}
+                className="w-full h-10 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm active:scale-[0.99] transition-all disabled:opacity-50"
+              >
+                {batchLoading ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Quitando pendências…</span>
+                  </>
+                ) : (
+                  <>
+                    <Wallet size={14} />
+                    <span>
+                      {clientGroup.count > 1
+                        ? `Quitar Tudo em Lote (${formatBRL(clientGroup.totalDebt)})`
+                        : `Quitar Dívida Total (${formatBRL(clientGroup.totalDebt)})`}
+                    </span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

@@ -276,7 +276,7 @@ export default function FinanceiroCompletoPage() {
           </div>
 
           <div
-            className={`bg-surface border rounded-xl p-3.5 mb-4 flex items-center justify-between gap-3 ${
+            className={`bg-surface border rounded-xl p-3.5 mb-3 flex items-center justify-between gap-3 ${
               overview.saldoLiquido >= 0 ? 'border-blue-500/35' : 'border-accent/40'
             }`}
           >
@@ -295,10 +295,10 @@ export default function FinanceiroCompletoPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-zinc-400 text-xs truncate">
-                  Saldo líquido · {periodSubtitle}
+                  Lucro Líquido Real (após Despesas e CMV) · {periodSubtitle}
                 </p>
                 <p
-                  className={`font-bold text-lg leading-tight mt-0.5 ${
+                  className={`font-bold text-lg font-mono tabular-nums leading-tight mt-0.5 ${
                     overview.saldoLiquido >= 0 ? 'text-white' : 'text-accent-light'
                   }`}
                 >
@@ -317,6 +317,54 @@ export default function FinanceiroCompletoPage() {
                 }`}
               >
                 {overview.saldoLiquido >= 0 ? 'Positivo' : 'Negativo'}
+              </span>
+            </div>
+          </div>
+
+          {/* Visão Analítica de CMV (Custo das Mercadorias Vendidas) vs. Faturamento Bruto (Produtos & Conveniência) */}
+          <div className="bg-zinc-950 border border-zinc-800/90 rounded-2xl p-3.5 mb-4 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold text-white tracking-tight">
+                DRE Analítico · Faturamento Bruto vs. CMV (Custo)
+              </p>
+              <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400">
+                Caixa = Preço Venda
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-xl bg-zinc-900/70 border border-zinc-800/80 p-2.5">
+                <p className="text-[10px] text-zinc-400 font-medium">Serviços (Bruto)</p>
+                <p className="text-xs font-bold text-white font-mono tabular-nums mt-0.5">
+                  {formatBRL(overview.servicosFaturadoBruto || 0)}
+                </p>
+              </div>
+              <div className="rounded-xl bg-zinc-900/70 border border-zinc-800/80 p-2.5">
+                <p className="text-[10px] text-zinc-400 font-medium">Produtos (Venda)</p>
+                <p className="text-xs font-bold text-amber-300 font-mono tabular-nums mt-0.5">
+                  {formatBRL(overview.produtosFaturadoBruto || 0)}
+                </p>
+                <p className="text-[9px] text-zinc-500 font-mono tabular-nums mt-0.5">
+                  CMV: -{formatBRL(overview.cmvProdutos || 0)}
+                </p>
+              </div>
+              <div className="rounded-xl bg-zinc-900/70 border border-zinc-800/80 p-2.5">
+                <p className="text-[10px] text-zinc-400 font-medium">Conveniência (Venda)</p>
+                <p className="text-xs font-bold text-emerald-300 font-mono tabular-nums mt-0.5">
+                  {formatBRL(overview.convenienciaFaturadoBruto || 0)}
+                </p>
+                <p className="text-[9px] text-zinc-500 font-mono tabular-nums mt-0.5">
+                  CMV: -{formatBRL(overview.cmvConveniencia || 0)}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-zinc-900 text-xs">
+              <span className="text-zinc-400">
+                Lucro Líquido de Produtos & Conveniência (Venda - CMV):
+              </span>
+              <span className="font-mono tabular-nums font-bold text-emerald-400">
+                {formatBRL(overview.lucroBrutoMercadorias || 0)}
               </span>
             </div>
           </div>

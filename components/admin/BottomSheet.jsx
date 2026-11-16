@@ -27,10 +27,18 @@ export default function BottomSheet({ open, onClose, title, children }) {
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
     return () => {
       document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [open]);
+  }, [open, onClose]);
 
   if (!open || !mounted) return null;
 

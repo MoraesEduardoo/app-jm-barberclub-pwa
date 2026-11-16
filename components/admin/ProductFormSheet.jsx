@@ -34,6 +34,11 @@ export default function ProductFormSheet({
   const [price, setPrice] = useState(
     product?.price !== undefined && product?.price !== null ? String(product.price) : ''
   );
+  const [costPrice, setCostPrice] = useState(
+    product?.cost_price !== undefined && product?.cost_price !== null
+      ? String(product.cost_price)
+      : ''
+  );
   const [stockQuantity, setStockQuantity] = useState(
     product?.stock_quantity !== undefined && product?.stock_quantity !== null
       ? String(product.stock_quantity)
@@ -62,6 +67,11 @@ export default function ProductFormSheet({
         setPrice(
           product.price !== undefined && product.price !== null ? String(product.price) : ''
         );
+        setCostPrice(
+          product.cost_price !== undefined && product.cost_price !== null
+            ? String(product.cost_price)
+            : '0'
+        );
         setStockQuantity(
           product.stock_quantity !== undefined && product.stock_quantity !== null
             ? String(product.stock_quantity)
@@ -76,6 +86,7 @@ export default function ProductFormSheet({
         setName('');
         setDescription('');
         setPrice('');
+        setCostPrice('');
         setStockQuantity('10');
         setCategory(defaultCategory === 'conveniencia' && isChief ? 'conveniencia' : 'barbearia');
         setIsActive(true);
@@ -164,6 +175,7 @@ export default function ProductFormSheet({
         name: name.trim(),
         description: description.trim() || null,
         price: Number(price),
+        cost_price: Math.max(0, Number(costPrice || 0)),
         stock_quantity: Math.max(0, Math.floor(Number(stockQuantity || 0))),
         is_active: isActive,
         category: isConv ? 'conveniencia' : 'barbearia',
@@ -371,8 +383,8 @@ export default function ProductFormSheet({
           />
         </FormField>
 
-        <div className="grid grid-cols-2 gap-3">
-          <FormField label="Preço (R$)">
+        <div className="grid grid-cols-3 gap-2.5">
+          <FormField label="Preço Venda (R$)">
             <TextInput
               type="number"
               inputMode="decimal"
@@ -385,7 +397,19 @@ export default function ProductFormSheet({
             />
           </FormField>
 
-          <FormField label="Quantidade (Stock)">
+          <FormField label="Preço Custo (R$)">
+            <TextInput
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.5"
+              value={costPrice}
+              onChange={(e) => setCostPrice(e.target.value)}
+              placeholder={isConvenience ? '3,00' : '15,00'}
+            />
+          </FormField>
+
+          <FormField label="Estoque (Un.)">
             <TextInput
               type="number"
               inputMode="numeric"
@@ -398,6 +422,32 @@ export default function ProductFormSheet({
             />
           </FormField>
         </div>
+
+        {/* Resumo em Tempo Real: Faturamento Bruto (Caixa) vs. Lucro Real (Descontado o Custo) */}
+        {Number(price) > 0 && (
+          <div className="rounded-xl bg-zinc-950 border border-zinc-800/90 px-3.5 py-2.5 space-y-1.5">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-zinc-400">Entrada no Caixa (Preço Venda):</span>
+              <span className="font-mono tabular-nums font-bold text-white">
+                R$ {Number(price || 0).toFixed(2).replace('.', ',')}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-zinc-400">Custo Fornecedor (CMV Unitário):</span>
+              <span className="font-mono tabular-nums font-semibold text-amber-400">
+                - R$ {Number(costPrice || 0).toFixed(2).replace('.', ',')}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs pt-1 border-t border-zinc-900">
+              <span className="text-emerald-400 font-semibold">Lucro Bruto Unitário:</span>
+              <span className="font-mono tabular-nums font-bold text-emerald-400">
+                R$ {Math.max(0, Number(price || 0) - Number(costPrice || 0)).toFixed(2).replace('.', ',')}
+                {' '}
+                ({Math.round(((Math.max(0, Number(price || 0) - Number(costPrice || 0))) / Number(price || 1)) * 100)}%)
+              </span>
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center justify-between rounded-xl bg-surface border border-zinc-800 px-3.5 py-2.5">
           <div>

@@ -46,22 +46,28 @@ export function parseAppointmentNotes(notes) {
 
   lines.forEach((line, idx) => {
     const trimmed = line.trim();
-    const match = trimmed.match(/^\[(PRODUTO|CONVENIENCIA):([^:]+):(\d+):([0-9.]+)\]\s*(.*)$/);
+    const match = trimmed.match(
+      /^\[(PRODUTO|CONVENIENCIA):([^:]+):(\d+):([0-9.]+)(?::([0-9.]+))?\]\s*(.*)$/
+    );
     if (match) {
       const tagType = match[1];
       const isConvenience = tagType === 'CONVENIENCIA';
       const qty = parseInt(match[3], 10) || 1;
       const unitPrice = parseFloat(match[4]) || 0;
+      const unitCostPrice = match[5] !== undefined ? parseFloat(match[5]) || 0 : 0;
+      const labelText = match[6] || `${qty}x ${isConvenience ? 'Conveniência' : 'Produto'}`;
       const itemObj = {
         key: `${match[2]}-${idx}`,
         rawLine: trimmed,
         productId: match[2],
         quantity: qty,
         unitPrice,
+        unitCostPrice,
         subtotal: Number((qty * unitPrice).toFixed(2)),
+        totalCost: Number((qty * unitCostPrice).toFixed(2)),
         isConvenience,
         category: isConvenience ? 'conveniencia' : 'barbearia',
-        label: match[5] || `${qty}x ${isConvenience ? 'Conveniência' : 'Produto'}`,
+        label: labelText,
       };
       products.push(itemObj);
       if (isConvenience) {

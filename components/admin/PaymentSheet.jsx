@@ -2,11 +2,18 @@
 
 import { endSession } from "@/lib/session";
 import { useEffect, useState } from "react";
-import { QrCode, CreditCard, Banknote, ShoppingBag } from "lucide-react";
+import { QrCode, CreditCard, Banknote, ShoppingBag, Tag } from "lucide-react";
 import BottomSheet from "./BottomSheet";
 import { FormField, TextInput, PrimaryButton } from "./FormField";
 import { registerPayment } from "@/lib/actions/appointments";
 import { parseAppointmentNotes } from "./AddProductSheet";
+import { allocateProportionalDiscount } from "@/lib/commission";
+
+const formatBRL = (v) =>
+  Number(v || 0).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 
 const METHODS = [
   { value: "pix", label: "Pix", icon: QrCode },
@@ -15,26 +22,30 @@ const METHODS = [
 ];
 
 export default function PaymentSheet({ open, onClose, appointment }) {
-  const defaultAmount =
+  const defaultGross = Number(
     appointment?.total_price ??
-    appointment?.price ??
-    appointment?.services?.price ??
-    "";
+      appointment?.price ??
+      appointment?.services?.price ??
+      0,
+  );
 
   const [method, setMethod] = useState(appointment?.payment_method || "pix");
-  const [amount, setAmount] = useState(defaultAmount);
+  const [discount, setDiscount] = useState("");
+  const [amount, setAmount] = useState(defaultGross ? String(defaultGross) : "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (appointment && open) {
-      setMethod(appointment.payment_method || "pix");
-      setAmount(
+      const gross = Number(
         appointment.total_price ??
           appointment.price ??
           appointment.services?.price ??
-          "",
+          0,
       );
+      setMethod(appointment.payment_method || "pix");
+      setDiscount("");
+      setAmount(gross ? String(gross) : "");
       setError("");
     }
   }, [appointment, open]);
@@ -46,6 +57,25 @@ export default function PaymentSheet({ open, onClose, appointment }) {
   const { products: attachedProducts } = parseAppointmentNotes(
     appointment.notes,
   );
+
+  const productsGross = attachedProducts.reduce(
+    (acc, p) => acc + (Number(p.total) || Number(p.unitPrice || 0) * Number(p.qty || 1)),
+    0,
+  );
+  const serviceGross = Math.max(0, Number((defaultGross - productsGross).toFixed(2)));
+  const numericDiscount = Math.max(0, Number(discount) || 0);
+  const discountAllocation = allocateProportionalDiscount(
+    serviceGross,
+    productsGross,
+    numericDiscount,
+  );
+
+  function handleDiscountChange(val) {
+    setDiscount(val);
+    const disc = Math.max(0, Number(val) || 0);
+    const nextNet = Math.max(0, Number((defaultGross - disc).toFixed(2)));
+    setAmount(String(nextNet));
+  }
 
   async function handleConfirm() {
     setSaving(true);
@@ -89,7 +119,7 @@ export default function PaymentSheet({ open, onClose, appointment }) {
               <ShoppingBag size={12} /> Inclui produto(s):
             </span>
             {attachedProducts.map((p) => (
-              <p key={p.key} className="text-zinc-300 text-[11px]">
+              <p key={p.key} className="text-zinc-300 text-[11px] font-mono tabular-nums">
                 • {p.label}
               </p>
             ))}
@@ -97,18 +127,57 @@ export default function PaymentSheet({ open, onClose, appointment }) {
         )}
       </div>
 
-      <FormField label="Valor cobrado (R$)">
-        <TextInput
-          type="number"
-          inputMode="decimal"
-          min="0"
-          step="0.5"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="45,00"
-          autoFocus
-        />
-      </FormField>
+      <div className="grid grid-cols-2 gap-2.5">
+        <FormField label="Desconto (R$)">
+          <TextInput
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="0.5"
+            value={discount}
+            onChange={(e) => handleDiscountChange(e.target.value)}
+            placeholder="0,00"
+          />
+        </FormField>
+
+        <FormField label="Valor final cobrado (R$)">
+          <TextInput
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="0.5"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="45,00"
+            autoFocus
+          />
+        </FormField>
+      </div>
+
+      {numericDiscount > 0 && (
+        <div className="mb-4 rounded-xl bg-zinc-900/90 border border-zinc-800 p-3 space-y-1 text-[11px]">
+          <div className="flex items-center justify-between text-amber-300 font-semibold">
+            <span className="inline-flex items-center gap-1">
+              <Tag size={12} /> Rateio Proporcional de Desconto
+            </span>
+            <span className="font-mono tabular-nums">-{formatBRL(discountAllocation.totalDiscount)}</span>
+          </div>
+          <div className="flex items-center justify-between text-zinc-400">
+            <span>Serviços (líquido):</span>
+            <span className="font-mono tabular-nums text-zinc-200">
+              {formatBRL(discountAllocation.netServiceAmount)}
+            </span>
+          </div>
+          {productsGross > 0 && (
+            <div className="flex items-center justify-between text-zinc-400">
+              <span>Produtos/Conveniência (líquido):</span>
+              <span className="font-mono tabular-nums text-zinc-200">
+                {formatBRL(discountAllocation.netProductAmount)}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       <span className="block text-xs font-medium text-zinc-400 mb-1.5">
         Forma de pagamento

@@ -179,7 +179,7 @@ export default function ServicosPage() {
       if (res?.error) {
         toast.error(res.error);
       } else {
-        toast.success('Catálogo base do JM BarberClub carregado com sucesso!');
+        toast.success('Catálogo base do BarberFlows carregado com sucesso!');
         invalidateCache(cacheKeys.bootstrapStatus());
         await loadCatalog({ silent: false });
       }
@@ -584,17 +584,27 @@ export default function ServicosPage() {
                       </p>
                     )}
 
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="text-xs px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-300 font-medium">
-                        Stock: {product.stock_quantity} un.
+                    <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                      <span className="text-[11px] font-mono tabular-nums px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-300 font-medium">
+                        Estoque: {product.stock_quantity} un.
                       </span>
+                      {Number(product.cost_price || 0) > 0 && (
+                        <span className="text-[11px] font-mono tabular-nums px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/25 text-amber-300 font-medium">
+                          Custo: R$ {Number(product.cost_price || 0).toFixed(2).replace('.', ',')}
+                        </span>
+                      )}
                     </div>
                   </div>
 
                   <div className="text-right shrink-0 pl-2">
-                    <span className="text-white font-bold text-sm">
+                    <span className="text-white font-bold text-sm font-mono tabular-nums block">
                       R$ {Number(product.price || 0).toFixed(2).replace('.', ',')}
                     </span>
+                    {Number(product.cost_price || 0) > 0 && (
+                      <span className="text-[10px] text-emerald-400 font-mono tabular-nums font-semibold block mt-0.5">
+                        Lucro: R$ {Math.max(0, Number(product.price || 0) - Number(product.cost_price || 0)).toFixed(2).replace('.', ',')}
+                      </span>
+                    )}
                   </div>
                 </button>
               ))}
@@ -695,17 +705,27 @@ export default function ServicosPage() {
                       </p>
                     )}
 
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="text-xs px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-300 font-medium">
-                        Stock: {product.stock_quantity} un.
+                    <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                      <span className="text-[11px] font-mono tabular-nums px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-300 font-medium">
+                        Estoque: {product.stock_quantity} un.
                       </span>
+                      {Number(product.cost_price || 0) > 0 && (
+                        <span className="text-[11px] font-mono tabular-nums px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/25 text-amber-300 font-medium">
+                          Custo: R$ {Number(product.cost_price || 0).toFixed(2).replace('.', ',')}
+                        </span>
+                      )}
                     </div>
                   </div>
 
                   <div className="text-right shrink-0 pl-2">
-                    <span className="text-white font-bold text-sm">
+                    <span className="text-white font-bold text-sm font-mono tabular-nums block">
                       R$ {Number(product.price || 0).toFixed(2).replace('.', ',')}
                     </span>
+                    {Number(product.cost_price || 0) > 0 && (
+                      <span className="text-[10px] text-emerald-400 font-mono tabular-nums font-semibold block mt-0.5">
+                        Lucro: R$ {Math.max(0, Number(product.price || 0) - Number(product.cost_price || 0)).toFixed(2).replace('.', ',')}
+                      </span>
+                    )}
                   </div>
                 </button>
               ))}

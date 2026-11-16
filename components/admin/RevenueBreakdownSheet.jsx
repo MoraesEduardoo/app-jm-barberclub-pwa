@@ -38,9 +38,9 @@ function buildFallbackBreakdown(summary) {
     return {
       totalFaturado: 0,
       pagosCount: 0,
-      servicos: { subtotal: 0, count: 0, items: [] },
-      produtos: { subtotal: 0, count: 0, items: [] },
-      conveniencia: { subtotal: 0, count: 0, items: [] },
+      servicos: { subtotal: 0, cmv: 0, lucroBruto: 0, count: 0, items: [] },
+      produtos: { subtotal: 0, cmv: 0, lucroBruto: 0, count: 0, items: [] },
+      conveniencia: { subtotal: 0, cmv: 0, lucroBruto: 0, count: 0, items: [] },
     };
   }
 
@@ -52,16 +52,24 @@ function buildFallbackBreakdown(summary) {
         : Number(summary.pagosCount || 0),
       servicos: summary.detalhamentoFaturado.servicos || {
         subtotal: Number(summary.servicosFaturadoBruto || 0),
+        cmv: 0,
+        lucroBruto: Number(summary.servicosFaturadoBruto || 0),
         count: 0,
         items: [],
       },
       produtos: summary.detalhamentoFaturado.produtos || {
         subtotal: Number(summary.produtosFaturadoBruto || 0),
+        cmv: Number(summary.cmvProdutos || 0),
+        lucroBruto: Number(summary.lucroBrutoProdutos || summary.produtosFaturadoBruto || 0),
         count: 0,
         items: [],
       },
       conveniencia: summary.detalhamentoFaturado.conveniencia || {
         subtotal: Number(summary.convenienciaFaturadoBruto || 0),
+        cmv: Number(summary.cmvConveniencia || 0),
+        lucroBruto: Number(
+          summary.lucroBrutoConveniencia || summary.convenienciaFaturadoBruto || 0
+        ),
         count: 0,
         items: [],
       },
@@ -76,6 +84,8 @@ function buildFallbackBreakdown(summary) {
   let servicosSubtotal = 0;
   let produtosSubtotal = 0;
   let convenienciaSubtotal = 0;
+  let cmvProdutos = 0;
+  let cmvConveniencia = 0;
   let servicosCount = 0;
   let produtosCount = 0;
   let convenienciaCount = 0;
@@ -104,6 +114,8 @@ function buildFallbackBreakdown(summary) {
     for (const item of items) {
       const qty = Number(item.quantity || 1);
       const sub = Number(item.subtotal || 0);
+      const cost = Number(item.totalCost || (item.unitCostPrice || 0) * qty || 0);
+      const profit = Math.max(0, Number((sub - cost).toFixed(2)));
       const name = cleanLabelName(
         item.label,
         item.isConvenience ? "Conveniência" : "Produto"
@@ -112,15 +124,33 @@ function buildFallbackBreakdown(summary) {
 
       if (item.isConvenience) {
         convenienciaCount += qty;
-        const curr = convenienciaMap.get(key) || { name, quantity: 0, subtotal: 0 };
+        cmvConveniencia = Number((cmvConveniencia + cost).toFixed(2));
+        const curr = convenienciaMap.get(key) || {
+          name,
+          quantity: 0,
+          subtotal: 0,
+          cmv: 0,
+          lucroBruto: 0,
+        };
         curr.quantity += qty;
         curr.subtotal = Number((curr.subtotal + sub).toFixed(2));
+        curr.cmv = Number((curr.cmv + cost).toFixed(2));
+        curr.lucroBruto = Number((curr.lucroBruto + profit).toFixed(2));
         convenienciaMap.set(key, curr);
       } else {
         produtosCount += qty;
-        const curr = produtosMap.get(key) || { name, quantity: 0, subtotal: 0 };
+        cmvProdutos = Number((cmvProdutos + cost).toFixed(2));
+        const curr = produtosMap.get(key) || {
+          name,
+          quantity: 0,
+          subtotal: 0,
+          cmv: 0,
+          lucroBruto: 0,
+        };
         curr.quantity += qty;
         curr.subtotal = Number((curr.subtotal + sub).toFixed(2));
+        curr.cmv = Number((curr.cmv + cost).toFixed(2));
+        curr.lucroBruto = Number((curr.lucroBruto + profit).toFixed(2));
         produtosMap.set(key, curr);
       }
     }
@@ -133,16 +163,22 @@ function buildFallbackBreakdown(summary) {
     pagosCount: pagos.length,
     servicos: {
       subtotal: servicosSubtotal,
+      cmv: 0,
+      lucroBruto: servicosSubtotal,
       count: servicosCount,
       items: Array.from(servicosMap.values()).sort((a, b) => b.subtotal - a.subtotal),
     },
     produtos: {
       subtotal: produtosSubtotal,
+      cmv: cmvProdutos,
+      lucroBruto: Math.max(0, Number((produtosSubtotal - cmvProdutos).toFixed(2))),
       count: produtosCount,
       items: Array.from(produtosMap.values()).sort((a, b) => b.subtotal - a.subtotal),
     },
     conveniencia: {
       subtotal: convenienciaSubtotal,
+      cmv: cmvConveniencia,
+      lucroBruto: Math.max(0, Number((convenienciaSubtotal - cmvConveniencia).toFixed(2))),
       count: convenienciaCount,
       items: Array.from(convenienciaMap.values()).sort((a, b) => b.subtotal - a.subtotal),
     },
@@ -183,7 +219,6 @@ export default function RevenueBreakdownSheet({
     };
   }, [open, from, to, scopeBarberId]);
 
-  // Resetar cache local quando mudar período ou barbeiro
   useEffect(() => {
     setFreshData(null);
   }, [from, to, scopeBarberId]);
@@ -202,6 +237,22 @@ export default function RevenueBreakdownSheet({
   }, [freshData, summary]);
 
   const total = Number(breakdown.totalFaturado || 0);
+  const totalMercadoriasBruto = Number(
+    (
+      Number(breakdown.produtos?.subtotal || 0) +
+      Number(breakdown.conveniencia?.subtotal || 0)
+    ).toFixed(2)
+  );
+  const totalCmv = Number(
+    (
+      Number(breakdown.produtos?.cmv || 0) +
+      Number(breakdown.conveniencia?.cmv || 0)
+    ).toFixed(2)
+  );
+  const totalLucroMercadorias = Math.max(
+    0,
+    Number((totalMercadoriasBruto - totalCmv).toFixed(2))
+  );
 
   const categories = useMemo(() => {
     const calcPct = (val) => {
@@ -221,6 +272,7 @@ export default function RevenueBreakdownSheet({
         badgeBg: "bg-blue-500/10 text-blue-300 border-blue-500/20",
         unitSingular: "atendimento",
         unitPlural: "atendimentos",
+        hasCmv: false,
         data: breakdown.servicos,
         percent: calcPct(breakdown.servicos?.subtotal),
       },
@@ -235,6 +287,7 @@ export default function RevenueBreakdownSheet({
         badgeBg: "bg-amber-500/10 text-amber-300 border-amber-500/20",
         unitSingular: "unidade",
         unitPlural: "unidades",
+        hasCmv: true,
         data: breakdown.produtos,
         percent: calcPct(breakdown.produtos?.subtotal),
       },
@@ -249,6 +302,7 @@ export default function RevenueBreakdownSheet({
         badgeBg: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20",
         unitSingular: "item",
         unitPlural: "itens",
+        hasCmv: true,
         data: breakdown.conveniencia,
         percent: calcPct(breakdown.conveniencia?.subtotal),
       },
@@ -262,7 +316,7 @@ export default function RevenueBreakdownSheet({
       title="Detalhamento do Faturamento"
     >
       <div className="space-y-4">
-        {/* Cabeçalho de Contexto (Filtros Ativos + Total Consolidado) */}
+        {/* Cabeçalho de Contexto (Filtros Ativos + Total Consolidado no Caixa) */}
         <div className="rounded-2xl bg-zinc-950 border border-zinc-800/90 p-3.5 space-y-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -288,7 +342,7 @@ export default function RevenueBreakdownSheet({
             <div>
               <p className="text-[11px] font-medium text-zinc-400 flex items-center gap-1.5">
                 <TrendingUp size={12} className="text-emerald-400" />
-                Total Faturado Confirmado
+                Total Faturado no Caixa (Preço de Venda)
               </p>
               <p className="text-2xl font-bold text-white font-mono tabular-nums tracking-tight mt-0.5">
                 {formatBRL(total)}
@@ -303,7 +357,6 @@ export default function RevenueBreakdownSheet({
             </div>
           </div>
 
-          {/* Barra de proporção visual entre Serviços, Produtos e Conveniência */}
           {total > 0 && (
             <div className="space-y-1.5 pt-1">
               <div className="h-2 w-full rounded-full bg-zinc-900 overflow-hidden flex gap-0.5">
@@ -337,6 +390,8 @@ export default function RevenueBreakdownSheet({
           {categories.map((cat) => {
             const Icon = cat.icon;
             const subtotal = Number(cat.data?.subtotal || 0);
+            const cmv = Number(cat.data?.cmv || 0);
+            const lucroBruto = Math.max(0, Number((subtotal - cmv).toFixed(2)));
             const count = Number(cat.data?.count || 0);
             const items = Array.isArray(cat.data?.items) ? cat.data.items : [];
 
@@ -374,10 +429,28 @@ export default function RevenueBreakdownSheet({
                       {formatBRL(subtotal)}
                     </p>
                     <p className="text-[10px] text-zinc-500 font-medium">
-                      Subtotal · {cat.percent}%
+                      Faturado · {cat.percent}%
                     </p>
                   </div>
                 </div>
+
+                {/* Indicador analítico de CMV e Lucro Bruto para Produtos e Conveniência */}
+                {cat.hasCmv && subtotal > 0 && (
+                  <div className="grid grid-cols-2 gap-2 pt-1.5 border-t border-zinc-900/90 text-[11px]">
+                    <div className="rounded-lg bg-zinc-900/70 px-2.5 py-1.5 flex items-center justify-between">
+                      <span className="text-zinc-400">CMV (Custo):</span>
+                      <span className="font-mono tabular-nums font-semibold text-amber-400">
+                        {formatBRL(cmv)}
+                      </span>
+                    </div>
+                    <div className="rounded-lg bg-emerald-950/25 border border-emerald-500/20 px-2.5 py-1.5 flex items-center justify-between">
+                      <span className="text-zinc-300">Lucro Bruto:</span>
+                      <span className="font-mono tabular-nums font-bold text-emerald-400">
+                        {formatBRL(lucroBruto)}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Lista de itens da categoria */}
                 {items.length > 0 ? (
@@ -385,17 +458,24 @@ export default function RevenueBreakdownSheet({
                     {items.map((item, idx) => (
                       <div
                         key={`${cat.key}-${idx}-${item.name}`}
-                        className="flex items-center justify-between gap-2 text-xs py-1 px-2 rounded-lg bg-zinc-900/60"
+                        className="flex items-center justify-between gap-2 text-xs py-1.5 px-2.5 rounded-lg bg-zinc-900/60"
                       >
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded bg-zinc-800 text-[10px] font-mono font-bold text-zinc-300 shrink-0">
                             {item.quantity}x
                           </span>
-                          <span className="text-zinc-200 font-medium truncate">
-                            {item.name}
-                          </span>
+                          <div className="min-w-0">
+                            <span className="text-zinc-200 font-medium truncate block">
+                              {item.name}
+                            </span>
+                            {cat.hasCmv && Number(item.cmv || 0) > 0 && (
+                              <span className="text-[10px] text-zinc-500 font-mono tabular-nums block">
+                                Custo: {formatBRL(item.cmv)} · Lucro: {formatBRL(item.lucroBruto)}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <span className="text-zinc-300 font-mono tabular-nums font-semibold shrink-0">
+                        <span className="text-zinc-200 font-mono tabular-nums font-semibold shrink-0">
                           {formatBRL(item.subtotal)}
                         </span>
                       </div>
@@ -413,10 +493,41 @@ export default function RevenueBreakdownSheet({
           })}
         </div>
 
-        {/* Rodapé de Fechamento e Consistência */}
+        {/* Bloco Analítico de CMV & Lucro de Mercadorias (Produtos + Conveniência) */}
+        {totalMercadoriasBruto > 0 && (
+          <div className="rounded-2xl bg-zinc-950 border border-zinc-800/90 p-3.5 space-y-2">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+              Apuração Analítica: Produtos & Conveniência (CMV)
+            </p>
+            <div className="space-y-1 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-400">Receita Bruta (Venda no Caixa):</span>
+                <span className="font-mono tabular-nums font-semibold text-white">
+                  {formatBRL(totalMercadoriasBruto)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-400">(-) Custo das Mercadorias (CMV):</span>
+                <span className="font-mono tabular-nums font-semibold text-amber-400">
+                  - {formatBRL(totalCmv)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between pt-1 border-t border-zinc-900">
+                <span className="text-emerald-400 font-semibold">
+                  (=) Lucro Bruto de Mercadorias:
+                </span>
+                <span className="font-mono tabular-nums font-bold text-emerald-400">
+                  {formatBRL(totalLucroMercadorias)}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Rodapé de Fechamento e Consistência Contábil */}
         <div className="rounded-xl bg-zinc-900/70 border border-zinc-800 px-3.5 py-2.5 flex items-center justify-between">
           <span className="text-xs font-medium text-zinc-400">
-            Soma das Categorias (Serv. + Prod. + Conv.)
+            Soma do Caixa (Serv. + Prod. + Conv.)
           </span>
           <span className="text-sm font-bold text-emerald-400 font-mono tabular-nums">
             {formatBRL(total)}
