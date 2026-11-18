@@ -309,26 +309,40 @@ export default function CommissionSettlementSheet({ open, onClose, defaultBarber
                           )}
                         </div>
 
-                        {/* Indicadores Financeiros do Colaborador */}
-                        <div className="grid grid-cols-3 gap-2 bg-zinc-900/70 border border-zinc-800/80 rounded-lg p-2.5">
-                          <div>
-                            <span className="text-[9.5px] text-zinc-500 block">Faturado</span>
-                            <span className="text-zinc-200 text-xs font-semibold">
-                              {formatBRL(b.totalRevenue)}
-                            </span>
+                        {/* Indicadores Financeiros do Colaborador (Serviços + Produtos, sem Conveniência) */}
+                        <div className="bg-zinc-900/70 border border-zinc-800/80 rounded-lg p-2.5 space-y-2">
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <span className="text-[9.5px] text-zinc-500 block">Base (Serv.+Prod.)</span>
+                              <span className="text-zinc-200 text-xs font-semibold font-mono tabular-nums">
+                                {formatBRL(b.totalRevenue)}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[9.5px] text-zinc-500 block">
+                                Comissão ({b.isOwner ? '100%' : `${b.commissionPercent}%/${b.productCommissionPercent ?? 10}%`})
+                              </span>
+                              <span className="text-accent-light text-xs font-semibold font-mono tabular-nums">
+                                {formatBRL(b.totalCommissionDue)}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[9.5px] text-emerald-400 font-semibold block">A Receber</span>
+                              <span className="text-white text-xs font-bold font-mono tabular-nums">
+                                {formatBRL(b.balancePending)}
+                              </span>
+                            </div>
                           </div>
-                          <div>
-                            <span className="text-[9.5px] text-zinc-500 block">
-                              Comissão ({b.isOwner ? '100%' : `${b.commissionPercent}%/${b.productCommissionPercent ?? 10}%`})
+
+                          <div className="pt-1.5 border-t border-zinc-800/70 flex flex-wrap items-center justify-between gap-2 text-[10px] text-zinc-400 font-mono tabular-nums">
+                            <span>
+                              Serviços: <strong className="text-zinc-200">{formatBRL(b.serviceCommissionTotal)}</strong>
                             </span>
-                            <span className="text-accent-light text-xs font-semibold">
-                              {formatBRL(b.totalCommissionDue)}
+                            <span>
+                              Produtos: <strong className="text-zinc-200">{formatBRL(b.productCommissionTotal)}</strong>
                             </span>
-                          </div>
-                          <div>
-                            <span className="text-[9.5px] text-emerald-400 font-semibold block">A Receber</span>
-                            <span className="text-white text-xs font-bold">
-                              {formatBRL(b.balancePending)}
+                            <span className="text-zinc-500">
+                              Conveniência: R$ 0,00 (Excluída)
                             </span>
                           </div>
                         </div>
@@ -534,24 +548,32 @@ export default function CommissionSettlementSheet({ open, onClose, defaultBarber
                 <span className="text-white font-medium">{data?.period?.label}</span>
               </div>
               <div className="flex justify-between text-xs text-zinc-400">
-                <span>Cortes Concluídos:</span>
-                <span className="text-white font-medium">{confirmModal.appointmentsCount}</span>
+                <span>Cortes Pagos:</span>
+                <span className="text-white font-medium font-mono tabular-nums">{confirmModal.appointmentsCount}</span>
               </div>
               <div className="flex justify-between text-xs text-zinc-400">
-                <span>Faturamento Bruto:</span>
-                <span className="text-white font-medium">{formatBRL(confirmModal.totalRevenue)}</span>
+                <span>Base Comissionável (Serv. + Prod.):</span>
+                <span className="text-white font-medium font-mono tabular-nums">{formatBRL(confirmModal.totalRevenue)}</span>
               </div>
               <div className="flex justify-between text-xs text-zinc-400">
-                <span>Taxa de Comissão:</span>
-                <span className="text-white font-medium">
-                  {confirmModal.isOwner
-                    ? '100% (Proprietário)'
-                    : `${confirmModal.commissionPercent}% serv. + ${confirmModal.productCommissionPercent ?? 10}% prod.`}
+                <span>Comissão Serviços ({confirmModal.commissionPercent}%):</span>
+                <span className="text-zinc-200 font-mono tabular-nums">
+                  {formatBRL(confirmModal.serviceCommissionTotal)}
                 </span>
+              </div>
+              <div className="flex justify-between text-xs text-zinc-400">
+                <span>Comissão Produtos ({confirmModal.productCommissionPercent ?? 10}%):</span>
+                <span className="text-zinc-200 font-mono tabular-nums">
+                  {formatBRL(confirmModal.productCommissionTotal)}
+                </span>
+              </div>
+              <div className="flex justify-between text-[11px] text-zinc-500">
+                <span>Conveniência / Taxas:</span>
+                <span className="font-mono tabular-nums">R$ 0,00 (Excluído)</span>
               </div>
               <div className="flex justify-between text-sm font-bold pt-2 border-t border-zinc-800 text-emerald-400">
                 <span>Total Líquido a Pagar:</span>
-                <span>{formatBRL(confirmModal.balancePending)}</span>
+                <span className="font-mono tabular-nums">{formatBRL(confirmModal.balancePending)}</span>
               </div>
             </div>
 
