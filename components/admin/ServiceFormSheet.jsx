@@ -400,7 +400,7 @@ export default function ServiceFormSheet({ open, onClose, service }) {
               type="number"
               inputMode="decimal"
               min="0"
-              step="0.5"
+              step="0.01"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               placeholder="25,00"

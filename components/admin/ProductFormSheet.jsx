@@ -17,6 +17,22 @@ import { useBarber } from '@/lib/barber-context';
 import { isChefe } from '@/lib/auth';
 import { isConvenienceProduct, isOwnerBarber } from '@/lib/commission';
 
+function sanitizeDecimalInput(raw) {
+  if (raw === null || raw === undefined) return '';
+  // Substitui vírgula por ponto e mantém apenas dígitos e um único ponto decimal
+  const normalized = String(raw).replace(/,/g, '.').replace(/[^0-9.]/g, '');
+  const parts = normalized.split('.');
+  if (parts.length <= 2) return normalized;
+  return `${parts[0]}.${parts.slice(1).join('')}`;
+}
+
+function parseDecimalValue(raw) {
+  const cleaned = sanitizeDecimalInput(raw);
+  if (!cleaned) return NaN;
+  const parsed = parseFloat(cleaned);
+  return Number.isFinite(parsed) ? parsed : NaN;
+}
+
 export default function ProductFormSheet({
   open,
   onClose,
@@ -162,8 +178,16 @@ export default function ProductFormSheet({
     e.preventDefault();
     setError('');
 
-    if (!name.trim() || price === '') {
-      setError('Preencha o nome e o preço do item.');
+    const parsedPrice = parseDecimalValue(price);
+    const parsedCostPrice = costPrice === '' ? 0 : parseDecimalValue(costPrice);
+
+    if (!name.trim() || price === '' || Number.isNaN(parsedPrice) || parsedPrice < 0) {
+      setError('Preencha o nome e um preço de venda válido.');
+      return;
+    }
+
+    if (Number.isNaN(parsedCostPrice) || parsedCostPrice < 0) {
+      setError('Informe um preço de custo válido.');
       return;
     }
 
@@ -174,8 +198,8 @@ export default function ProductFormSheet({
       const payload = {
         name: name.trim(),
         description: description.trim() || null,
-        price: Number(price),
-        cost_price: Math.max(0, Number(costPrice || 0)),
+        price: Math.round(parsedPrice * 100) / 100,
+        cost_price: Math.max(0, Math.round(parsedCostPrice * 100) / 100),
         stock_quantity: Math.max(0, Math.floor(Number(stockQuantity || 0))),
         is_active: isActive,
         category: isConv ? 'conveniencia' : 'barbearia',
@@ -259,7 +283,7 @@ export default function ProductFormSheet({
                 onClick={() => setCategory('barbearia')}
                 className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
                   category === 'barbearia'
-                    ? 'bg-accent text-white shadow-sm'
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
                     : 'text-zinc-400 hover:text-white'
                 }`}
               >
@@ -294,7 +318,7 @@ export default function ProductFormSheet({
               {isConvenience ? (
                 <Coffee size={13} className="text-emerald-400" />
               ) : (
-                <Package size={13} className="text-accent" />
+                <Package size={13} className="text-blue-400" />
               )}
               {isConvenience ? 'Foto da Conveniência' : 'Foto do Produto'}
             </span>
@@ -386,26 +410,26 @@ export default function ProductFormSheet({
         <div className="grid grid-cols-3 gap-2.5">
           <FormField label="Preço Venda (R$)">
             <TextInput
-              type="number"
+              type="text"
               inputMode="decimal"
               min="0"
-              step="0.5"
+              step="0.01"
               value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              placeholder={isConvenience ? '6,00' : '35,00'}
+              onChange={(e) => setPrice(sanitizeDecimalInput(e.target.value))}
+              placeholder={isConvenience ? '6.00' : '35.00'}
               required
             />
           </FormField>
 
           <FormField label="Preço Custo (R$)">
             <TextInput
-              type="number"
+              type="text"
               inputMode="decimal"
               min="0"
-              step="0.5"
+              step="0.01"
               value={costPrice}
-              onChange={(e) => setCostPrice(e.target.value)}
-              placeholder={isConvenience ? '3,00' : '15,00'}
+              onChange={(e) => setCostPrice(sanitizeDecimalInput(e.target.value))}
+              placeholder={isConvenience ? '3.00' : '15.00'}
             />
           </FormField>
 
@@ -424,26 +448,26 @@ export default function ProductFormSheet({
         </div>
 
         {/* Resumo em Tempo Real: Faturamento Bruto (Caixa) vs. Lucro Real (Descontado o Custo) */}
-        {Number(price) > 0 && (
+        {parseDecimalValue(price) > 0 && (
           <div className="rounded-xl bg-zinc-950 border border-zinc-800/90 px-3.5 py-2.5 space-y-1.5">
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-zinc-400">Entrada no Caixa (Preço Venda):</span>
               <span className="font-mono tabular-nums font-bold text-white">
-                R$ {Number(price || 0).toFixed(2).replace('.', ',')}
+                R$ {(parseDecimalValue(price) || 0).toFixed(2).replace('.', ',')}
               </span>
             </div>
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-zinc-400">Custo Fornecedor (CMV Unitário):</span>
               <span className="font-mono tabular-nums font-semibold text-amber-400">
-                - R$ {Number(costPrice || 0).toFixed(2).replace('.', ',')}
+                - R$ {(parseDecimalValue(costPrice) || 0).toFixed(2).replace('.', ',')}
               </span>
             </div>
             <div className="flex items-center justify-between text-xs pt-1 border-t border-zinc-900">
               <span className="text-emerald-400 font-semibold">Lucro Bruto Unitário:</span>
               <span className="font-mono tabular-nums font-bold text-emerald-400">
-                R$ {Math.max(0, Number(price || 0) - Number(costPrice || 0)).toFixed(2).replace('.', ',')}
+                R$ {Math.max(0, (parseDecimalValue(price) || 0) - (parseDecimalValue(costPrice) || 0)).toFixed(2).replace('.', ',')}
                 {' '}
-                ({Math.round(((Math.max(0, Number(price || 0) - Number(costPrice || 0))) / Number(price || 1)) * 100)}%)
+                ({Math.round(((Math.max(0, (parseDecimalValue(price) || 0) - (parseDecimalValue(costPrice) || 0))) / (parseDecimalValue(price) || 1)) * 100)}%)
               </span>
             </div>
           </div>

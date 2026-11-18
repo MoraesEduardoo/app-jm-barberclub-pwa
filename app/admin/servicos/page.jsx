@@ -298,7 +298,7 @@ export default function ServicosPage() {
           onClick={() => setActiveTab('products')}
           className={`flex items-center justify-center gap-1.5 h-10 rounded-lg transition-all active:scale-[0.98] touch-manipulation ${
             activeTab === 'products'
-              ? 'bg-accent text-white shadow-sm'
+              ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
               : 'text-zinc-400 hover:text-white hover:bg-zinc-900/60'
           }`}
         >
@@ -625,7 +625,7 @@ export default function ServicosPage() {
                 setEditingProduct(null);
                 setProductSheetOpen(true);
               }}
-              className="flex items-center gap-1.5 bg-accent text-white text-xs font-semibold rounded-full pl-2.5 pr-3 py-1.5 active:scale-95 active:bg-accent-dark transition-all touch-manipulation select-none shadow-sm"
+              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-semibold rounded-full pl-2.5 pr-3 py-1.5 active:scale-95 transition-all touch-manipulation select-none shadow-lg shadow-blue-900/20"
             >
               <Plus size={14} /> Novo Produto
             </button>
@@ -639,7 +639,7 @@ export default function ServicosPage() {
             </div>
           ) : regularProducts.length === 0 ? (
             <div className="mt-8 rounded-2xl border border-zinc-800 bg-surface/60 p-6 flex flex-col items-center justify-center text-center gap-4">
-              <div className="h-12 w-12 rounded-2xl bg-accent/15 border border-accent/30 flex items-center justify-center text-accent">
+              <div className="h-12 w-12 rounded-2xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400">
                 <Package size={22} />
               </div>
               <div className="space-y-1 max-w-xs">
@@ -656,7 +656,7 @@ export default function ServicosPage() {
                   setEditingProduct(null);
                   setProductSheetOpen(true);
                 }}
-                className="flex items-center justify-center gap-1.5 h-10 px-4 rounded-xl bg-accent hover:bg-accent-light text-white text-xs font-semibold shadow-sm active:scale-95 transition-all"
+                className="flex items-center justify-center gap-1.5 h-10 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-semibold shadow-lg shadow-blue-900/20 active:scale-95 transition-all"
               >
                 <Plus size={14} /> Registar Primeiro Produto
               </button>
@@ -672,7 +672,7 @@ export default function ServicosPage() {
                     setEditingProduct(product);
                     setProductSheetOpen(true);
                   }}
-                  className="w-full text-left rounded-2xl border border-zinc-800/90 bg-surface hover:border-zinc-700 p-3 flex items-center gap-3.5 transition-all active:scale-[0.99]"
+                  className="w-full text-left rounded-2xl border border-zinc-800/90 bg-surface hover:border-blue-500/40 p-3 flex items-center gap-3.5 transition-all active:scale-[0.99]"
                 >
                   <div className="h-20 w-20 rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800 shrink-0 flex items-center justify-center">
                     {product.image_url ? (
@@ -683,7 +683,7 @@ export default function ServicosPage() {
                         className="h-full w-full object-cover object-center rounded-xl"
                       />
                     ) : (
-                      <Package size={22} className="text-zinc-600" />
+                      <Package size={22} className="text-blue-400" />
                     )}
                   </div>
 
@@ -706,7 +706,7 @@ export default function ServicosPage() {
                     )}
 
                     <div className="flex items-center gap-1.5 flex-wrap mt-2">
-                      <span className="text-[11px] font-mono tabular-nums px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-300 font-medium">
+                      <span className="text-[11px] font-mono tabular-nums px-2 py-0.5 rounded-md bg-blue-950/60 text-blue-400 border border-blue-800/40 font-medium">
                         Estoque: {product.stock_quantity} un.
                       </span>
                       {Number(product.cost_price || 0) > 0 && (
