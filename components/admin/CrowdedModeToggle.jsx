@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { Flame, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Flame, Loader2, CheckCircle2, AlertTriangle, Lock } from "lucide-react";
 import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getBarbershopStatus, setBarbershopCrowdedMode } from "@/lib/actions/status";
+import { useBarber } from "@/lib/barber-context";
+import { PERMISSION_KEYS } from "@/lib/auth";
 import { cacheKeys, getCache, setCache } from "@/lib/admin-cache";
 import { endSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
@@ -14,6 +16,8 @@ import { toast } from "@/lib/toast";
  * Mantém o estado sincronizado ao recarregar e entre dispositivos via Realtime.
  */
 export default function CrowdedModeToggle() {
+  const { can } = useBarber();
+  const canManageCrowded = can(PERMISSION_KEYS.MANAGE_CROWDED_MODE);
   const statusKey = cacheKeys.barbershopStatus();
   const cached = getCache(statusKey);
 
@@ -99,6 +103,10 @@ export default function CrowdedModeToggle() {
   }, [syncFromServer, statusKey]);
 
   async function handleToggle() {
+    if (!canManageCrowded) {
+      toast.error("Você não tem permissão para alterar o Modo Lotado.");
+      return;
+    }
     if (saving || loading) return;
 
     const previous = isCrowded;
@@ -146,6 +154,10 @@ export default function CrowdedModeToggle() {
         setSaving(false);
       }
     }
+  }
+
+  if (!canManageCrowded && !isCrowded) {
+    return null;
   }
 
   return (
@@ -202,25 +214,31 @@ export default function CrowdedModeToggle() {
           </div>
         </div>
 
-        <button
-          type="button"
-          role="switch"
-          aria-checked={isCrowded}
-          aria-label={isCrowded ? "Desativar Modo Lotado" : "Ativar Modo Lotado"}
-          disabled={saving || loading}
-          onClick={handleToggle}
-          className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-all touch-manipulation select-none active:scale-95 disabled:opacity-60 ${
-            isCrowded
-              ? "bg-gradient-to-r from-red-600 to-amber-500 shadow-md shadow-red-900/40"
-              : "bg-zinc-800 hover:bg-zinc-700"
-          }`}
-        >
-          <span
-            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-              isCrowded ? "translate-x-5" : "translate-x-0.5"
+        {canManageCrowded ? (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isCrowded}
+            aria-label={isCrowded ? "Desativar Modo Lotado" : "Ativar Modo Lotado"}
+            disabled={saving || loading}
+            onClick={handleToggle}
+            className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-all touch-manipulation select-none active:scale-95 disabled:opacity-60 ${
+              isCrowded
+                ? "bg-gradient-to-r from-red-600 to-amber-500 shadow-md shadow-red-900/40"
+                : "bg-zinc-800 hover:bg-zinc-700"
             }`}
-          />
-        </button>
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                isCrowded ? "translate-x-5" : "translate-x-0.5"
+              }`}
+            />
+          </button>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-950/50 px-2 py-1 text-[10px] font-medium text-amber-300 shrink-0">
+            <Lock size={10} /> Ativo
+          </span>
+        )}
       </div>
 
       {tableMissing && (

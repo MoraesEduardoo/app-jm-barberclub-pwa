@@ -2,6 +2,7 @@
 
 import { LogOut, ShieldCheck, Eye, X, Menu } from 'lucide-react';
 import { useBarber } from '@/lib/barber-context';
+import { PERMISSION_KEYS } from '@/lib/auth';
 import NotificationBell from './NotificationBell';
 
 const TITLES = {
@@ -33,9 +34,12 @@ function isScopedPath(pathname) {
  * Cabeçalho principal mobile-first do painel administrativo.
  */
 export default function Header({ pathname, onOpenProfile, onOpenMenu }) {
-  const { barber, isChefe, isManager, signOut, isViewingOther, viewedBarber, resetView } = useBarber();
-  const showViewBanner = (isChefe || isManager) && isViewingOther && isScopedPath(pathname);
-  const viewedIsSelf = viewedBarber?.id === barber?.id;
+  const { barber, isChefe, isManager, can, signOut, isViewingOther, viewedBarber, resetView } = useBarber();
+  const canViewOthers =
+    can(PERMISSION_KEYS.VIEW_ALL_SCHEDULES) ||
+    can(PERMISSION_KEYS.MANAGE_SCHEDULE_BLOCKS) ||
+    can(PERMISSION_KEYS.VIEW_GLOBAL_FINANCE);
+  const showViewBanner = canViewOthers && isViewingOther && isScopedPath(pathname);
 
   const title =
     Object.entries(TITLES).find(([path]) => pathname?.startsWith(path))?.[1] ?? 'Agenda';

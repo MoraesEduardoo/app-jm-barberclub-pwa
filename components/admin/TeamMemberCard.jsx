@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   ShieldCheck,
   Trash2,
@@ -19,15 +19,24 @@ import {
   ChevronRight,
   Lock,
   Check,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   updateTeamMemberRole,
+  updateTeamMemberPermission,
   toggleTeamMemberActive,
   removeTeamMember,
   updateTeamMemberAdvancedCommissions,
 } from "@/lib/actions/team";
 import { createRecoveryLink } from "@/lib/actions/recovery";
 import { useBarber } from "@/lib/barber-context";
+import {
+  PERMISSION_KEYS,
+  PERMISSION_DEFINITIONS,
+  getRolePermissionPreset,
+  normalizePermissions,
+  hasCustomPermissions,
+} from "@/lib/auth";
 import { toast } from "@/lib/toast";
 import TeamMemberCashSheet from "./TeamMemberCashSheet";
 import TeamMemberScheduleSheet from "./TeamMemberScheduleSheet";
@@ -43,25 +52,41 @@ function whatsappNumber(phone) {
  * TeamMemberCard:
  * Card profissional de gerenciamento do colaborador.
  * Suporta:
- * 1. Cargos simplificados (Chefe vs Gerente vs Barbeiro)
- * 2. Comissões em número inteiro (ex: 50 para 50%, 10 para 10%) com proteção RBAC (exclusivo Chefe / Admin)
- * 3. Regras avançadas de comissão (serviços vs produtos)
- * 4. Gestão de expediente individual por colaborador (dias, horas, almoço)
- * 5. Especialidades e catálogo de serviços habilitados
- * 6. Histórico de caixa e faturamento acumulado
- * 7. Bloqueios de agenda e folgas pontuais
+ * 1. Comissões em número inteiro ("Em Serviços %" e "Em Produtos %") preservadas
+ * 2. Perfis (Barbeiro, Gerente, Chefe) como atalhos rápidos de permissões
+ * 3. Interruptores (switches) individuais por permissão com salvamento imediato no Supabase
+ * 4. Proteção contra auto-remoção de `manage_team` pelo administrador logado
+ * 5. Regra de caixa individual preservada (acesso ao caixa de outro profissional exige `view_global_finance`)
  */
 export default function TeamMemberCard({ member, onChanged, onUpdated }) {
-  const { barber: loggedBarber, isChefe, refreshTeam } = useBarber();
-  const canEditCommissions = Boolean(isChefe && loggedBarber?.role === "admin");
+  const {
+    barber: loggedBarber,
+    can,
+    refreshTeam,
+    refreshBarber,
+  } = useBarber();
+
+  const canManageTeam = can(PERMISSION_KEYS.MANAGE_TEAM);
+  const canViewGlobalFinance = can(PERMISSION_KEYS.VIEW_GLOBAL_FINANCE);
+  const canManageScheduleBlocks = can(PERMISSION_KEYS.MANAGE_SCHEDULE_BLOCKS);
+  const canManageServices = can(PERMISSION_KEYS.MANAGE_SERVICES);
 
   const [isPending, startTransition] = useTransition();
   const recoveryLock = useRef(false);
   const commissionSaveLock = useRef(false);
-  const [recovery, setRecovery] = useState({ loading: false, error: "", link: null, copied: false });
+  const [recovery, setRecovery] = useState({
+    loading: false,
+    error: "",
+    link: null,
+    copied: false,
+  });
   const [memberState, setMemberState] = useState(member);
 
+  const isSelf = String(memberState.id) === String(loggedBarber?.id);
   const isChief = memberState.role === "admin";
+  const canOpenCashSheet = canViewGlobalFinance || isSelf;
+  const canEditMemberSchedule = canManageScheduleBlocks || canManageTeam;
+  const canEditMemberServices = canManageServices || canManageTeam;
 
   // Estados para comissões em números inteiros (ex: 50 para 50%, 10 para 10%)
   const [serviceCommissionDraft, setServiceCommissionDraft] = useState(
@@ -76,6 +101,14 @@ export default function TeamMemberCard({ member, onChanged, onUpdated }) {
   );
   const [commissionSaving, setCommissionSaving] = useState(false);
 
+  // Controle de salvamento do cargo e de cada permissão individual
+  const [roleSaving, setRoleSaving] = useState(false);
+  const [savingPermKey, setSavingPermKey] = useState(null);
+
+  const permissionsKeySignature = JSON.stringify(
+    normalizePermissions(member.permissions, member.role)
+  );
+
   // Sincroniza o estado local se a prop member atualizar após re-fetch
   useEffect(() => {
     setMemberState(member);
@@ -87,13 +120,14 @@ export default function TeamMemberCard({ member, onChanged, onUpdated }) {
           10
       )
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     member.id,
     member.role,
     member.active,
     member.commission_percent,
     member.product_commission_percent,
-    member.permissions?.product_commission_percent,
+    permissionsKeySignature,
   ]);
 
   // Modais de gestão avançada do colaborador
@@ -102,8 +136,21 @@ export default function TeamMemberCard({ member, onChanged, onUpdated }) {
   const [specialtiesSheetOpen, setSpecialtiesSheetOpen] = useState(false);
   const [exceptionsSheetOpen, setExceptionsSheetOpen] = useState(false);
 
-  // Controle de salvamento do cargo
-  const [roleSaving, setRoleSaving] = useState(false);
+  const normalizedPerms = useMemo(
+    () => normalizePermissions(memberState.permissions, memberState.role),
+    [memberState.permissions, memberState.role]
+  );
+
+  const isCustomizedPerms = useMemo(
+    () => hasCustomPermissions(normalizedPerms, memberState.role),
+    [normalizedPerms, memberState.role]
+  );
+
+  const activePermCount = useMemo(
+    () =>
+      PERMISSION_DEFINITIONS.filter((def) => Boolean(normalizedPerms[def.key])).length,
+    [normalizedPerms]
+  );
 
   const curServiceComm = Number(memberState.commission_percent ?? 50);
   const curProductComm = Number(
@@ -124,37 +171,132 @@ export default function TeamMemberCard({ member, onChanged, onUpdated }) {
     draftServicePreview !== curServiceComm || draftProductPreview !== curProductComm;
 
   function handleRoleChange(newRole) {
-    if (!canEditCommissions) {
-      toast.error("Apenas o Chefe / Admin pode alterar cargos da equipe.");
+    if (!canManageTeam) {
+      toast.error("Você não tem permissão para alterar cargos da equipe.");
       return;
     }
-    if (memberState.role === newRole) return;
+    if (isSelf && newRole !== "admin") {
+      toast.warning("Você não pode remover seu próprio perfil de Chefe / Admin.");
+      return;
+    }
+
     const prevRole = memberState.role;
-    setMemberState((prev) => ({ ...prev, role: newRole }));
+    const prevPerms = memberState.permissions;
+    const nextPreset = getRolePermissionPreset(newRole);
+    if (isSelf) {
+      nextPreset[PERMISSION_KEYS.MANAGE_TEAM] = true;
+    }
+    const optimisticPerms = {
+      ...(memberState.permissions || {}),
+      ...nextPreset,
+    };
+
+    setMemberState((prev) => ({
+      ...prev,
+      role: newRole,
+      permissions: optimisticPerms,
+    }));
     setRoleSaving(true);
 
     startTransition(async () => {
       try {
-        await updateTeamMemberRole(member.id, newRole);
+        const res = await updateTeamMemberRole(member.id, newRole);
         const roleName =
-          newRole === "admin" ? "Chefe" : newRole === "manager" ? "Gerente" : "Barbeiro";
-        toast.success(`Cargo de ${member.name} alterado para ${roleName}.`);
-        if (refreshTeam) refreshTeam();
+          newRole === "admin"
+            ? "Chefe / Admin"
+            : newRole === "manager"
+            ? "Gerente"
+            : "Barbeiro";
+        if (res?.permissions) {
+          setMemberState((prev) => ({
+            ...prev,
+            role: newRole,
+            permissions: res.permissions,
+          }));
+        }
+        toast.success(
+          `Perfil ${roleName} aplicado para ${member.name}. Você pode ajustar os interruptores abaixo livremente.`
+        );
+        if (isSelf && refreshBarber) await refreshBarber();
+        if (refreshTeam) await refreshTeam({ force: true });
         if (onUpdated) onUpdated();
       } catch (err) {
-        toast.error(err.message || "Erro ao alterar cargo.");
-        setMemberState((prev) => ({ ...prev, role: prevRole }));
+        toast.error(err?.message || "Erro ao alterar cargo.");
+        setMemberState((prev) => ({
+          ...prev,
+          role: prevRole,
+          permissions: prevPerms,
+        }));
       } finally {
         setRoleSaving(false);
       }
     });
   }
 
+  async function handleTogglePermission(permDef) {
+    if (!canManageTeam) {
+      toast.error("Você não tem permissão para alterar acessos da equipe.");
+      return;
+    }
+
+    const key = permDef.key;
+    const currentValue = Boolean(normalizedPerms[key]);
+    const nextValue = !currentValue;
+
+    if (isSelf && key === PERMISSION_KEYS.MANAGE_TEAM && !nextValue) {
+      toast.warning("Protegido: você não pode remover sua própria permissão de gerenciar equipe.");
+      return;
+    }
+
+    if (savingPermKey || roleSaving) return;
+
+    const prevPerms = memberState.permissions;
+    setSavingPermKey(key);
+    setMemberState((prev) => ({
+      ...prev,
+      permissions: {
+        ...normalizePermissions(prev.permissions, prev.role),
+        [key]: nextValue,
+      },
+    }));
+
+    try {
+      const res = await updateTeamMemberPermission(member.id, key, nextValue);
+      if (res?.permissions) {
+        setMemberState((prev) => ({
+          ...prev,
+          permissions: res.permissions,
+        }));
+      }
+      toast.success(
+        nextValue
+          ? `Permissão "${permDef.label}" ativada para ${member.name}.`
+          : `Permissão "${permDef.label}" desativada para ${member.name}.`
+      );
+      if (isSelf && refreshBarber) {
+        await refreshBarber();
+      }
+      if (refreshTeam) {
+        await refreshTeam({ force: true });
+      }
+      if (onUpdated) onUpdated();
+    } catch (err) {
+      console.error("Erro ao atualizar permissão:", err);
+      setMemberState((prev) => ({
+        ...prev,
+        permissions: prevPerms,
+      }));
+      toast.error(err?.message || "Não foi possível salvar a permissão.");
+    } finally {
+      setSavingPermKey(null);
+    }
+  }
+
   async function handleSaveCommissions({ force = false } = {}) {
-    if (!canEditCommissions) {
+    if (!canManageTeam) {
       setServiceCommissionDraft(String(curServiceComm));
       setProductCommissionDraft(String(curProductComm));
-      toast.error("Apenas o Chefe / Admin tem permissão para alterar as comissões.");
+      toast.error("Você não tem permissão para alterar as comissões.");
       return;
     }
 
@@ -210,7 +352,7 @@ export default function TeamMemberCard({ member, onChanged, onUpdated }) {
       toast.success(
         `Comissões de ${member.name} salvas (${savedS}% serviços / ${savedP}% produtos).`
       );
-      if (refreshTeam) refreshTeam();
+      if (refreshTeam) refreshTeam({ force: true });
       if (onUpdated) onUpdated();
     } catch (err) {
       console.error("Erro ao salvar comissões:", err);
@@ -224,21 +366,25 @@ export default function TeamMemberCard({ member, onChanged, onUpdated }) {
   }
 
   function handleCommissionsBlur() {
-    if (!canEditCommissions) return;
+    if (!canManageTeam) return;
     handleSaveCommissions({ force: false });
   }
 
   function handleCommissionKeyDown(e) {
     if (e.key === "Enter") {
       e.preventDefault();
-      if (!canEditCommissions) return;
+      if (!canManageTeam) return;
       handleSaveCommissions({ force: true });
     }
   }
 
   function handleToggleActive() {
-    if (!canEditCommissions) {
-      toast.error("Apenas o Chefe / Admin pode ativar ou desativar membros da equipe.");
+    if (!canManageTeam || isSelf) {
+      toast.error(
+        isSelf
+          ? "Você não pode desativar sua própria conta."
+          : "Você não tem permissão para ativar ou desativar membros da equipe."
+      );
       return;
     }
     const nextActive = !memberState.active;
@@ -249,7 +395,7 @@ export default function TeamMemberCard({ member, onChanged, onUpdated }) {
     startTransition(async () => {
       try {
         await toggleTeamMemberActive(member.id, nextActive);
-        if (refreshTeam) refreshTeam();
+        if (refreshTeam) refreshTeam({ force: true });
       } catch (error) {
         console.error(error);
         toast.error(error?.message || "Erro ao alterar status do profissional.");
@@ -259,7 +405,7 @@ export default function TeamMemberCard({ member, onChanged, onUpdated }) {
   }
 
   async function handleRecoveryLink() {
-    if (!canEditCommissions) return;
+    if (!canManageTeam) return;
     if (recoveryLock.current) return;
     recoveryLock.current = true;
     setRecovery({ loading: true, error: "", link: null, copied: false });
@@ -304,12 +450,12 @@ export default function TeamMemberCard({ member, onChanged, onUpdated }) {
   }
 
   async function handleRemove() {
-    if (!canEditCommissions) return;
+    if (!canManageTeam || isSelf) return;
     if (!confirm(`Remover ${member.name} da equipe?`)) return;
     try {
       await removeTeamMember(member.id);
       toast.success(`${member.name} foi removido da equipe.`);
-      if (refreshTeam) refreshTeam();
+      if (refreshTeam) refreshTeam({ force: true });
       if (onChanged) onChanged(member.id);
     } catch (error) {
       console.error(error);
@@ -320,7 +466,7 @@ export default function TeamMemberCard({ member, onChanged, onUpdated }) {
   return (
     <div className="bg-surface border border-zinc-800 rounded-2xl p-4 transition-all space-y-3.5 shadow-sm">
       {/* Cabeçalho do Card */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="h-10 w-10 rounded-full bg-elevated border border-zinc-700 flex items-center justify-center text-sm font-semibold text-white shrink-0">
             {member.avatar_url ? (
@@ -334,61 +480,77 @@ export default function TeamMemberCard({ member, onChanged, onUpdated }) {
             )}
           </div>
           <div className="min-w-0">
-            <p className="text-white text-sm font-semibold truncate leading-tight">
-              {member.name}
-            </p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-white text-sm font-semibold truncate leading-tight">
+                {member.name}
+              </p>
+              {isSelf && (
+                <span className="rounded-md bg-zinc-800 border border-zinc-700 px-1.5 py-0.5 text-[9.5px] font-semibold text-zinc-300 shrink-0">
+                  Você
+                </span>
+              )}
+            </div>
             <p className="text-zinc-500 text-xs truncate mt-0.5">{member.phone}</p>
           </div>
         </div>
 
-        {memberState.role === "admin" ? (
-          <span className="flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold text-amber-300 shrink-0">
-            <ShieldCheck size={12} /> Chefe
-          </span>
-        ) : memberState.role === "manager" ? (
-          <span className="flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-400 shrink-0">
-            <ShieldCheck size={12} /> Gerente
-          </span>
-        ) : (
-          <button
-            type="button"
-            onClick={handleToggleActive}
-            disabled={isPending}
-            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors shrink-0 touch-manipulation ${
-              memberState.active
-                ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                : "bg-zinc-800 text-zinc-500 border border-zinc-700/60"
-            }`}
-          >
-            {memberState.active ? <UserCheck size={12} /> : <UserX size={12} />}
-            {memberState.active ? "Ativo" : "Inativo"}
-          </button>
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {memberState.role === "admin" ? (
+            <span className="flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold text-amber-300 shrink-0">
+              <ShieldCheck size={12} /> Chefe
+            </span>
+          ) : memberState.role === "manager" ? (
+            <span className="flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-400 shrink-0">
+              <ShieldCheck size={12} /> Gerente
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={handleToggleActive}
+              disabled={!canManageTeam || isPending || isSelf}
+              className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors shrink-0 touch-manipulation ${
+                memberState.active
+                  ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                  : "bg-zinc-800 text-zinc-500 border border-zinc-700/60"
+              } ${!canManageTeam || isSelf ? "opacity-75 cursor-default" : ""}`}
+            >
+              {memberState.active ? <UserCheck size={12} /> : <UserX size={12} />}
+              {memberState.active ? "Ativo" : "Inativo"}
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Botão de Destaque: Ver Caixa do Profissional */}
-      <button
-        type="button"
-        onClick={() => setCashSheetOpen(true)}
-        className="w-full flex items-center justify-between bg-gradient-to-r from-accent/20 to-accent/5 hover:from-accent/25 hover:to-accent/10 border border-accent/30 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-white active:scale-[0.99] transition-all touch-manipulation"
-      >
-        <span className="flex items-center gap-2">
-          <Wallet size={15} className="text-accent-light" />
-          <span>Ver Caixa do Profissional</span>
-        </span>
-        <div className="flex items-center gap-1.5 text-accent-light text-[11px]">
-          <span>Cortes & Faturamento</span>
-          <ChevronRight size={14} />
-        </div>
-      </button>
+      {/* Botão de Destaque: Ver Caixa do Profissional (respeita caixa individual) */}
+      {canOpenCashSheet && (
+        <button
+          type="button"
+          onClick={() => setCashSheetOpen(true)}
+          className="w-full flex items-center justify-between bg-gradient-to-r from-accent/20 to-accent/5 hover:from-accent/25 hover:to-accent/10 border border-accent/30 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-white active:scale-[0.99] transition-all touch-manipulation"
+        >
+          <span className="flex items-center gap-2">
+            <Wallet size={15} className="text-accent-light" />
+            <span>{isSelf ? "Ver Meu Caixa" : "Ver Caixa do Profissional"}</span>
+          </span>
+          <div className="flex items-center gap-1.5 text-accent-light text-[11px]">
+            <span>Cortes & Faturamento</span>
+            <ChevronRight size={14} />
+          </div>
+        </button>
+      )}
 
       {/* Grade de Ferramentas Rápidas do Colaborador */}
       <div className="grid grid-cols-3 gap-2">
         {/* Expediente & Escala Individual */}
         <button
           type="button"
+          disabled={!canEditMemberSchedule && !isSelf}
           onClick={() => setScheduleSheetOpen(true)}
-          className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-elevated/70 border border-zinc-800 hover:border-zinc-700 active:scale-95 transition-all touch-manipulation"
+          className={`flex flex-col items-center justify-center p-2.5 rounded-xl bg-elevated/70 border border-zinc-800 transition-all touch-manipulation ${
+            canEditMemberSchedule || isSelf
+              ? "hover:border-zinc-700 active:scale-95"
+              : "opacity-50 cursor-not-allowed"
+          }`}
         >
           <Clock size={16} className="text-zinc-400 mb-1" />
           <span className="text-[11px] font-medium text-white text-center leading-tight">
@@ -400,8 +562,13 @@ export default function TeamMemberCard({ member, onChanged, onUpdated }) {
         {/* Especialidades & Serviços */}
         <button
           type="button"
+          disabled={!canEditMemberServices && !isSelf}
           onClick={() => setSpecialtiesSheetOpen(true)}
-          className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-elevated/70 border border-zinc-800 hover:border-zinc-700 active:scale-95 transition-all touch-manipulation"
+          className={`flex flex-col items-center justify-center p-2.5 rounded-xl bg-elevated/70 border border-zinc-800 transition-all touch-manipulation ${
+            canEditMemberServices || isSelf
+              ? "hover:border-zinc-700 active:scale-95"
+              : "opacity-50 cursor-not-allowed"
+          }`}
         >
           <Scissors size={16} className="text-zinc-400 mb-1" />
           <span className="text-[11px] font-medium text-white text-center leading-tight">
@@ -413,8 +580,13 @@ export default function TeamMemberCard({ member, onChanged, onUpdated }) {
         {/* Bloqueios & Folgas */}
         <button
           type="button"
+          disabled={!canEditMemberSchedule && !isSelf}
           onClick={() => setExceptionsSheetOpen(true)}
-          className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-elevated/70 border border-zinc-800 hover:border-zinc-700 active:scale-95 transition-all touch-manipulation"
+          className={`flex flex-col items-center justify-center p-2.5 rounded-xl bg-elevated/70 border border-zinc-800 transition-all touch-manipulation ${
+            canEditMemberSchedule || isSelf
+              ? "hover:border-zinc-700 active:scale-95"
+              : "opacity-50 cursor-not-allowed"
+          }`}
         >
           <CalendarOff size={16} className="text-zinc-400 mb-1" />
           <span className="text-[11px] font-medium text-white text-center leading-tight">
@@ -424,255 +596,354 @@ export default function TeamMemberCard({ member, onChanged, onUpdated }) {
         </button>
       </div>
 
+      {/* Seção de Comissões Avançadas (Número Inteiro) — mantida intacta para colaboradores */}
       {!isChief && (
-        <>
-          {/* Seção de Comissões Avançadas (Número Inteiro) */}
-          <div className="bg-elevated/50 border border-zinc-800/80 rounded-xl p-3 space-y-2.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-zinc-400 text-xs font-semibold flex items-center gap-1.5">
-                <Percent size={13} className="text-accent-light" />
-                Regras de Comissão
+        <div className="bg-elevated/50 border border-zinc-800/80 rounded-xl p-3 space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-zinc-400 text-xs font-semibold flex items-center gap-1.5">
+              <Percent size={13} className="text-accent-light" />
+              Regras de Comissão
+            </span>
+            {commissionSaving ? (
+              <span className="flex items-center gap-1 text-[10px] text-accent-light font-medium">
+                <Loader2 size={10} className="animate-spin" /> Salvando…
               </span>
-              {commissionSaving ? (
-                <span className="flex items-center gap-1 text-[10px] text-accent-light font-medium">
-                  <Loader2 size={10} className="animate-spin" /> Salvando…
-                </span>
-              ) : canEditCommissions ? (
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => handleSaveCommissions({ force: true })}
-                  disabled={commissionSaving}
-                  className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-[10px] font-semibold transition-all touch-manipulation select-none ${
-                    isCommissionDirty
-                      ? "bg-accent text-white shadow-sm active:scale-95"
-                      : "bg-zinc-800/90 text-zinc-300 border border-zinc-700/80 hover:text-white active:scale-95"
+            ) : canManageTeam ? (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => handleSaveCommissions({ force: true })}
+                disabled={commissionSaving}
+                className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-[10px] font-semibold transition-all touch-manipulation select-none ${
+                  isCommissionDirty
+                    ? "bg-accent text-white shadow-sm active:scale-95"
+                    : "bg-zinc-800/90 text-zinc-300 border border-zinc-700/80 hover:text-white active:scale-95"
+                }`}
+              >
+                <Check size={11} />
+                <span>{isCommissionDirty ? "Salvar alterações" : "Salvar"}</span>
+              </button>
+            ) : (
+              <span className="flex items-center gap-1 rounded-full border border-zinc-700/80 bg-zinc-900/90 px-2 py-0.5 text-[10px] font-medium text-zinc-400">
+                <Lock size={10} className="text-zinc-500" /> Somente Chefe
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            {/* Comissão sobre Serviços */}
+            <div className="bg-surface border border-zinc-800 rounded-lg p-2.5">
+              <label className="block text-[11px] text-zinc-400 font-medium mb-1 flex items-center justify-between">
+                <span>Em Serviços</span>
+                {!canManageTeam && <Lock size={10} className="text-zinc-600" />}
+              </label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  readOnly={!canManageTeam}
+                  disabled={!canManageTeam || commissionSaving}
+                  value={serviceCommissionDraft}
+                  onChange={(e) => {
+                    if (canManageTeam) setServiceCommissionDraft(e.target.value);
+                  }}
+                  onBlur={handleCommissionsBlur}
+                  onKeyDown={handleCommissionKeyDown}
+                  placeholder="50"
+                  className={`w-full h-9 rounded bg-elevated border border-zinc-700 px-2 text-base font-bold text-white text-right focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation ${
+                    !canManageTeam ? "opacity-65 cursor-not-allowed select-none" : ""
                   }`}
-                >
-                  <Check size={11} />
-                  <span>{isCommissionDirty ? "Salvar alterações" : "Salvar"}</span>
-                </button>
-              ) : (
-                <span className="flex items-center gap-1 rounded-full border border-zinc-700/80 bg-zinc-900/90 px-2 py-0.5 text-[10px] font-medium text-zinc-400">
-                  <Lock size={10} className="text-zinc-500" /> Somente Chefe
+                />
+                <span className="text-zinc-400 text-xs font-bold">%</span>
+              </div>
+            </div>
+
+            {/* Comissão sobre Produtos / Vendas */}
+            <div className="bg-surface border border-zinc-800 rounded-lg p-2.5">
+              <label className="block text-[11px] text-zinc-400 font-medium mb-1 flex items-center justify-between">
+                <span className="flex items-center gap-1">
+                  <ShoppingBag size={11} className="text-zinc-500" />
+                  Em Produtos
                 </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-2.5">
-              {/* Comissão sobre Serviços */}
-              <div className="bg-surface border border-zinc-800 rounded-lg p-2.5">
-                <label className="block text-[11px] text-zinc-400 font-medium mb-1 flex items-center justify-between">
-                  <span>Em Serviços</span>
-                  {!canEditCommissions && <Lock size={10} className="text-zinc-600" />}
-                </label>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="1"
-                    readOnly={!canEditCommissions}
-                    disabled={!canEditCommissions || commissionSaving}
-                    value={serviceCommissionDraft}
-                    onChange={(e) => {
-                      if (canEditCommissions) setServiceCommissionDraft(e.target.value);
-                    }}
-                    onBlur={handleCommissionsBlur}
-                    onKeyDown={handleCommissionKeyDown}
-                    placeholder="50"
-                    className={`w-full h-9 rounded bg-elevated border border-zinc-700 px-2 text-base font-bold text-white text-right focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation ${
-                      !canEditCommissions ? "opacity-65 cursor-not-allowed select-none" : ""
-                    }`}
-                  />
-                  <span className="text-zinc-400 text-xs font-bold">%</span>
-                </div>
-              </div>
-
-              {/* Comissão sobre Produtos / Vendas */}
-              <div className="bg-surface border border-zinc-800 rounded-lg p-2.5">
-                <label className="block text-[11px] text-zinc-400 font-medium mb-1 flex items-center justify-between">
-                  <span className="flex items-center gap-1">
-                    <ShoppingBag size={11} className="text-zinc-500" />
-                    Em Produtos
-                  </span>
-                  {!canEditCommissions && <Lock size={10} className="text-zinc-600" />}
-                </label>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="1"
-                    readOnly={!canEditCommissions}
-                    disabled={!canEditCommissions || commissionSaving}
-                    value={productCommissionDraft}
-                    onChange={(e) => {
-                      if (canEditCommissions) setProductCommissionDraft(e.target.value);
-                    }}
-                    onBlur={handleCommissionsBlur}
-                    onKeyDown={handleCommissionKeyDown}
-                    placeholder="10"
-                    className={`w-full h-9 rounded bg-elevated border border-zinc-700 px-2 text-base font-bold text-white text-right focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation ${
-                      !canEditCommissions ? "opacity-65 cursor-not-allowed select-none" : ""
-                    }`}
-                  />
-                  <span className="text-zinc-400 text-xs font-bold">%</span>
-                </div>
+                {!canManageTeam && <Lock size={10} className="text-zinc-600" />}
+              </label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  readOnly={!canManageTeam}
+                  disabled={!canManageTeam || commissionSaving}
+                  value={productCommissionDraft}
+                  onChange={(e) => {
+                    if (canManageTeam) setProductCommissionDraft(e.target.value);
+                  }}
+                  onBlur={handleCommissionsBlur}
+                  onKeyDown={handleCommissionKeyDown}
+                  placeholder="10"
+                  className={`w-full h-9 rounded bg-elevated border border-zinc-700 px-2 text-base font-bold text-white text-right focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation ${
+                    !canManageTeam ? "opacity-65 cursor-not-allowed select-none" : ""
+                  }`}
+                />
+                <span className="text-zinc-400 text-xs font-bold">%</span>
               </div>
             </div>
-            <p className="text-[10.5px] text-zinc-500">
-              {canEditCommissions
-                ? "Valores inteiros (ex: 50 = 50%, 10 = 10%). Salvo ao sair do campo ou clicar em Salvar."
-                : "Campos protegidos: apenas o Chefe / Admin pode alterar as percentagens de comissão."}
-            </p>
           </div>
+          <p className="text-[10.5px] text-zinc-500">
+            {canManageTeam
+              ? "Valores inteiros (ex: 50 = 50%, 10 = 10%). Salvo ao sair do campo ou clicar em Salvar."
+              : "Campos protegidos: apenas quem gerencia a equipe pode alterar as comissões."}
+          </p>
+        </div>
+      )}
 
-          {/* Seletor Simplificado de Cargos: Chefe vs Gerente vs Barbeiro */}
-          <div className="border-t border-zinc-800/80 pt-3">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                <ShieldCheck size={14} className="text-accent" />
-                Cargo e Nível de Acesso
+      {/* Seletor de Perfis (Atalhos Rápidos) + Permissões Individuais */}
+      <div className="border-t border-zinc-800/80 pt-3 space-y-3">
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+              <ShieldCheck size={14} className="text-accent" />
+              Perfil (Atalho Rápido)
+            </span>
+            {roleSaving ? (
+              <span className="text-[10px] text-accent-light flex items-center gap-1">
+                <Loader2 size={10} className="animate-spin" /> Aplicando…
               </span>
-              {roleSaving ? (
-                <span className="text-[10px] text-accent flex items-center gap-1">
-                  <Loader2 size={10} className="animate-spin" /> Salvando…
-                </span>
-              ) : !canEditCommissions ? (
-                <span className="text-[10px] text-zinc-500 flex items-center gap-1">
-                  <Lock size={10} /> Somente Chefe
-                </span>
-              ) : null}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <button
-                type="button"
-                disabled={!canEditCommissions || isPending || roleSaving}
-                onClick={() => handleRoleChange('barber')}
-                className={`p-2.5 rounded-xl border text-left transition-all touch-manipulation ${
-                  memberState.role === 'barber'
-                    ? 'bg-zinc-800/90 border-zinc-500 text-white shadow-sm ring-1 ring-zinc-500/40'
-                    : 'bg-surface/50 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
-                } ${!canEditCommissions ? 'opacity-65 cursor-not-allowed' : ''}`}
-              >
-                <div className="flex items-center gap-1.5 font-bold text-xs text-zinc-200">
-                  <span>✂️ Barbeiro</span>
-                </div>
-                <p className="text-[10px] text-zinc-400 mt-1 leading-tight">
-                  Agenda própria, comissões e caixa individual.
-                </p>
-              </button>
-
-              <button
-                type="button"
-                disabled={!canEditCommissions || isPending || roleSaving}
-                onClick={() => handleRoleChange('manager')}
-                className={`p-2.5 rounded-xl border text-left transition-all touch-manipulation ${
-                  memberState.role === 'manager'
-                    ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-sm ring-1 ring-emerald-500/40'
-                    : 'bg-surface/50 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
-                } ${!canEditCommissions ? 'opacity-65 cursor-not-allowed' : ''}`}
-              >
-                <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-400">
-                  <span>👔 Gerente</span>
-                </div>
-                <p className="text-[10px] text-zinc-400 mt-1 leading-tight">
-                  Visão da agenda de toda a equipe e caixa individual.
-                </p>
-              </button>
-
-              <button
-                type="button"
-                disabled={!canEditCommissions || isPending || roleSaving}
-                onClick={() => handleRoleChange('admin')}
-                className={`p-2.5 rounded-xl border text-left transition-all touch-manipulation ${
-                  memberState.role === 'admin'
-                    ? 'bg-amber-500/15 border-amber-500 text-white shadow-sm ring-1 ring-amber-500/40'
-                    : 'bg-surface/50 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
-                } ${!canEditCommissions ? 'opacity-65 cursor-not-allowed' : ''}`}
-              >
-                <div className="flex items-center gap-1.5 font-bold text-xs text-amber-300">
-                  <span>👑 Chefe / Admin</span>
-                </div>
-                <p className="text-[10px] text-zinc-400 mt-1 leading-tight">
-                  Acesso total: faturamento global, edição de preços e equipe.
-                </p>
-              </button>
-            </div>
+            ) : !canManageTeam ? (
+              <span className="text-[10px] text-zinc-500 flex items-center gap-1">
+                <Lock size={10} /> Somente Chefe
+              </span>
+            ) : isCustomizedPerms ? (
+              <span className="rounded-md bg-blue-500/15 border border-blue-500/30 px-2 py-0.5 text-[10px] font-semibold text-blue-300">
+                Personalizado
+              </span>
+            ) : null}
           </div>
 
-          {canEditCommissions && (
-            <>
-              {/* Link de Recuperação de Senha */}
-              <div className="border-t border-zinc-800/80 pt-2.5">
-                <button
-                  type="button"
-                  onClick={handleRecoveryLink}
-                  disabled={recovery.loading}
-                  className="flex items-center gap-1.5 text-zinc-400 text-xs font-medium hover:text-white transition-colors disabled:opacity-50"
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <button
+              type="button"
+              disabled={!canManageTeam || isPending || roleSaving || isSelf}
+              onClick={() => handleRoleChange("barber")}
+              className={`p-2.5 rounded-xl border text-left transition-all touch-manipulation ${
+                memberState.role === "barber"
+                  ? "bg-zinc-800/90 border-zinc-500 text-white shadow-sm ring-1 ring-zinc-500/40"
+                  : "bg-surface/50 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+              } ${!canManageTeam || isSelf ? "opacity-55 cursor-not-allowed" : ""}`}
+            >
+              <div className="flex items-center gap-1.5 font-bold text-xs text-zinc-200">
+                <span>✂️ Barbeiro</span>
+              </div>
+              <p className="text-[10px] text-zinc-400 mt-1 leading-tight">
+                Agenda própria, comissões e caixa individual.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              disabled={!canManageTeam || isPending || roleSaving || isSelf}
+              onClick={() => handleRoleChange("manager")}
+              className={`p-2.5 rounded-xl border text-left transition-all touch-manipulation ${
+                memberState.role === "manager"
+                  ? "bg-emerald-500/15 border-emerald-500 text-white shadow-sm ring-1 ring-emerald-500/40"
+                  : "bg-surface/50 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+              } ${!canManageTeam || isSelf ? "opacity-55 cursor-not-allowed" : ""}`}
+            >
+              <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-400">
+                <span>👔 Gerente</span>
+              </div>
+              <p className="text-[10px] text-zinc-400 mt-1 leading-tight">
+                Agenda da equipe, serviços, expediente e caixa individual.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              disabled={!canManageTeam || isPending || roleSaving}
+              onClick={() => handleRoleChange("admin")}
+              className={`p-2.5 rounded-xl border text-left transition-all touch-manipulation ${
+                memberState.role === "admin"
+                  ? "bg-amber-500/15 border-amber-500 text-white shadow-sm ring-1 ring-amber-500/40"
+                  : "bg-surface/50 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+              } ${!canManageTeam ? "opacity-55 cursor-not-allowed" : ""}`}
+            >
+              <div className="flex items-center gap-1.5 font-bold text-xs text-amber-300">
+                <span>👑 Chefe / Admin</span>
+              </div>
+              <p className="text-[10px] text-zinc-400 mt-1 leading-tight">
+                Atalho com todas as permissões operacionais e globais ativas.
+              </p>
+            </button>
+          </div>
+        </div>
+
+        {/* Permissões Individuais (Switches Granulares) */}
+        <div className="bg-zinc-950/80 border border-zinc-800/90 rounded-xl p-3 space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
+              <SlidersHorizontal size={13} className="text-accent-light" />
+              Permissões Individuais
+            </span>
+            <span className="font-mono text-[10px] text-zinc-400">
+              {activePermCount}/{PERMISSION_DEFINITIONS.length} ativas
+            </span>
+          </div>
+
+          <div className="divide-y divide-zinc-800/70">
+            {PERMISSION_DEFINITIONS.map((permDef) => {
+              const checked = Boolean(normalizedPerms[permDef.key]);
+              const isSelfLockedManageTeam =
+                isSelf && permDef.key === PERMISSION_KEYS.MANAGE_TEAM;
+              const isSavingThis = savingPermKey === permDef.key;
+              const disabled =
+                !canManageTeam ||
+                isSelfLockedManageTeam ||
+                Boolean(savingPermKey) ||
+                roleSaving;
+
+              return (
+                <div
+                  key={permDef.key}
+                  className="py-2.5 first:pt-1 last:pb-0.5 flex items-center justify-between gap-3"
                 >
-                  {recovery.loading ? (
-                    <Loader2 size={13} className="animate-spin text-accent" />
-                  ) : (
-                    <KeyRound size={13} className="text-zinc-500" />
-                  )}
-                  {recovery.loading
-                    ? "Gerando link de acesso…"
-                    : "Gerar link de recuperação de senha"}
-                </button>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span
+                        className={`text-xs font-medium leading-tight ${
+                          checked ? "text-white" : "text-zinc-300"
+                        }`}
+                      >
+                        {permDef.label}
+                      </span>
+                      {isSelfLockedManageTeam && (
+                        <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 bg-amber-500/15 border border-amber-500/30 text-[9.5px] font-semibold text-amber-300">
+                          <Lock size={9} /> Obrigatório
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10.5px] text-zinc-500 leading-snug mt-0.5">
+                      {isSelfLockedManageTeam
+                        ? "Protegido: você não pode remover sua própria permissão de gerenciar equipe."
+                        : permDef.description}
+                    </p>
+                  </div>
 
-                {recovery.error && (
-                  <p role="alert" className="text-accent-light text-[11px] mt-2">
-                    {recovery.error}
-                  </p>
-                )}
-
-                {recovery.link && (
-                  <div className="mt-2.5 flex items-center gap-2">
-                    <a
-                      href={`https://wa.me/${whatsappNumber(recovery.link.phone)}?text=${encodeURIComponent(
-                        `Olá, ${recovery.link.name}! Use este link para definir sua nova senha do painel da barbearia: ${recovery.link.url}`
-                      )}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[11px] font-semibold text-white active:bg-accent-dark"
-                    >
-                      <MessageCircle size={13} /> Enviar no WhatsApp
-                    </a>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {isSavingThis && (
+                      <Loader2 size={13} className="animate-spin text-accent-light" />
+                    )}
                     <button
                       type="button"
-                      onClick={handleCopyLink}
-                      className="flex items-center gap-1.5 rounded-full border border-zinc-700 px-3 py-1.5 text-[11px] font-medium text-zinc-300 hover:text-white"
+                      role="switch"
+                      aria-checked={checked}
+                      aria-label={`${permDef.label} para ${member.name}`}
+                      disabled={disabled}
+                      onClick={() => handleTogglePermission(permDef)}
+                      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border-2 border-transparent transition-all touch-manipulation select-none ${
+                        checked
+                          ? isSelfLockedManageTeam
+                            ? "bg-amber-600/80"
+                            : "bg-accent shadow-sm shadow-accent/30"
+                          : "bg-zinc-800 hover:bg-zinc-700"
+                      } ${
+                        disabled
+                          ? "opacity-60 cursor-not-allowed"
+                          : "cursor-pointer active:scale-95"
+                      }`}
                     >
-                      <Copy size={13} /> {recovery.copied ? "Copiado" : "Copiar"}
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                          checked ? "translate-x-5" : "translate-x-0.5"
+                        }`}
+                      />
                     </button>
                   </div>
-                )}
-              </div>
+                </div>
+              );
+            })}
+          </div>
 
-              {/* Remover da equipe */}
-              <div className="border-t border-zinc-800/80 pt-2 flex justify-end">
+          <p className="text-[10px] text-zinc-500 pt-1 border-t border-zinc-800/60">
+            Caixa individual preservado: cada profissional sempre mantém acesso à própria agenda,
+            comissões e caixa pessoal.
+          </p>
+        </div>
+      </div>
+
+      {/* Ações Administrativas (Recuperação de senha & Remoção — apenas para outros membros) */}
+      {canManageTeam && !isSelf && (
+        <>
+          {/* Link de Recuperação de Senha */}
+          <div className="border-t border-zinc-800/80 pt-2.5">
+            <button
+              type="button"
+              onClick={handleRecoveryLink}
+              disabled={recovery.loading}
+              className="flex items-center gap-1.5 text-zinc-400 text-xs font-medium hover:text-white transition-colors disabled:opacity-50"
+            >
+              {recovery.loading ? (
+                <Loader2 size={13} className="animate-spin text-accent" />
+              ) : (
+                <KeyRound size={13} className="text-zinc-500" />
+              )}
+              {recovery.loading
+                ? "Gerando link de acesso…"
+                : "Gerar link de recuperação de senha"}
+            </button>
+
+            {recovery.error && (
+              <p role="alert" className="text-accent-light text-[11px] mt-2">
+                {recovery.error}
+              </p>
+            )}
+
+            {recovery.link && (
+              <div className="mt-2.5 flex items-center gap-2">
+                <a
+                  href={`https://wa.me/${whatsappNumber(recovery.link.phone)}?text=${encodeURIComponent(
+                    `Olá, ${recovery.link.name}! Use este link para definir sua nova senha do painel da barbearia: ${recovery.link.url}`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[11px] font-semibold text-white active:bg-accent-dark"
+                >
+                  <MessageCircle size={13} /> Enviar no WhatsApp
+                </a>
                 <button
                   type="button"
-                  onClick={handleRemove}
-                  className="flex items-center gap-1.5 text-red-400 text-xs font-medium hover:opacity-80 transition-opacity"
+                  onClick={handleCopyLink}
+                  className="flex items-center gap-1.5 rounded-full border border-zinc-700 px-3 py-1.5 text-[11px] font-medium text-zinc-300 hover:text-white"
                 >
-                  <Trash2 size={13} /> Remover da equipe
+                  <Copy size={13} /> {recovery.copied ? "Copiado" : "Copiar"}
                 </button>
               </div>
-            </>
-          )}
+            )}
+          </div>
+
+          {/* Remover da equipe */}
+          <div className="border-t border-zinc-800/80 pt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={handleRemove}
+              className="flex items-center gap-1.5 text-red-400 text-xs font-medium hover:opacity-80 transition-opacity"
+            >
+              <Trash2 size={13} /> Remover da equipe
+            </button>
+          </div>
         </>
       )}
 
       {/* Modais Integrados */}
-      <TeamMemberCashSheet
-        open={cashSheetOpen}
-        onClose={() => setCashSheetOpen(false)}
-        member={memberState}
-      />
+      {canOpenCashSheet && (
+        <TeamMemberCashSheet
+          open={cashSheetOpen}
+          onClose={() => setCashSheetOpen(false)}
+          member={memberState}
+        />
+      )}
 
       <TeamMemberScheduleSheet
         open={scheduleSheetOpen}

@@ -61,7 +61,11 @@ export default function BottomNav() {
     warmupAdminTabsData({
       barberId: barber.id,
       scopeBarberId,
-      canViewAll: isLeadership || can(PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS),
+      canViewAll:
+        can(PERMISSION_KEYS.VIEW_ALL_SCHEDULES) ||
+        can(PERMISSION_KEYS.MANAGE_TEAM) ||
+        can(PERMISSION_KEYS.MANAGE_SCHEDULE_BLOCKS) ||
+        can(PERMISSION_KEYS.VIEW_GLOBAL_FINANCE),
       canManageServices: can(PERMISSION_KEYS.MANAGE_SERVICES),
     });
   };

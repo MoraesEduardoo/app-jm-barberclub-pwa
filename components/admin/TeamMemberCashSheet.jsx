@@ -16,6 +16,7 @@ import {
 import BottomSheet from './BottomSheet';
 import { getBarberCashHistory } from '@/lib/actions/team';
 import { useBarber } from '@/lib/barber-context';
+import { PERMISSION_KEYS } from '@/lib/auth';
 import CommissionSettlementSheet from './CommissionSettlementSheet';
 import { useRouter } from 'next/navigation';
 
@@ -68,7 +69,8 @@ function formatDate(isoString) {
  */
 export default function TeamMemberCashSheet({ open, onClose, member }) {
   const router = useRouter();
-  const { isChefe } = useBarber();
+  const { can } = useBarber();
+  const canViewGlobalFinance = can(PERMISSION_KEYS.VIEW_GLOBAL_FINANCE);
   const [period, setPeriod] = useState('today'); // 'today' | 'month'
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
@@ -270,8 +272,8 @@ export default function TeamMemberCashSheet({ open, onClose, member }) {
               )}
             </div>
 
-            {/* Botão de Fechamento de Acerto de Comissão (Exclusivo Chefe) */}
-            {isChefe && (
+            {/* Botão de Fechamento de Acerto de Comissão (Exige view_global_finance) */}
+            {canViewGlobalFinance && (
               <button
                 type="button"
                 onClick={() => setSettleOpen(true)}
@@ -291,14 +293,14 @@ export default function TeamMemberCashSheet({ open, onClose, member }) {
               }}
               className="w-full flex items-center justify-center gap-1.5 bg-elevated border border-zinc-700/80 rounded-xl py-2.5 text-xs font-medium text-zinc-300 hover:text-white active:bg-zinc-900 transition-all touch-manipulation"
             >
-              <span>Abrir no Caixa Geral</span>
+              <span>{canViewGlobalFinance ? 'Abrir no Caixa Geral' : 'Abrir Meu Caixa'}</span>
               <ChevronRight size={14} className="text-zinc-400" />
             </button>
           </>
         )}
       </div>
 
-      {isChefe && (
+      {canViewGlobalFinance && (
         <CommissionSettlementSheet
           open={settleOpen}
           onClose={() => setSettleOpen(false)}

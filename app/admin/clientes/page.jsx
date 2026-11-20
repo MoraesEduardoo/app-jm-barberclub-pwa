@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { listClients } from '@/lib/actions/clients';
 import { useBarber } from '@/lib/barber-context';
+import { PERMISSION_KEYS } from '@/lib/auth';
 import { cacheKeys, getCache, setCache } from '@/lib/admin-cache';
 import { formatPhoneBR } from '@/lib/whatsapp';
 import ClientDetailSheet from '@/components/admin/ClientDetailSheet';
@@ -17,11 +18,13 @@ const DEFAULT_MATHEUS_ID = 'b949db29-efb1-4131-8234-873195068328';
 const DEFAULT_WILLIAM_ID = '9ebcd15c-b747-4d0b-b12f-5de9465363f9';
 
 export default function ClientesPage() {
-  const { team } = useBarber();
+  const { barber, team, can } = useBarber();
+  const canViewAll = can(PERMISSION_KEYS.VIEW_ALL_SCHEDULES);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('todos'); // 'todos' | 'fiel' | 'atrasado' | 'novo'
   // Por defeito, exibe "Todos" os clientes da barbearia (null), desvinculado do filtro da Agenda
   const [barberFilter, setBarberFilter] = useState(null);
+  const effectiveBarberFilter = canViewAll ? barberFilter : barber?.id || null;
 
   // Resolve os IDs dos profissionais Matheus e William a partir da equipa ativa (com fallback seguro)
   const professionalOptions = useMemo(() => {
@@ -51,7 +54,7 @@ export default function ClientesPage() {
     ];
   }, [team]);
 
-  const clientsKey = cacheKeys.clients(search, filter, barberFilter);
+  const clientsKey = cacheKeys.clients(search, filter, effectiveBarberFilter);
   const cachedPayload = getCache(clientsKey);
 
   const [clients, setClients] = useState(() => cachedPayload?.clients || []);
@@ -80,7 +83,7 @@ export default function ClientesPage() {
       setLoading(true);
     }
 
-    listClients({ search, filter, scopeBarberId: barberFilter })
+    listClients({ search, filter, scopeBarberId: effectiveBarberFilter })
       .then((res) => {
         if (!active) return;
         if (res.data) {
@@ -105,7 +108,7 @@ export default function ClientesPage() {
     return () => {
       active = false;
     };
-  }, [search, filter, barberFilter, clientsKey]);
+  }, [search, filter, effectiveBarberFilter, clientsKey]);
 
   function handleWhatsApp(client, e) {
     if (e) e.stopPropagation();
@@ -127,7 +130,7 @@ export default function ClientesPage() {
     });
     setSelectedClient(null);
 
-    listClients({ search, filter, scopeBarberId: barberFilter })
+    listClients({ search, filter, scopeBarberId: effectiveBarberFilter })
       .then((res) => {
         if (res.data) {
           const nextCounts = {
@@ -163,25 +166,27 @@ export default function ClientesPage() {
       </div>
 
       {/* Filtro Dedicado de Profissionais (Padrão: "Todos", independente da Agenda) */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-0.5 no-scrollbar select-none">
-        {professionalOptions.map((prof) => {
-          const isSelected = barberFilter === prof.id;
-          return (
-            <button
-              key={prof.key}
-              type="button"
-              onClick={() => setBarberFilter(prof.id)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all touch-manipulation active:scale-95 ${
-                isSelected
-                  ? 'bg-accent text-white shadow-sm ring-1 ring-accent'
-                  : 'bg-zinc-900/90 border border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700'
-              }`}
-            >
-              {prof.label}
-            </button>
-          );
-        })}
-      </div>
+      {canViewAll && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-0.5 no-scrollbar select-none">
+          {professionalOptions.map((prof) => {
+            const isSelected = barberFilter === prof.id;
+            return (
+              <button
+                key={prof.key}
+                type="button"
+                onClick={() => setBarberFilter(prof.id)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all touch-manipulation active:scale-95 ${
+                  isSelected
+                    ? 'bg-accent text-white shadow-sm ring-1 ring-accent'
+                    : 'bg-zinc-900/90 border border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700'
+                }`}
+              >
+                {prof.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Barra de Busca */}
       <div className="relative">

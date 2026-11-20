@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Coffee } from "lucide-react";
 
-export default function ScheduleDayRow({ day, entry, onChange }) {
+export default function ScheduleDayRow({ day, entry, onChange, disabled = false }) {
   const active = entry?.active ?? false;
   const hasLunch = entry?.has_lunch_break ?? false;
 
@@ -26,7 +26,8 @@ export default function ScheduleDayRow({ day, entry, onChange }) {
   }, [entry]);
 
   function emit(partial) {
-    onChange({
+    if (disabled) return;
+    onChange?.({
       active,
       start_time: start,
       end_time: end,
@@ -38,15 +39,17 @@ export default function ScheduleDayRow({ day, entry, onChange }) {
   }
 
   return (
-    <div className="bg-surface border border-zinc-800 rounded-xl px-4 py-3.5">
+    <div className={`bg-surface border border-zinc-800 rounded-xl px-4 py-3.5 ${disabled ? "opacity-80" : ""}`}>
       <div className="flex items-center gap-3">
         <button
+          type="button"
           role="switch"
           aria-checked={active}
+          disabled={disabled}
           onClick={() => emit({ active: !active })}
-          className={`relative shrink-0 w-11 h-6 rounded-full transition-all touch-manipulation active:scale-95 ${
-            active ? "bg-accent" : "bg-zinc-700"
-          }`}
+          className={`relative shrink-0 w-11 h-6 rounded-full transition-all touch-manipulation ${
+            disabled ? "opacity-55 cursor-not-allowed" : "active:scale-95"
+          } ${active ? "bg-accent" : "bg-zinc-700"}`}
         >
           <span
             className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
@@ -69,17 +72,19 @@ export default function ScheduleDayRow({ day, entry, onChange }) {
             <input
               type="time"
               value={start}
+              disabled={disabled}
               onChange={(e) => setStart(e.target.value)}
               onBlur={() => emit({ start_time: start })}
-              className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-base text-white w-[86px] focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation"
+              className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-base text-white w-[86px] focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation disabled:opacity-60 disabled:cursor-not-allowed"
             />
             <span className="text-zinc-600 text-xs">–</span>
             <input
               type="time"
               value={end}
+              disabled={disabled}
               onChange={(e) => setEnd(e.target.value)}
               onBlur={() => emit({ end_time: end })}
-              className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-base text-white w-[86px] focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation"
+              className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-base text-white w-[86px] focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation disabled:opacity-60 disabled:cursor-not-allowed"
             />
           </div>
         )}
@@ -88,12 +93,14 @@ export default function ScheduleDayRow({ day, entry, onChange }) {
       {active && (
         <div className="mt-3 pt-3 border-t border-zinc-800/80 flex items-center gap-3">
           <button
+            type="button"
             role="switch"
             aria-checked={hasLunch}
+            disabled={disabled}
             onClick={() => emit({ has_lunch_break: !hasLunch })}
-            className={`relative shrink-0 w-9 h-5 rounded-full transition-all touch-manipulation active:scale-95 ${
-              hasLunch ? "bg-accent" : "bg-zinc-700"
-            }`}
+            className={`relative shrink-0 w-9 h-5 rounded-full transition-all touch-manipulation ${
+              disabled ? "opacity-55 cursor-not-allowed" : "active:scale-95"
+            } ${hasLunch ? "bg-accent" : "bg-zinc-700"}`}
           >
             <span
               className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
@@ -112,17 +119,19 @@ export default function ScheduleDayRow({ day, entry, onChange }) {
               <input
                 type="time"
                 value={lunchStart}
+                disabled={disabled}
                 onChange={(e) => setLunchStart(e.target.value)}
                 onBlur={() => emit({ lunch_start: lunchStart })}
-                className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-base text-white w-[86px] focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation"
+                className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-base text-white w-[86px] focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation disabled:opacity-60 disabled:cursor-not-allowed"
               />
               <span className="text-zinc-600 text-xs">–</span>
               <input
                 type="time"
                 value={lunchEnd}
+                disabled={disabled}
                 onChange={(e) => setLunchEnd(e.target.value)}
                 onBlur={() => emit({ lunch_end: lunchEnd })}
-                className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-base text-white w-[86px] focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation"
+                className="bg-elevated border border-zinc-700 rounded-lg px-2 py-1.5 text-base text-white w-[86px] focus:outline-none focus:ring-1 focus:ring-accent touch-manipulation disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
           )}

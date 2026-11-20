@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { CalendarOff, Plus, Trash2, Save, Loader2 } from "lucide-react";
+import { CalendarOff, Plus, Trash2, Save, Loader2, Lock } from "lucide-react";
 import { useBarber } from "@/lib/barber-context";
 import { PERMISSION_KEYS } from "@/lib/auth";
 import { WEEKDAYS } from "@/lib/constants/schedule";
@@ -58,7 +58,6 @@ export default function ExpedientePage() {
   const {
     barber,
     can,
-    isLeadership,
     selectedBarberId,
     selectBarber,
     setSelectionGuard,
@@ -66,11 +65,13 @@ export default function ExpedientePage() {
     refreshTeam,
   } = useBarber();
 
-  const canManageOthers = can(PERMISSION_KEYS.MANAGE_SCHEDULE_OTHERS) || isLeadership;
+  const canManageSchedule = can(PERMISSION_KEYS.MANAGE_SCHEDULE_BLOCKS);
 
   // Barbeiro selecionado por defeito ao abrir a aba (sem exigir clique manual)
   const [activeBarberId, setActiveBarberId] = useState(() =>
-    resolveDefaultBarberId(selectedBarberId, team, barber)
+    canManageSchedule
+      ? resolveDefaultBarberId(selectedBarberId, team, barber)
+      : barber?.id || null
   );
 
   const schedKey = cacheKeys.schedule(activeBarberId);
@@ -94,14 +95,21 @@ export default function ExpedientePage() {
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Garante que a lista da equipe esteja carregada e um barbeiro padrão esteja selecionado automaticamente
+  // Garante que a lista da equipe esteja carregada quando o usuário pode gerenciar expedientes
   useEffect(() => {
-    if (canManageOthers && (!Array.isArray(team) || team.length === 0)) {
+    if (canManageSchedule && (!Array.isArray(team) || team.length === 0)) {
       refreshTeam?.();
     }
-  }, [canManageOthers, team, refreshTeam]);
+  }, [canManageSchedule, team, refreshTeam]);
 
   useEffect(() => {
+    if (!canManageSchedule) {
+      if (barber?.id && activeBarberId !== barber.id) {
+        setActiveBarberId(barber.id);
+      }
+      return;
+    }
+
     const nextDefault = resolveDefaultBarberId(selectedBarberId, team, barber);
     if (!nextDefault) return;
 
@@ -112,13 +120,13 @@ export default function ExpedientePage() {
 
     if (!activeBarberId || !currentValidInTeam) {
       setActiveBarberId(nextDefault);
-      if (isLeadership && !selectedBarberId) {
+      if (!selectedBarberId) {
         selectBarber(nextDefault);
       }
     } else if (selectedBarberId && selectedBarberId !== activeBarberId) {
       setActiveBarberId(selectedBarberId);
     }
-  }, [selectedBarberId, team, barber, activeBarberId, isLeadership, selectBarber]);
+  }, [canManageSchedule, selectedBarberId, team, barber, activeBarberId, selectBarber]);
 
   const loadScheduleForBarber = useCallback(async (barberId) => {
     if (!barberId) return;
@@ -177,18 +185,17 @@ export default function ExpedientePage() {
   }, [hasChanges, setSelectionGuard]);
 
   function handleSelectBarber(memberId) {
-    if (!memberId || memberId === activeBarberId) return;
+    if (!canManageSchedule || !memberId || memberId === activeBarberId) return;
     if (hasChanges) {
       toast.warning("Salve as alterações atuais antes de trocar de profissional.");
       return;
     }
     setActiveBarberId(memberId);
-    if (isLeadership) {
-      selectBarber(memberId);
-    }
+    selectBarber(memberId);
   }
 
   function handleDayChange(dayValue, values) {
+    if (!canManageSchedule) return;
     setSchedule((prev) => {
       const index = prev.findIndex((s) => s.day_of_week === dayValue);
       if (index >= 0) {
@@ -202,7 +209,7 @@ export default function ExpedientePage() {
   }
 
   async function handleSaveChanges() {
-    if (!activeBarberId) return;
+    if (!canManageSchedule || !activeBarberId) return;
     setIsSaving(true);
     try {
       const res = await saveScheduleBatch(activeBarberId, schedule);
@@ -225,7 +232,7 @@ export default function ExpedientePage() {
 
   async function handleAddBlock(e) {
     e.preventDefault();
-    if (!blockDate || !activeBarberId) return;
+    if (!canManageSchedule || !blockDate || !activeBarberId) return;
     try {
       await createException(activeBarberId, {
         date: blockDate,
@@ -243,6 +250,7 @@ export default function ExpedientePage() {
   }
 
   async function handleRemoveBlock(id) {
+    if (!canManageSchedule) return;
     setExceptions((prev) => {
       const next = prev.filter((exc) => exc.id !== id);
       setCache(excKey, next);
@@ -267,7 +275,7 @@ export default function ExpedientePage() {
         hasChanges ? "mb-[calc(env(safe-area-inset-bottom,0px)+88px)]" : ""
       }`}
     >
-      {canManageOthers && team.length > 0 && (
+      {canManageSchedule && team.length > 0 && (
         <div className="mb-4 -mx-1 flex gap-2 overflow-x-auto pb-1 scroll-touch no-scrollbar">
           {team.map((member) => {
             const isSelected = activeBarberId === member.id;
@@ -289,6 +297,15 @@ export default function ExpedientePage() {
         </div>
       )}
 
+      {!canManageSchedule && (
+        <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-zinc-800 bg-zinc-900/70 px-3.5 py-2.5 text-xs text-zinc-400">
+          <Lock size={14} className="shrink-0 text-zinc-500" />
+          <span>
+            Visualização somente leitura. Fale com o Matheus para alterar horários, folgas ou bloqueios.
+          </span>
+        </div>
+      )}
+
       <h3 className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-2 px-1">
         Dias de funcionamento
       </h3>
@@ -299,6 +316,7 @@ export default function ExpedientePage() {
             key={day.value}
             day={day}
             entry={scheduleByDay[day.value]}
+            disabled={!canManageSchedule}
             onChange={(values) => handleDayChange(day.value, values)}
           />
         ))}
@@ -308,13 +326,15 @@ export default function ExpedientePage() {
         <h3 className="text-zinc-500 text-xs font-medium uppercase tracking-wide">
           Bloqueios e folgas
         </h3>
-        <button
-          type="button"
-          onClick={() => setSheetOpen(true)}
-          className="flex items-center gap-1 text-accent-light text-xs font-semibold"
-        >
-          <Plus size={14} /> Bloquear data
-        </button>
+        {canManageSchedule && (
+          <button
+            type="button"
+            onClick={() => setSheetOpen(true)}
+            className="flex items-center gap-1 text-accent-light text-xs font-semibold"
+          >
+            <Plus size={14} /> Bloquear data
+          </button>
+        )}
       </div>
 
       {exceptions.length === 0 ? (
@@ -342,45 +362,49 @@ export default function ExpedientePage() {
                   <p className="text-zinc-500 text-xs truncate">{exc.reason}</p>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => handleRemoveBlock(exc.id)}
-                className="text-zinc-600 active:text-accent-light"
-                aria-label="Remover bloqueio"
-              >
-                <Trash2 size={16} />
-              </button>
+              {canManageSchedule && (
+                <button
+                  type="button"
+                  onClick={() => handleRemoveBlock(exc.id)}
+                  className="text-zinc-600 active:text-accent-light"
+                  aria-label="Remover bloqueio"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
             </div>
           ))}
         </div>
       )}
 
-      <BottomSheet
-        open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        title="Bloquear data"
-      >
-        <form onSubmit={handleAddBlock}>
-          <FormField label="Data">
-            <TextInput
-              type="date"
-              value={blockDate}
-              onChange={(e) => setBlockDate(e.target.value)}
-              required
-            />
-          </FormField>
-          <FormField label="Motivo (opcional)">
-            <TextInput
-              value={blockNote}
-              onChange={(e) => setBlockNote(e.target.value)}
-              placeholder="Ex.: Feriado, viagem, consulta"
-            />
-          </FormField>
-          <PrimaryButton type="submit">Bloquear data</PrimaryButton>
-        </form>
-      </BottomSheet>
+      {canManageSchedule && (
+        <BottomSheet
+          open={sheetOpen}
+          onClose={() => setSheetOpen(false)}
+          title="Bloquear data"
+        >
+          <form onSubmit={handleAddBlock}>
+            <FormField label="Data">
+              <TextInput
+                type="date"
+                value={blockDate}
+                onChange={(e) => setBlockDate(e.target.value)}
+                required
+              />
+            </FormField>
+            <FormField label="Motivo (opcional)">
+              <TextInput
+                value={blockNote}
+                onChange={(e) => setBlockNote(e.target.value)}
+                placeholder="Ex.: Feriado, viagem, consulta"
+              />
+            </FormField>
+            <PrimaryButton type="submit">Bloquear data</PrimaryButton>
+          </form>
+        </BottomSheet>
+      )}
 
-      {hasChanges && (
+      {canManageSchedule && hasChanges && (
         <div className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+64px)] left-0 right-0 p-4 z-40 animate-in slide-in-from-bottom-5 pointer-events-none">
           <button
             type="button"

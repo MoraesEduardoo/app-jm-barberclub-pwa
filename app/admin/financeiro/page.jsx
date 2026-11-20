@@ -55,8 +55,8 @@ function formatBRL(value) {
 }
 
 export default function FinanceiroPage() {
-  const { barber, can, isChefe, selectedBarberId, selectBarber, team } = useBarber();
-  const canManageFinance = can(PERMISSION_KEYS.MANAGE_FINANCE);
+  const { barber, can, selectedBarberId, selectBarber, team } = useBarber();
+  const canViewGlobalFinance = can(PERMISSION_KEYS.VIEW_GLOBAL_FINANCE);
 
   const currentMonth = useMemo(() => currentMonthInShop(), []);
   const currentWeekStart = useMemo(() => currentWeekStartInShop(), []);
@@ -66,11 +66,8 @@ export default function FinanceiroPage() {
   const [selectedWeekStart, setSelectedWeekStart] = useState(currentWeekStart);
   const [tab, setTab] = useState("pagos");
 
-  const [localScope, setLocalScope] = useState(
-    canManageFinance ? "todos" : barber.id
-  );
-  const scopeId = isChefe ? (selectedBarberId ?? "todos") : localScope;
-  const effectiveScope = canManageFinance
+  const scopeId = canViewGlobalFinance ? (selectedBarberId ?? "todos") : barber.id;
+  const effectiveScope = canViewGlobalFinance
     ? scopeId === "todos"
       ? null
       : scopeId
@@ -139,8 +136,8 @@ export default function FinanceiroPage() {
   }, [effectiveScope, team, barber]);
 
   function changeScope(id) {
-    if (isChefe) selectBarber(id === "todos" ? null : id);
-    else setLocalScope(id);
+    if (!canViewGlobalFinance) return;
+    selectBarber(id === "todos" ? null : id);
   }
 
   const load = useCallback(
@@ -193,7 +190,7 @@ export default function FinanceiroPage() {
 
   return (
     <div className="px-4 pt-4 pb-10">
-      {canManageFinance && team.length > 0 && (
+      {canViewGlobalFinance && team.length > 0 && (
         <div className="mb-3 -mx-1 flex gap-2 overflow-x-auto pb-1 scroll-touch no-scrollbar">
           <button
             onClick={() => changeScope("todos")}
@@ -440,7 +437,7 @@ export default function FinanceiroPage() {
                 </div>
               </div>
 
-              {isChefe && (
+              {canViewGlobalFinance && (
                 <button
                   type="button"
                   onClick={() => setSettlementOpen(true)}
@@ -573,7 +570,7 @@ export default function FinanceiroPage() {
         barberLabel={activeBarberLabel}
       />
 
-      {isChefe && (
+      {canViewGlobalFinance && (
         <CommissionSettlementSheet
           open={settlementOpen}
           onClose={() => {

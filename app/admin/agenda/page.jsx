@@ -258,10 +258,11 @@ export default function AgendaPage() {
     setActiveTab,
   } = useBarber();
   const { notifications } = useNotifications();
-  const canViewAll = can(PERMISSION_KEYS.VIEW_ALL_APPOINTMENTS);
+  const canViewAll = can(PERMISSION_KEYS.VIEW_ALL_SCHEDULES);
+  const effectiveAgendaScope = canViewAll ? scopeBarberId : barber?.id || null;
 
   const [date, setDate] = useState(() => todayInShop());
-  const apptCacheKey = cacheKeys.appointments(date, scopeBarberId);
+  const apptCacheKey = cacheKeys.appointments(date, effectiveAgendaScope);
 
   // Inicializa sincronamente do cache em memória caso já possua registros carregados
   const [appointments, setAppointments] = useState(() => {
@@ -321,11 +322,11 @@ export default function AgendaPage() {
     (updater) => {
       setAppointments((prev) => {
         const next = typeof updater === "function" ? updater(prev) : updater;
-        setCache(cacheKeys.appointments(date, scopeBarberId), next);
+        setCache(cacheKeys.appointments(date, effectiveAgendaScope), next);
         return next;
       });
     },
-    [date, scopeBarberId]
+    [date, effectiveAgendaScope]
   );
 
   /**
@@ -334,7 +335,7 @@ export default function AgendaPage() {
   const load = useCallback(
     async ({ silent = false } = {}) => {
       const requestId = ++requestIdRef.current;
-      const currentKey = cacheKeys.appointments(date, scopeBarberId);
+      const currentKey = cacheKeys.appointments(date, effectiveAgendaScope);
       const cachedList = getCache(currentKey);
       const hasNonEmptyCache = Array.isArray(cachedList) && cachedList.length > 0;
 
@@ -347,7 +348,7 @@ export default function AgendaPage() {
       }
 
       try {
-        const response = await fetchAppointmentsImmediate(date, scopeBarberId);
+        const response = await fetchAppointmentsImmediate(date, effectiveAgendaScope);
 
         if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
@@ -380,7 +381,7 @@ export default function AgendaPage() {
         }
       }
     },
-    [date, scopeBarberId]
+    [date, effectiveAgendaScope]
   );
 
   // Disparo automático imediato no mount e ao alterar data ou barbeiro selecionado
@@ -1101,7 +1102,7 @@ export default function AgendaPage() {
 
       <CrowdedModeToggle />
 
-      <DateStepper value={date} onChange={setDate} barberId={scopeBarberId} />
+      <DateStepper value={date} onChange={setDate} barberId={effectiveAgendaScope} />
 
       {/* Dashboard Dinâmico de Status Financeiro do Dia */}
       <div className="mt-3">
@@ -1666,7 +1667,7 @@ export default function AgendaPage() {
       <WalkInSheet
         open={walkInOpen}
         onClose={handleCloseWalkIn}
-        barber={viewedBarber}
+        barber={canViewAll ? viewedBarber : barber}
         team={team}
         canPickBarber={canViewAll}
         existingAppointments={appointments}
@@ -1676,7 +1677,7 @@ export default function AgendaPage() {
       <ClientCyclesSheet
         open={cyclesOpen}
         onClose={() => setCyclesOpen(false)}
-        scopeBarberId={scopeBarberId}
+        scopeBarberId={effectiveAgendaScope}
       />
     </div>
   );

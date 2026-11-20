@@ -24,6 +24,7 @@ import {
   Receipt,
 } from 'lucide-react';
 import { useBarber } from '@/lib/barber-context';
+import { PERMISSION_KEYS } from '@/lib/auth';
 import { CHATBOT_URL } from '@/lib/site-url';
 import { toast } from '@/lib/toast';
 import HelpConfigModal from './HelpConfigModal';
@@ -35,7 +36,8 @@ export default function HamburgerDrawer({
   onOpenSettlement,
 }) {
   const pathname = usePathname();
-  const { barber, isChefe, isManager, signOut } = useBarber();
+  const { barber, isChefe, isManager, can, signOut } = useBarber();
+  const canViewGlobalFinance = can(PERMISSION_KEYS.VIEW_GLOBAL_FINANCE);
   const [copied, setCopied] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
 
@@ -260,14 +262,14 @@ export default function HamburgerDrawer({
                   <div>
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs font-semibold block leading-tight">
-                        {isChefe ? 'Faturamento & Caixa' : 'Meus Ganhos'}
+                        {canViewGlobalFinance ? 'Faturamento & Caixa' : 'Meus Ganhos'}
                       </span>
                       <span className="text-[9px] bg-emerald-500/15 text-emerald-400 px-1.5 py-0.2 rounded font-bold uppercase">
-                        {isChefe ? 'Global' : 'Pessoal'}
+                        {canViewGlobalFinance ? 'Global' : 'Pessoal'}
                       </span>
                     </div>
                     <span className="text-[10px] text-zinc-500">
-                      {isChefe
+                      {canViewGlobalFinance
                         ? 'Entradas, comissões e fechamento'
                         : 'Minhas comissões e cortes realizados'}
                     </span>
@@ -276,8 +278,8 @@ export default function HamburgerDrawer({
                 <ChevronRight size={14} className="text-zinc-600" />
               </Link>
 
-              {/* Despesas (Exclusivo Chefe / Admin) */}
-              {isChefe && (
+              {/* Despesas (Exige view_global_finance) */}
+              {canViewGlobalFinance && (
                 <Link
                   href="/admin/financeiro/completo"
                   onClick={onClose}
@@ -304,8 +306,8 @@ export default function HamburgerDrawer({
                 </Link>
               )}
 
-              {/* Fechamento & Acerto de Comissões (Exclusivo Chefe / Admin) */}
-              {isChefe && (
+              {/* Fechamento & Acerto de Comissões (Exige view_global_finance) */}
+              {canViewGlobalFinance && (
                 <button
                   type="button"
                   onClick={() => {

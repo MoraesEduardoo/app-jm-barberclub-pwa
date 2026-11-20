@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { endSession } from "@/lib/session";
@@ -43,11 +43,13 @@ function AdminShell({ children, onProfileUpdated }) {
   const {
     barber,
     isChefe,
-    isLeadership,
+    can,
     selectedBarberId,
     selectBarber,
     setActiveTab,
   } = useBarber();
+  const canViewAllSchedules = can(PERMISSION_KEYS.VIEW_ALL_SCHEDULES);
+  const canViewGlobalFinance = can(PERMISSION_KEYS.VIEW_GLOBAL_FINANCE);
 
   const isDefaultRoot = !pathname || pathname === "/" || pathname === "/admin";
   const effectivePathname = isDefaultRoot ? "/admin/agenda" : pathname;
@@ -87,10 +89,10 @@ function AdminShell({ children, onProfileUpdated }) {
       <ClientCyclesSheet
         open={recorrenciasOpen}
         onClose={() => setRecorrenciasOpen(false)}
-        scopeBarberId={isLeadership ? selectedBarberId : barber.id}
+        scopeBarberId={canViewAllSchedules ? selectedBarberId : barber.id}
       />
 
-      {isChefe && (
+      {canViewGlobalFinance && (
         <CommissionSettlementSheet
           open={settlementOpen}
           onClose={() => setSettlementOpen(false)}
@@ -114,6 +116,16 @@ export default function AdminLayout({ children }) {
   const cachedBarber = getCache(cacheKeys.sessionBarber()) || null;
   const [status, setStatus] = useState(() => (cachedBarber ? "ok" : "loading")); // loading | ok
   const [barber, setBarber] = useState(() => cachedBarber);
+
+  const refreshBarber = useCallback(async () => {
+    const res = await getCurrentBarber();
+    if (res?.error || !res?.barber) {
+      return null;
+    }
+    setCache(cacheKeys.sessionBarber(), res.barber);
+    setBarber(res.barber);
+    return res.barber;
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -152,7 +164,11 @@ export default function AdminLayout({ children }) {
   }
 
   return (
-    <BarberProvider barber={barber} signOut={handleSignOut}>
+    <BarberProvider
+      barber={barber}
+      signOut={handleSignOut}
+      refreshBarber={refreshBarber}
+    >
       <AdminShell
         onProfileUpdated={(updated) => {
           setCache(cacheKeys.sessionBarber(), updated);

@@ -15,6 +15,7 @@ import {
   Receipt,
 } from 'lucide-react';
 import { useBarber } from '@/lib/barber-context';
+import { PERMISSION_KEYS } from '@/lib/auth';
 import {
   financeRange,
   currentMonthInShop,
@@ -53,7 +54,8 @@ const CATEGORY_LABEL = {
  * despesas lançadas em `cash_flow`, faturamento bruto e saldo líquido.
  */
 export default function FinanceiroCompletoPage() {
-  const { isChefe, barber } = useBarber();
+  const { can, barber } = useBarber();
+  const canViewGlobalFinance = can(PERMISSION_KEYS.VIEW_GLOBAL_FINANCE);
 
   const currentMonth = useMemo(() => currentMonthInShop(), []);
   const [range, setRange] = useState('mes');
@@ -93,8 +95,8 @@ export default function FinanceiroCompletoPage() {
   }, [range, selectedMonth]);
 
   useEffect(() => {
-    if (isChefe) load();
-  }, [isChefe, load]);
+    if (canViewGlobalFinance) load();
+  }, [canViewGlobalFinance, load]);
 
   function handleSelectMonth(newMonth) {
     setSelectedMonth(newMonth);
@@ -131,12 +133,12 @@ export default function FinanceiroCompletoPage() {
     return 'Hoje';
   }, [range, selectedMonth]);
 
-  if (!isChefe) {
+  if (!canViewGlobalFinance) {
     return (
       <div className="flex flex-col items-center justify-center px-8 pt-24 text-center gap-3">
         <Lock className="text-zinc-600" size={28} />
         <p className="text-zinc-500 text-sm">
-          Essa área é exclusiva do barbeiro chefe. Fale com o Matheus se precisar de algo daqui.
+          Você não tem permissão para visualizar o faturamento global e o livro de despesas. Fale com o Matheus se precisar desse acesso.
         </p>
       </div>
     );

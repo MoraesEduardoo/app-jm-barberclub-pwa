@@ -3,13 +3,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Plus, Lock } from 'lucide-react';
 import { useBarber } from '@/lib/barber-context';
+import { PERMISSION_KEYS } from '@/lib/auth';
 import { cacheKeys, hasCache } from '@/lib/admin-cache';
 import TeamMemberCard from '@/components/admin/TeamMemberCard';
 import AddMemberSheet from '@/components/admin/AddMemberSheet';
 
 export default function EquipePage() {
-  const { barber, isChefe, team, setTeam, refreshTeam } = useBarber();
-  const canManageTeam = Boolean(isChefe && barber?.role === 'admin');
+  const { can, team, setTeam, refreshTeam } = useBarber();
+  const canManageTeam = can(PERMISSION_KEYS.MANAGE_TEAM);
   const [loading, setLoading] = useState(
     () => !(hasCache(cacheKeys.team()) || team.length > 0)
   );
