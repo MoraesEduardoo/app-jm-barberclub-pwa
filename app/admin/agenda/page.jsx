@@ -13,7 +13,7 @@ import {
 import { useBarber } from "@/lib/barber-context";
 import { useNotifications } from "@/lib/notifications";
 import { endSession } from "@/lib/session";
-import { todayInShop } from "@/lib/dates";
+import { todayInShop, formatDateBR } from "@/lib/dates";
 import { PERMISSION_KEYS } from "@/lib/auth";
 import {
   listAppointmentsByDate,
@@ -47,6 +47,7 @@ import WalkInSheet from "@/components/admin/WalkInSheet";
 import ClientCyclesSheet from "@/components/admin/ClientCyclesSheet";
 import PreScheduleSheet from "@/components/admin/PreScheduleSheet";
 import AgendaDashboardWidget from "@/components/admin/AgendaDashboardWidget";
+import CrowdedModeToggle from "@/components/admin/CrowdedModeToggle";
 import SystemBootstrapCard from "@/components/admin/SystemBootstrapCard";
 import { isPreScheduledAppointment } from "@/lib/pre-scheduled";
 import { toast } from "@/lib/toast";
@@ -1098,6 +1099,8 @@ export default function AgendaPage() {
         </div>
       )}
 
+      <CrowdedModeToggle />
+
       <DateStepper value={date} onChange={setDate} barberId={scopeBarberId} />
 
       {/* Dashboard Dinâmico de Status Financeiro do Dia */}
@@ -1515,6 +1518,8 @@ export default function AgendaPage() {
         existingAppointments={appointments}
         closingTime={shopClosingTime}
         onMoved={(res) => {
+          const movedToAnotherDay = Boolean(res?.date && res.date !== date);
+
           if (moveTarget?.id && res?.startTime) {
             const formattedStart = `${String(res.startTime).slice(0, 5)}:00`;
             const formattedEnd = res.endTime
@@ -1522,10 +1527,14 @@ export default function AgendaPage() {
               : moveTarget.end_time;
 
             syncAppointmentsState((prev) => {
+              if (movedToAnotherDay) {
+                return prev.filter((a) => a.id !== moveTarget.id);
+              }
               const updated = prev.map((a) =>
                 a.id === moveTarget.id
                   ? {
                       ...a,
+                      appointment_date: res.date || a.appointment_date,
                       appointment_time: formattedStart,
                       start_time: formattedStart,
                       end_time: formattedEnd,
@@ -1541,11 +1550,17 @@ export default function AgendaPage() {
             });
           }
           invalidateCache("appointments:");
-          toast.success(
-            res?.startTime && res?.endTime
-              ? `Atendimento movido para ${res.startTime} – ${res.endTime}!`
-              : "Horário do atendimento atualizado!"
-          );
+          if (movedToAnotherDay) {
+            toast.success(
+              `Atendimento movido para ${formatDateBR(res.date, false)} às ${res.startTime} – ${res.endTime}!`
+            );
+          } else {
+            toast.success(
+              res?.startTime && res?.endTime
+                ? `Atendimento movido para ${res.startTime} – ${res.endTime}!`
+                : "Horário do atendimento atualizado!"
+            );
+          }
           load({ silent: true });
         }}
       />

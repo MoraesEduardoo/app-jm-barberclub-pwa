@@ -136,7 +136,7 @@ export async function GET(request) {
 async function buildDailyOccupancyReminder(admin, barberId, dateStr) {
   try {
     const cleanDate = String(dateStr || todayInShop()).slice(0, 10);
-    const [apptsRes, slotsRes] = await Promise.all([
+    const [apptsRes, slotsRes, shopStatusRes] = await Promise.all([
       admin
         .from('appointments')
         .select('id, duration_minutes, status')
@@ -149,8 +149,18 @@ async function buildDailyOccupancyReminder(admin, barberId, dateStr) {
         p_date: cleanDate,
         p_service_id: null,
       }),
+      admin
+        .from('barbershop_status')
+        .select('is_crowded')
+        .eq('id', 1)
+        .maybeSingle()
+        .then(
+          (res) => res,
+          () => ({ data: null })
+        ),
     ]);
 
+    const isCrowdedMode = Boolean(shopStatusRes?.data?.is_crowded);
     const activeAppts = apptsRes?.data || [];
     const occupiedMinutes = activeAppts.reduce(
       (acc, r) => acc + (Number(r.duration_minutes) || 30),
@@ -173,7 +183,10 @@ async function buildDailyOccupancyReminder(admin, barberId, dateStr) {
     let level = 'tranquila';
     let reminderText = `📅 Lotação do dia: ${occupancyPercent}% preenchida (${activeAppts.length} atendimentos confirmados). Lembrete: chegue com 5 minutos de antecedência para aproveitar o seu horário!`;
 
-    if (occupancyPercent >= 80 || remainingSlots <= 3) {
+    if (isCrowdedMode) {
+      level = 'alta';
+      reminderText = `🔥 Movimento intenso na barbearia hoje! Chegue alguns minutos antes do seu horário para garantir o atendimento sem atrasos.`;
+    } else if (occupancyPercent >= 80 || remainingSlots <= 3) {
       level = 'alta';
       reminderText = `🔥 Lotação do dia: Agenda com alta procura (${occupancyPercent}% preenchida • restam poucas vagas). Lembrete importante: chegue no horário exato para garantir o seu atendimento sem atrasos!`;
     } else if (occupancyPercent >= 50) {
@@ -182,6 +195,7 @@ async function buildDailyOccupancyReminder(admin, barberId, dateStr) {
     }
 
     return {
+      is_crowded: isCrowdedMode,
       occupancy_level: level,
       occupancy_percent: occupancyPercent,
       appointments_today: activeAppts.length,
@@ -190,6 +204,7 @@ async function buildDailyOccupancyReminder(admin, barberId, dateStr) {
     };
   } catch {
     return {
+      is_crowded: false,
       occupancy_level: 'normal',
       occupancy_percent: 50,
       appointments_today: 1,
