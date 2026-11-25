@@ -13,12 +13,15 @@ import {
   Phone,
   User,
   History,
+  Check,
 } from "lucide-react";
 import BottomSheet from "./BottomSheet";
 import { todayInShop, addDaysStr } from "@/lib/dates";
 import { FormField, TextInput, PrimaryButton } from "./FormField";
 import { listServices } from "@/lib/actions/services";
 import { listSchedule } from "@/lib/actions/schedule";
+import { searchClientsQuick } from "@/lib/actions/clients";
+import { formatPhoneBR } from "@/lib/whatsapp";
 import {
   createWalkInAppointment,
   getAvailableSlotsForBarber,
@@ -114,6 +117,12 @@ export default function WalkInSheet({
   const [barberId, setBarberId] = useState(barber.id);
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
+  const [selectedClientId, setSelectedClientId] = useState(null);
+  const [clientSuggestions, setClientSuggestions] = useState([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchTimeoutRef = useRef(null);
+  const autocompleteContainerRef = useRef(null);
   // 'today_slot' = Escolher horário (hoje) | 'future_date' = Marcar dia (qualquer data passada/futura) | 'now' = Agora
   const [timingMode, setTimingMode] = useState("today_slot");
   const [selectedDate, setSelectedDate] = useState(() => todayInShop());
@@ -167,6 +176,10 @@ export default function WalkInSheet({
       setServiceId("");
       setClientName("");
       setClientPhone("");
+      setSelectedClientId(null);
+      setClientSuggestions([]);
+      setLoadingSuggestions(false);
+      setShowSuggestions(false);
 
       if (windowContext?.startTime) {
         const cleanDate = windowContext.date || baseDate;
@@ -211,6 +224,73 @@ export default function WalkInSheet({
       setError("");
     }
   }, [open, barber.id, windowContext, initialDate]);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (
+        autocompleteContainerRef.current &&
+        !autocompleteContainerRef.current.contains(event.target)
+      ) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  function handleClientNameChange(val) {
+    setClientName(val);
+    setSelectedClientId(null);
+
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    const trimmed = String(val || "").trim();
+    if (trimmed.length < 2) {
+      setClientSuggestions([]);
+      setLoadingSuggestions(false);
+      setShowSuggestions(false);
+      return;
+    }
+
+    setLoadingSuggestions(true);
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const res = await searchClientsQuick({ query: trimmed });
+        if (Array.isArray(res?.data) && res.data.length > 0) {
+          setClientSuggestions(res.data);
+          setShowSuggestions(true);
+        } else {
+          setClientSuggestions([]);
+          setShowSuggestions(false);
+        }
+      } catch (err) {
+        console.warn("[WalkInSheet] Erro no autocomplete de clientes:", err);
+        setClientSuggestions([]);
+        setShowSuggestions(false);
+      } finally {
+        setLoadingSuggestions(false);
+      }
+    }, 250);
+  }
+
+  function handleSelectClient(client) {
+    if (!client) return;
+    setClientName(client.name || "");
+    const formatted = formatPhoneBR(client.phone) || client.phone || "";
+    setClientPhone(formatted);
+    setSelectedClientId(client.id);
+    setShowSuggestions(false);
+    setClientSuggestions([]);
+  }
 
   const effectiveDate = useMemo(() => {
     if (timingMode === "future_date") return selectedDate || today;
@@ -747,20 +827,75 @@ export default function WalkInSheet({
 
         {/* Campos do Cliente (Telefone como Chave Primária para registo automático em Clientes) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          <FormField label="Nome do cliente">
-            <div className="relative">
-              <User
-                size={14}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
-              />
-              <TextInput
-                value={clientName}
-                onChange={(e) => setClientName(e.target.value)}
-                placeholder="Ex: João Silva"
-                className="pl-8"
-              />
-            </div>
-          </FormField>
+          <div ref={autocompleteContainerRef} className="relative">
+            <FormField label="Nome do cliente">
+              <div className="relative">
+                <User
+                  size={14}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
+                />
+                <TextInput
+                  value={clientName}
+                  onChange={(e) => handleClientNameChange(e.target.value)}
+                  onFocus={() => {
+                    if (clientSuggestions.length > 0) setShowSuggestions(true);
+                  }}
+                  placeholder="Ex: João Silva"
+                  className="pl-8 pr-8"
+                  autoComplete="off"
+                />
+                {loadingSuggestions ? (
+                  <Loader2
+                    size={14}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 animate-spin pointer-events-none"
+                  />
+                ) : selectedClientId ? (
+                  <span
+                    title="Cliente cadastrado selecionado"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center justify-center h-5 w-5 rounded-full bg-emerald-500/20 text-emerald-400"
+                  >
+                    <Check size={12} className="stroke-[3]" />
+                  </span>
+                ) : null}
+              </div>
+            </FormField>
+
+            {/* Dropdown de Autocomplete no tema escuro do modal */}
+            {showSuggestions && clientSuggestions.length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-xl bg-[#141414] border border-zinc-700/80 shadow-2xl shadow-black/80 overflow-hidden max-h-56 overflow-y-auto divide-y divide-zinc-800/80 backdrop-blur-md">
+                <div className="px-3 py-1.5 bg-zinc-900/90 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider flex items-center justify-between">
+                  <span>Clientes cadastrados ({clientSuggestions.length})</span>
+                  <span className="text-zinc-500 text-[9px] lowercase font-normal">toque para preencher</span>
+                </div>
+                {clientSuggestions.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      handleSelectClient(item);
+                    }}
+                    className="w-full text-left px-3 py-2.5 hover:bg-zinc-800/80 active:bg-zinc-700/80 transition-colors flex items-center justify-between gap-2 touch-manipulation group"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-white group-hover:text-accent-light truncate">
+                        {item.name}
+                      </p>
+                      {item.phone && (
+                        <p className="text-[11px] font-mono text-zinc-400 truncate mt-0.5 flex items-center gap-1">
+                          <Phone size={10} className="text-zinc-500 shrink-0" />
+                          <span>{formatPhoneBR(item.phone) || item.phone}</span>
+                        </p>
+                      )}
+                    </div>
+                    <span className="shrink-0 text-[10px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
+                      Selecionar
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           <FormField label="Telemóvel / WhatsApp (salva em Clientes)">
             <div className="relative">
