@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { executeAppointmentCancellation } from '@/lib/cancellation';
+import { executeAppointmentCancellation, isCancelledStatus } from '@/lib/cancellation';
 import { notifyCancelledAppointment } from '@/lib/push';
 
 /**
@@ -7,22 +7,24 @@ import { notifyCancelledAppointment } from '@/lib/push';
  *
  * Endpoint HTTP e Webhook dedicado para cancelamento e notificações de cancelamento
  * de agendamentos realizados FORA do painel administrativo (por exemplo,
- * cancelamento via bot do WhatsApp, site público, ou Database Webhook do Supabase).
+ * cancelamento via bot do WhatsApp, site público, chatbot bridge ou Database Webhook do Supabase).
  *
  * Formatos suportados no corpo (JSON):
  *
- * 1) Chamada direta da API / Bot:
+ * 1) Chamada direta da API / Bot / Chatbot:
  *      { "appointmentId": "uuid-do-agendamento", "reason": "Motivo opcional" }
- *      -> Atualiza status para 'cancelado', libera a vaga no motor de horários e notifica barbeiro.
+ *      ou { "appointment_id": "uuid", "reason": "..." }
+ *      ou { "id": "uuid" }
+ *      -> Atualiza status para 'cancelado' (se ainda não estiver), libera a vaga e notifica o barbeiro via Web Push.
  *
- * 2) Supabase Database Webhook (UPDATE em appointments com status = 'cancelado'):
+ * 2) Supabase Database Webhook (UPDATE em appointments com status migrando para 'cancelado' ou 'canceled'):
  *      {
  *        "type": "UPDATE",
  *        "table": "appointments",
  *        "record": { "id": "...", "status": "cancelado" },
  *        "old_record": { "status": "confirmado" }
  *      }
- *      -> O banco já foi atualizado pelo Supabase; dispara Web Push e alertas imediatos.
+ *      -> O banco já foi atualizado pelo Supabase; dispara Web Push isolado para o barbeiro responsável.
  *
  * Segurança: Exige o header "x-push-secret" igual ao segredo PUSH_WEBHOOK_SECRET.
  */
@@ -33,7 +35,7 @@ export async function POST(request) {
 
   if (!secret) {
     console.error('[push/appointment-cancelled] PUSH_WEBHOOK_SECRET não definido no ambiente.');
-    return NextResponse.json({ error: 'Endpoint não configurado.' }, { status: 503 });
+    return NextResponse.json({ error: 'Endpoint não configurado.' }, { status: 500 });
   }
 
   if (request.headers.get('x-push-secret') !== secret) {
@@ -50,12 +52,17 @@ export async function POST(request) {
     );
   }
 
+  // Ignora eventos que não sejam atualização (ex: webhooks configurados para INSERT na mesma tabela)
+  if (payload?.type && payload.type !== 'UPDATE') {
+    return NextResponse.json({ skipped: true, reason: `evento ${payload.type} ignorado` });
+  }
+
   const isDatabaseWebhook = payload?.type === 'UPDATE';
 
   // Se for payload de Database Webhook do Supabase:
   if (isDatabaseWebhook) {
-    const isNowCancelled = payload?.record?.status === 'cancelado';
-    const wasAlreadyCancelled = payload?.old_record?.status === 'cancelado';
+    const isNowCancelled = isCancelledStatus(payload?.record?.status);
+    const wasAlreadyCancelled = isCancelledStatus(payload?.old_record?.status);
 
     if (!isNowCancelled || wasAlreadyCancelled) {
       return NextResponse.json({
@@ -64,8 +71,16 @@ export async function POST(request) {
       });
     }
 
-    const appointmentId = payload?.record?.id;
-    const reason = payload?.record?.cancellation_reason || payload?.reason || null;
+    const appointmentId =
+      payload?.record?.id ||
+      payload?.appointmentId ||
+      payload?.appointment_id ||
+      payload?.id;
+
+    const reason =
+      payload?.record?.cancellation_reason ||
+      payload?.reason ||
+      null;
 
     if (!appointmentId) {
       return NextResponse.json(
@@ -76,6 +91,13 @@ export async function POST(request) {
 
     try {
       const result = await notifyCancelledAppointment(appointmentId, { reason });
+
+      if (result?.error) {
+        console.error('[push/appointment-cancelled] Erro detalhado no push do webhook:', result.error);
+        return NextResponse.json(result, { status: 503 });
+      }
+
+      console.log('[push/appointment-cancelled] Web Push de cancelamento enviado com sucesso:', result);
       return NextResponse.json({ success: true, pushResult: result });
     } catch (err) {
       console.error('[push/appointment-cancelled] Erro ao disparar push do webhook:', err);
@@ -83,23 +105,32 @@ export async function POST(request) {
     }
   }
 
-  // Se for chamada direta de bot ou API externa:
-  const appointmentId = payload?.appointmentId || payload?.id;
-  const reason = payload?.reason || payload?.cancellation_reason || null;
+  // Se for chamada direta de bot, chatbot bridge ou API externa:
+  const appointmentId =
+    payload?.appointmentId ||
+    payload?.appointment_id ||
+    payload?.id ||
+    payload?.record?.id;
+
+  const reason =
+    payload?.reason ||
+    payload?.cancellation_reason ||
+    payload?.record?.cancellation_reason ||
+    null;
 
   if (!appointmentId) {
     return NextResponse.json(
-      { error: 'Informe "appointmentId" no corpo da requisição.' },
+      { error: 'Informe "appointmentId" (ou "appointment_id") no corpo da requisição.' },
       { status: 400 }
     );
   }
 
   try {
-    // Executa as 3 etapas: atualiza status, libera vaga e dispara notificações
+    // Executa as 3 etapas: atualiza status para 'cancelado', libera vaga e dispara notificações (Web Push exclusivo para o barbeiro)
     const result = await executeAppointmentCancellation({
       appointmentId,
       reason,
-      cancelledBy: 'webhook_direto',
+      cancelledBy: payload?.cancelledBy || 'webhook_direto',
     });
 
     if (result.error) {
@@ -107,13 +138,18 @@ export async function POST(request) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
 
+    if (result.notifications?.push?.error) {
+      console.warn('[push/appointment-cancelled] Aviso no envio do push:', result.notifications.push.error);
+    }
+
     console.log('[push/appointment-cancelled] Agendamento cancelado e vaga liberada com sucesso:', result);
     return NextResponse.json(result);
   } catch (error) {
     console.error('[push/appointment-cancelled] Falha inesperada:', error);
     return NextResponse.json(
-      { error: 'Falha ao processar envio de notificação de cancelamento.' },
+      { error: 'Não foi possível processar o cancelamento e envio da notificação.' },
       { status: 500 }
     );
   }
 }
+
