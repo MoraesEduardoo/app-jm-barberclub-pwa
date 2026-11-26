@@ -2,7 +2,7 @@
 
 import { endSession } from "@/lib/session";
 import { useEffect, useState } from "react";
-import { QrCode, CreditCard, Banknote, ShoppingBag, Tag } from "lucide-react";
+import { QrCode, CreditCard, Banknote, ShoppingBag, Tag, HeartHandshake } from "lucide-react";
 import BottomSheet from "./BottomSheet";
 import { FormField, TextInput, PrimaryButton } from "./FormField";
 import { registerPayment } from "@/lib/actions/appointments";
@@ -32,6 +32,7 @@ export default function PaymentSheet({ open, onClose, appointment }) {
   const [method, setMethod] = useState(appointment?.payment_method || "pix");
   const [discount, setDiscount] = useState("");
   const [amount, setAmount] = useState(defaultGross ? String(defaultGross) : "");
+  const [tip, setTip] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -46,6 +47,7 @@ export default function PaymentSheet({ open, onClose, appointment }) {
       setMethod(appointment.payment_method || "pix");
       setDiscount("");
       setAmount(gross ? String(gross) : "");
+      setTip("");
       setError("");
     }
   }, [appointment, open]);
@@ -64,6 +66,10 @@ export default function PaymentSheet({ open, onClose, appointment }) {
   );
   const serviceGross = Math.max(0, Number((defaultGross - productsGross).toFixed(2)));
   const numericDiscount = Math.max(0, Number(discount) || 0);
+  const numericTip = Math.max(0, Number(tip) || 0);
+  const numericAmount = Math.max(0, Number(amount) || 0);
+  const totalReceived = Number((numericAmount + numericTip).toFixed(2));
+  const barberName = appointment?.barbers?.name || "Barbeiro";
   const discountAllocation = allocateProportionalDiscount(
     serviceGross,
     productsGross,
@@ -86,7 +92,8 @@ export default function PaymentSheet({ open, onClose, appointment }) {
         barber_id: appointment.barbers?.id || appointment.barber_id,
         payment_method: method,
         amount: Number(amount),
-        description: `${serviceLabel} — ${appointment.client_name}`,
+        tip_amount: numericTip,
+        description: `${serviceLabel} — ${appointment.client_name}${numericTip > 0 ? ` (+${formatBRL(numericTip)} gorjeta)` : ""}`,
       });
 
       if (response?.error === "AUTH_EXPIRED") {
@@ -140,7 +147,7 @@ export default function PaymentSheet({ open, onClose, appointment }) {
           />
         </FormField>
 
-        <FormField label="Valor final cobrado (R$)">
+        <FormField label="Serviço / Produtos (R$)">
           <TextInput
             type="number"
             inputMode="decimal"
@@ -153,6 +160,40 @@ export default function PaymentSheet({ open, onClose, appointment }) {
           />
         </FormField>
       </div>
+
+      <div className="mt-2.5">
+        <FormField label="Gorjeta (opcional - 100% barbeiro)">
+          <TextInput
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="1"
+            value={tip}
+            onChange={(e) => setTip(e.target.value)}
+            placeholder="0,00"
+          />
+        </FormField>
+      </div>
+
+      {numericTip > 0 && (
+        <div className="my-3 rounded-xl bg-emerald-950/40 border border-emerald-800/60 p-3 space-y-1.5 text-[11px]">
+          <div className="flex items-center justify-between text-emerald-400 font-semibold">
+            <span className="inline-flex items-center gap-1.5">
+              <HeartHandshake size={13} /> Gorjeta do Profissional
+            </span>
+            <span className="font-mono tabular-nums text-xs font-bold">+{formatBRL(numericTip)}</span>
+          </div>
+          <p className="text-zinc-400 text-[10.5px] leading-tight">
+            Valor <b className="text-emerald-300 font-semibold">100% líquido</b> de {barberName}, sem divisão ou comissão retida pela barbearia.
+          </p>
+          <div className="pt-1.5 border-t border-emerald-900/60 flex items-center justify-between text-zinc-200 font-medium">
+            <span>Total cobrado do cliente:</span>
+            <span className="font-mono tabular-nums text-xs font-bold text-white">
+              {formatBRL(totalReceived)}
+            </span>
+          </div>
+        </div>
+      )}
 
       {numericDiscount > 0 && (
         <div className="mb-4 rounded-xl bg-zinc-900/90 border border-zinc-800 p-3 space-y-1 text-[11px]">

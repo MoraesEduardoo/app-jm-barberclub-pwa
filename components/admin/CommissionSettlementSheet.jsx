@@ -115,7 +115,8 @@ export default function CommissionSettlementSheet({ open, onClose, defaultBarber
         totalRevenue: confirmModal.totalRevenue,
         serviceRevenue: confirmModal.serviceRevenue ?? confirmModal.totalRevenue,
         productsRevenue: confirmModal.productsRevenue ?? 0,
-        commissionAmount: confirmModal.balancePending > 0 ? confirmModal.balancePending : confirmModal.totalCommissionDue,
+        totalTips: confirmModal.totalTips ?? 0,
+        commissionAmount: confirmModal.balancePending > 0 ? confirmModal.balancePending : (confirmModal.totalNetDue ?? confirmModal.totalCommissionDue),
         serviceCommissionTotal: confirmModal.serviceCommissionTotal ?? confirmModal.totalCommissionDue,
         productCommissionTotal: confirmModal.productCommissionTotal ?? 0,
         commissionPercent: confirmModal.commissionPercent,
@@ -341,6 +342,11 @@ export default function CommissionSettlementSheet({ open, onClose, defaultBarber
                             <span>
                               Produtos: <strong className="text-zinc-200">{formatBRL(b.productCommissionTotal)}</strong>
                             </span>
+                            {b.totalTips > 0 && (
+                              <span className="text-emerald-400 font-semibold">
+                                Gorjetas (100%): <strong className="text-emerald-300">+{formatBRL(b.totalTips)}</strong>
+                              </span>
+                            )}
                             <span className="text-zinc-500">
                               Conveniência: R$ 0,00 (Excluída)
                             </span>
@@ -408,6 +414,11 @@ export default function CommissionSettlementSheet({ open, onClose, defaultBarber
                                     <span className="text-emerald-400 text-[10px] font-medium block">
                                       +{formatBRL(c.commission)} ({b.isOwner ? '100%' : c.productsAmount > 0 ? '50%+10%' : `${b.commissionPercent}%`})
                                     </span>
+                                    {c.tipAmount > 0 && (
+                                      <span className="text-emerald-300 text-[9.5px] font-semibold block">
+                                        +{formatBRL(c.tipAmount)} gorjeta (100%)
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               ))}
@@ -567,6 +578,14 @@ export default function CommissionSettlementSheet({ open, onClose, defaultBarber
                   {formatBRL(confirmModal.productCommissionTotal)}
                 </span>
               </div>
+              {confirmModal.totalTips > 0 && (
+                <div className="flex justify-between text-xs text-emerald-400 font-medium">
+                  <span>Gorjetas (100% Repasse Líquido):</span>
+                  <span className="font-mono tabular-nums">
+                    +{formatBRL(confirmModal.totalTips)}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between text-[11px] text-zinc-500">
                 <span>Conveniência / Taxas:</span>
                 <span className="font-mono tabular-nums">R$ 0,00 (Excluído)</span>
@@ -706,6 +725,12 @@ export default function CommissionSettlementSheet({ open, onClose, defaultBarber
                       : '50% serv. + 10% prod.'}
                   </span>
                 </div>
+                {Number(successReceipt.total_tips) > 0 && (
+                  <div className="flex justify-between text-emerald-400">
+                    <span className="text-zinc-500">Gorjetas (100%):</span>
+                    <span>+{formatBRL(successReceipt.total_tips)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-zinc-500">Forma Pagto:</span>
                   <span className="uppercase">{successReceipt.payment_method}</span>

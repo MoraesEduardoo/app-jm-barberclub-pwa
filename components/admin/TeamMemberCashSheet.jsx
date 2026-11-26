@@ -163,13 +163,15 @@ export default function TeamMemberCashSheet({ open, onClose, member }) {
               {/* Comissão Acumulada */}
               <div className="bg-surface border border-zinc-800 rounded-xl p-3">
                 <div className="flex items-center gap-1.5 text-accent-light text-xs font-medium mb-1">
-                  <Percent size={13} /> Comissão ({data.isOwner ? '100%' : `${data.commissionPercent}% / ${data.productCommissionPercent ?? 10}%`})
+                  <Percent size={13} /> Líquido a Receber
                 </div>
                 <p className="text-white font-bold text-lg">
-                  {formatBRL(data.comissaoAcumulada)}
+                  {formatBRL(data.totalLiquidoAReceber ?? data.comissaoAcumulada)}
                 </p>
                 <p className="text-zinc-500 text-[10px] mt-0.5">
-                  {data.isOwner ? '100% integral (Proprietário)' : '50% serviços + 10% produtos'}
+                  {data.totalGorjetas > 0
+                    ? `comissão: ${formatBRL(data.comissaoAcumulada)} + gorjeta: ${formatBRL(data.totalGorjetas)}`
+                    : data.isOwner ? '100% integral (Proprietário)' : '50% serviços + 10% produtos'}
                 </p>
               </div>
 
@@ -250,19 +252,26 @@ export default function TeamMemberCashSheet({ open, onClose, member }) {
                           <p className="text-white font-bold">
                             {formatBRL(a.amount)}
                           </p>
-                          <div className="flex items-center justify-end gap-1.5 mt-0.5">
-                            <span
-                              className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                                isPago
-                                  ? 'bg-emerald-500/10 text-emerald-400'
-                                  : 'bg-amber-500/10 text-amber-400'
-                              }`}
-                            >
-                              {isPago ? 'Pago' : 'Pendente'}
-                            </span>
-                            <span className="text-[10px] text-zinc-400 font-medium">
-                              comissão: {formatBRL(a.commission_value)}
-                            </span>
+                          <div className="flex flex-col items-end gap-0.5 mt-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                                  isPago
+                                    ? 'bg-emerald-500/10 text-emerald-400'
+                                    : 'bg-amber-500/10 text-amber-400'
+                                }`}
+                              >
+                                {isPago ? 'Pago' : 'Pendente'}
+                              </span>
+                              <span className="text-[10px] text-zinc-400 font-medium">
+                                comissão: {formatBRL(a.commission_value)}
+                              </span>
+                            </div>
+                            {Number(a.tip_amount) > 0 && (
+                              <span className="text-[9.5px] text-emerald-300 font-semibold">
+                                +{formatBRL(a.tip_amount)} gorjeta (100%)
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>

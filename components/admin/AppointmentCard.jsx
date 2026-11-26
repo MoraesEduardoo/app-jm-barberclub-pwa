@@ -8,6 +8,7 @@ import {
   ChevronRight,
   ArrowUpDown,
   GripVertical,
+  HeartHandshake,
 } from 'lucide-react';
 import { isPreScheduledAppointment } from '@/lib/pre-scheduled';
 import { parseAppointmentNotes } from './AddProductSheet';
@@ -391,6 +392,15 @@ export default function AppointmentCard({
                 <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-300/90">
                   <ShoppingBag size={10} className="text-amber-400 shrink-0" />
                   +{attachedProducts.length}
+                </span>
+              )}
+              {Number(appointment?.tip_amount) > 0 && (
+                <span
+                  title={`Gorjeta: R$ ${Number(appointment.tip_amount).toFixed(2).replace('.', ',')} (100% barbeiro)`}
+                  className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-300 bg-emerald-950/60 border border-emerald-800/60 rounded px-1.5 py-0.5"
+                >
+                  <HeartHandshake size={10} className="text-emerald-400 shrink-0" />
+                  +R$ {Number(appointment.tip_amount).toFixed(0)}
                 </span>
               )}
               {paid ? (
