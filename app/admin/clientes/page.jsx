@@ -13,9 +13,7 @@ import { PERMISSION_KEYS } from '@/lib/auth';
 import { cacheKeys, getCache, setCache } from '@/lib/admin-cache';
 import { formatPhoneBR } from '@/lib/whatsapp';
 import ClientDetailSheet from '@/components/admin/ClientDetailSheet';
-
-const DEFAULT_MATHEUS_ID = 'b949db29-efb1-4131-8234-873195068328';
-const DEFAULT_WILLIAM_ID = '9ebcd15c-b747-4d0b-b12f-5de9465363f9';
+import { DEFAULT_MATHEUS_ID, DEFAULT_WILLIAM_ID } from '@/lib/constants/barbers';
 
 export default function ClientesPage() {
   const { barber, team, can } = useBarber();

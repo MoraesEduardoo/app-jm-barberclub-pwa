@@ -8,13 +8,7 @@ import {
   roundUpToNextSlot,
   extractBusyRangesFromAppointments,
 } from '@/lib/slots';
-
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Cache-Control': 'no-store, max-age=0',
-};
+import { buildCorsHeaders } from '@/lib/cors';
 
 /**
  * Resolve o tempo exato (custom_duration de barber_services ou duration_minutes padrão de services)
@@ -241,6 +235,8 @@ async function computeAvailableSlots({ barberId, date, serviceIds }) {
  * respeitando o `custom_duration` do profissional na tabela `barber_services`.
  */
 export async function GET(request) {
+  const corsHeaders = buildCorsHeaders(request, { methods: 'GET, POST, OPTIONS' });
+
   try {
     const { searchParams } = new URL(request.url);
     const barberId = searchParams.get('barber_id') || searchParams.get('barberId');
@@ -251,7 +247,7 @@ export async function GET(request) {
     if (!barberId) {
       return NextResponse.json(
         { ok: false, error: 'Parâmetro barber_id é obrigatório.' },
-        { status: 400, headers: CORS_HEADERS }
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -262,16 +258,18 @@ export async function GET(request) {
       : [];
 
     const result = await computeAvailableSlots({ barberId, date, serviceIds });
-    return NextResponse.json(result, { headers: CORS_HEADERS });
+    return NextResponse.json(result, { headers: corsHeaders });
   } catch (err) {
     return NextResponse.json(
       { ok: false, error: err.message || 'Erro ao calcular horários disponíveis.' },
-      { status: 500, headers: CORS_HEADERS }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
 
 export async function POST(request) {
+  const corsHeaders = buildCorsHeaders(request, { methods: 'GET, POST, OPTIONS' });
+
   try {
     const body = await request.json();
     const barberId = body?.barber_id || body?.barberId;
@@ -285,20 +283,21 @@ export async function POST(request) {
     if (!barberId) {
       return NextResponse.json(
         { ok: false, error: 'Campo barber_id é obrigatório.' },
-        { status: 400, headers: CORS_HEADERS }
+        { status: 400, headers: corsHeaders }
       );
     }
 
     const result = await computeAvailableSlots({ barberId, date, serviceIds });
-    return NextResponse.json(result, { headers: CORS_HEADERS });
+    return NextResponse.json(result, { headers: corsHeaders });
   } catch (err) {
     return NextResponse.json(
       { ok: false, error: err.message || 'Erro ao calcular horários disponíveis.' },
-      { status: 500, headers: CORS_HEADERS }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+export async function OPTIONS(request) {
+  const corsHeaders = buildCorsHeaders(request, { methods: 'GET, POST, OPTIONS' });
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
 }

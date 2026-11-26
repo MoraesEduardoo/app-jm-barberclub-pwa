@@ -1,21 +1,17 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { buildCorsHeaders } from "@/lib/cors";
 
 export const dynamic = "force-dynamic";
-
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  "Cache-Control": "no-store, max-age=0",
-};
 
 /**
  * GET /api/status
  * Endpoint público para consulta rápida pelo Chatbot (chatbot-JMBarberclub)
- * do estado do Modo Lotado (`is_crowded`).
+ * do estado do Modo Lotado (`is_crowded`), com origem CORS restrita.
  */
-export async function GET() {
+export async function GET(request) {
+  const corsHeaders = buildCorsHeaders(request, { methods: "GET, OPTIONS" });
+
   try {
     const admin = createAdminClient();
     const { data, error } = await admin
@@ -32,7 +28,7 @@ export async function GET() {
           updated_at: null,
           crowded_message: null,
         },
-        { status: 200, headers: CORS_HEADERS }
+        { status: 200, headers: corsHeaders }
       );
     }
 
@@ -47,7 +43,7 @@ export async function GET() {
           ? "Movimento intenso hoje na barbearia: chegue alguns minutos antes do seu horário."
           : null,
       },
-      { status: 200, headers: CORS_HEADERS }
+      { status: 200, headers: corsHeaders }
     );
   } catch {
     return NextResponse.json(
@@ -57,11 +53,12 @@ export async function GET() {
         updated_at: null,
         crowded_message: null,
       },
-      { status: 200, headers: CORS_HEADERS }
+      { status: 200, headers: corsHeaders }
     );
   }
 }
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+export async function OPTIONS(request) {
+  const corsHeaders = buildCorsHeaders(request, { methods: "GET, OPTIONS" });
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
 }
