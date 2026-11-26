@@ -22,6 +22,7 @@ import {
   Sparkles,
   Wallet,
   Receipt,
+  Handshake,
 } from 'lucide-react';
 import { useBarber } from '@/lib/barber-context';
 import { PERMISSION_KEYS } from '@/lib/auth';
@@ -34,6 +35,7 @@ export default function HamburgerDrawer({
   onClose,
   onOpenRecorrencias,
   onOpenSettlement,
+  onOpenBarter,
 }) {
   const pathname = usePathname();
   const { barber, isChefe, isManager, can, signOut } = useBarber();
@@ -326,6 +328,38 @@ export default function HamburgerDrawer({
                       </span>
                       <span className="text-[10px] text-zinc-500">
                         Pagar William e Matheus com recibo no WhatsApp
+                      </span>
+                    </div>
+                  </div>
+                  <ChevronRight size={14} className="text-zinc-600" />
+                </button>
+              )}
+
+              {/* Troca de Serviço / Permutas (Exclusivo do Matheus / Chefe) */}
+              {isChefe && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    if (onOpenBarter) onOpenBarter();
+                  }}
+                  className="w-full flex items-center justify-between p-2.5 rounded-xl text-zinc-300 hover:bg-zinc-900 hover:text-white transition-all text-left touch-manipulation"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-lg bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                      <Handshake size={16} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-semibold block leading-tight text-white">
+                          Troca de Serviço
+                        </span>
+                        <span className="text-[9px] bg-purple-500/20 text-purple-300 px-1.5 py-0.2 rounded font-bold uppercase">
+                          Permuta
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-zinc-500">
+                        Parceiros, acordos e isenção exclusiva do Matheus
                       </span>
                     </div>
                   </div>

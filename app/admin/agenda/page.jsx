@@ -21,6 +21,7 @@ import {
   confirmAppointment,
   rescheduleAppointment,
   completeAppointmentFiado,
+  completeAppointmentBarter,
   moveAppointmentTime,
 } from "@/lib/actions/appointments";
 import {
@@ -558,6 +559,77 @@ export default function AgendaPage() {
     } catch {
       syncAppointmentsState(previousAppointments);
       toast.error("Sem conexão. Não foi possível registar baixa no Fiado.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleCompleteBarter(appointment) {
+    const id = appointment?.id;
+    if (!id) return;
+
+    setBusyId(id);
+    setActionError("");
+
+    const previousAppointments = appointments;
+
+    // Atualização otimista
+    syncAppointmentsState((prev) =>
+      prev.map((a) =>
+        a.id === id
+          ? {
+              ...a,
+              status: "concluido",
+              payment_status: "permuta",
+              payment_method: "permuta",
+              is_barter: true,
+            }
+          : a
+      )
+    );
+
+    try {
+      const res = await completeAppointmentBarter(id);
+      if (res?.error === "AUTH_EXPIRED") {
+        endSession();
+        return;
+      }
+
+      if (!res?.success) {
+        syncAppointmentsState(previousAppointments);
+        const msg = res?.error || "Não foi possível concluir a permuta.";
+        setActionError(msg);
+        toast.error(msg);
+        return;
+      }
+
+      syncAppointmentsState((prev) =>
+        prev.map((a) =>
+          a.id === id
+            ? {
+                ...a,
+                status: "concluido",
+                payment_status: "permuta",
+                payment_method: "permuta",
+                is_barter: true,
+                duration_minutes: res.duration_minutes ?? a.duration_minutes,
+                end_time: res.end_time
+                  ? `${String(res.end_time).slice(0, 5)}:00`
+                  : a.end_time,
+              }
+            : a
+        )
+      );
+
+      invalidateCache("appointments:");
+      invalidateCache("finance:");
+      invalidateCache("clients:");
+
+      toast.success("Atendimento de permuta concluído! Isento de cobrança no caixa.");
+      load({ silent: true });
+    } catch {
+      syncAppointmentsState(previousAppointments);
+      toast.error("Sem conexão. Não foi possível concluir a permuta.");
     } finally {
       setBusyId(null);
     }
@@ -1494,6 +1566,7 @@ export default function AgendaPage() {
         onChangeStatus={handleChangeStatus}
         onOpenPayment={setPaymentTarget}
         onCompleteFiado={handleCompleteFiado}
+        onCompleteBarter={handleCompleteBarter}
         onAddProduct={(appt) => {
           setProductModalMode("produto");
           setProductTarget(appt);

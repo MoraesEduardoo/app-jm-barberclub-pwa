@@ -9,6 +9,7 @@ import {
   ArrowUpDown,
   GripVertical,
   HeartHandshake,
+  Handshake,
 } from 'lucide-react';
 import { isPreScheduledAppointment } from '@/lib/pre-scheduled';
 import { parseAppointmentNotes } from './AddProductSheet';
@@ -118,18 +119,21 @@ export default function AppointmentCard({
   busy = false,
 }) {
   const isPreScheduled = isPreScheduledAppointment(appointment);
+  const isBarter = appointment?.is_barter === true || appointment?.payment_status === 'permuta';
   const paid = appointment.payment_status === 'pago';
   const rawStatus = (appointment.status || 'confirmado').toLowerCase().trim();
   const isCancelled = rawStatus === 'cancelado' || rawStatus === 'cancelled';
   const isCompleted =
     paid ||
+    isBarter ||
     rawStatus === 'concluido' ||
     rawStatus === 'concluído' ||
     rawStatus === 'completed';
   const isPending =
-    rawStatus === 'pendente' ||
-    rawStatus === 'pending' ||
-    isPreScheduled;
+    !isBarter &&
+    (rawStatus === 'pendente' ||
+      rawStatus === 'pending' ||
+      isPreScheduled);
 
   const startTime = getAppointmentStartTime(appointment);
   const durationMin = getAppointmentDuration(appointment);
@@ -158,12 +162,14 @@ export default function AppointmentCard({
 
   const isFiado =
     !paid &&
+    !isBarter &&
     (appointment.payment_method === 'fiado' ||
       rawStatus === 'concluido' ||
       rawStatus === 'concluído' ||
       rawStatus === 'completed');
 
   // Padronização de Cores na Linha do Tempo (v2.8.2):
+  // - Permuta: Roxo/Índigo (purple)
   // - Pago: Verde (emerald)
   // - Fiado: Amarelo (amber)
   // - Confirmado: Azul (blue)
@@ -176,7 +182,17 @@ export default function AppointmentCard({
   let statusDotColor = 'bg-blue-400';
   let completedIconColor = 'text-blue-400';
 
-  if (paid) {
+  if (isBarter) {
+    // Permuta -> Roxo elegante
+    cardSurfaceClass =
+      'bg-[#0e0717] border-purple-500/50 hover:border-purple-400/75 hover:bg-[#140b21] shadow-[0_2px_14px_rgba(168,85,247,0.18)]';
+    nodeDotClass = 'bg-purple-400 border-black ring-2 ring-purple-500/35';
+    startTimeClass = 'text-purple-200';
+    statusLabel = 'Permuta';
+    statusTextClass = 'text-purple-300';
+    statusDotColor = 'bg-purple-400';
+    completedIconColor = 'text-purple-400';
+  } else if (paid) {
     // Pago -> Verde
     cardSurfaceClass =
       'bg-[#06120c] border-emerald-500/45 hover:border-emerald-400/70 hover:bg-[#091a11] shadow-[0_2px_12px_rgba(0,0,0,0.65)]';
@@ -447,6 +463,15 @@ export default function AppointmentCard({
                     <Sparkles size={11} />
                   </span>
                 )}
+                {isBarter && (
+                  <span
+                    title={appointment.barter_notes ? `Permuta: ${appointment.barter_notes}` : "Troca de Serviço (Permuta)"}
+                    className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-300 bg-purple-500/20 border border-purple-500/40 rounded px-1.5 py-0.2 shrink-0"
+                  >
+                    <Handshake size={11} className="text-purple-400" />
+                    <span>Permuta</span>
+                  </span>
+                )}
               </div>
 
               <p className="text-zinc-400 text-xs font-medium truncate mt-0.5">
@@ -455,14 +480,23 @@ export default function AppointmentCard({
                   <span className="text-zinc-500 font-normal"> · {barberName}</span>
                 ) : null}
               </p>
+              {isBarter && appointment.barter_notes && (
+                <p className="text-[10.5px] text-purple-300/90 font-medium truncate mt-0.5">
+                  💬 {appointment.barter_notes}
+                </p>
+              )}
             </div>
 
             <div className="shrink-0 flex items-center gap-1.5">
-              {totalAmount > 0 && (
+              {isBarter ? (
+                <div className="font-mono text-xs sm:text-[13px] font-bold text-purple-300 bg-purple-950/40 border border-purple-800/60 px-2 py-0.5 rounded-lg leading-none">
+                  Permuta
+                </div>
+              ) : totalAmount > 0 ? (
                 <div className="font-mono tabular-nums text-sm sm:text-[15px] font-bold text-white leading-none">
                   R$ {totalAmount.toFixed(2).replace('.', ',')}
                 </div>
-              )}
+              ) : null}
               <ChevronRight
                 size={15}
                 className="text-zinc-500 group-hover:text-zinc-200 transition-colors shrink-0"

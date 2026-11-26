@@ -16,6 +16,7 @@ import ToastStack from "@/components/admin/ToastStack";
 import HamburgerDrawer from "@/components/admin/HamburgerDrawer";
 import ClientCyclesSheet from "@/components/admin/ClientCyclesSheet";
 import CommissionSettlementSheet from "@/components/admin/CommissionSettlementSheet";
+import BarterManagementSheet from "@/components/admin/BarterManagementSheet";
 import AgendaPage from "./agenda/page";
 
 function resolveTabFromPathname(pathname) {
@@ -40,6 +41,7 @@ function AdminShell({ children, onProfileUpdated }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [recorrenciasOpen, setRecorrenciasOpen] = useState(false);
   const [settlementOpen, setSettlementOpen] = useState(false);
+  const [barterOpen, setBarterOpen] = useState(false);
   const {
     barber,
     isChefe,
@@ -84,6 +86,12 @@ function AdminShell({ children, onProfileUpdated }) {
         onClose={() => setDrawerOpen(false)}
         onOpenRecorrencias={() => setRecorrenciasOpen(true)}
         onOpenSettlement={() => setSettlementOpen(true)}
+        onOpenBarter={() => setBarterOpen(true)}
+      />
+
+      <BarterManagementSheet
+        open={barterOpen}
+        onClose={() => setBarterOpen(false)}
       />
 
       <ClientCyclesSheet

@@ -21,6 +21,7 @@ import {
   Copy,
   Check,
   ArrowUpDown,
+  Handshake,
 } from 'lucide-react';
 import BottomSheet from './BottomSheet';
 import { toast } from '@/lib/toast';
@@ -74,6 +75,10 @@ const STATUS_BADGE = {
     label: 'Concluído',
     className: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30',
   },
+  permuta: {
+    label: 'Permuta',
+    className: 'bg-purple-500/20 text-purple-300 border border-purple-500/40',
+  },
   concluído: {
     label: 'Concluído',
     className: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30',
@@ -100,6 +105,7 @@ export default function AppointmentActionSheet({
   onChangeStatus,
   onOpenPayment,
   onCompleteFiado,
+  onCompleteBarter,
   onAddProduct,
   onAddConvenience,
   onEditService,
@@ -134,15 +140,17 @@ export default function AppointmentActionSheet({
   if (!appointment) return null;
 
   const isPreScheduled = isPreScheduledAppointment(appointment);
-  const statusInfo = STATUS_BADGE[appointment.status] || STATUS_BADGE.confirmado;
+  const isBarter = appointment.is_barter === true || appointment.payment_status === 'permuta';
+  const statusInfo = isBarter ? STATUS_BADGE.permuta : (STATUS_BADGE[appointment.status] || STATUS_BADGE.confirmado);
   const paid = appointment.payment_status === 'pago';
   const rawStatus = String(appointment.status || '').toLowerCase().trim();
   const isCompleted =
     paid ||
+    (isBarter && rawStatus === 'concluido') ||
     rawStatus === 'concluido' ||
     rawStatus === 'concluído' ||
     rawStatus === 'completed';
-  const isFiado = !paid && (appointment.payment_method === 'fiado' || isCompleted);
+  const isFiado = !paid && !isBarter && (appointment.payment_method === 'fiado' || isCompleted);
   const isCancelled =
     appointment.status === 'cancelado' || appointment.status === 'cancelled';
   const isPending =
@@ -515,8 +523,47 @@ export default function AppointmentActionSheet({
         {/* Painel de Ações Compactas (v2.8.2) */}
         {!isCancelled && (
           <div className="space-y-2 pt-0.5">
-            {/* Linha Principal de Baixa: Receber + Fiado */}
-            {!paid && (
+            {/* Linha Principal de Baixa: Permuta vs. Receber + Fiado */}
+            {isBarter ? (
+              rawStatus !== 'concluido' ? (
+                <div className="space-y-2">
+                  <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 p-2.5 flex items-center justify-between text-xs text-purple-200">
+                    <span className="inline-flex items-center gap-1.5 font-semibold">
+                      <Handshake size={14} className="text-purple-400 shrink-0" />
+                      Troca de Serviço Ativa
+                    </span>
+                    <span className="font-bold text-purple-300">R$ 0,00</span>
+                  </div>
+                  {appointment.barter_notes && (
+                    <p className="text-[11px] text-zinc-400 bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1">
+                      Acordo: <strong className="text-purple-200">{appointment.barter_notes}</strong>
+                    </p>
+                  )}
+                  {onCompleteBarter && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        onCompleteBarter(appointment);
+                        onClose();
+                      }}
+                      className="w-full h-11 px-3.5 rounded-xl bg-purple-600 hover:bg-purple-500 active:bg-purple-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-purple-600/20 active:scale-[0.99] transition-all touch-manipulation disabled:opacity-50"
+                    >
+                      <CheckCircle2 size={15} className="shrink-0" />
+                      <span>Concluir Permuta (Sem cobrança no caixa)</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 px-3 py-2 flex items-center justify-between gap-2 text-xs text-purple-200">
+                  <span className="inline-flex items-center gap-1.5 font-semibold">
+                    <CheckCircle2 size={14} className="text-purple-400 shrink-0" />
+                    Permuta Concluída
+                  </span>
+                  <span className="text-[11px] text-purple-300 font-medium">Isento de Caixa</span>
+                </div>
+              )
+            ) : !paid && (
               <div className="flex items-stretch gap-2">
                 {onOpenPayment && (
                   <button
