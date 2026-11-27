@@ -465,11 +465,15 @@ export default function AppointmentCard({
                 )}
                 {isBarter && (
                   <span
-                    title={appointment.barter_notes ? `Permuta: ${appointment.barter_notes}` : "Troca de Serviço (Permuta)"}
+                    title={
+                      appointment.barter_notes
+                        ? `Permuta (${appointment.barter_category || "Geral"}): ${appointment.barter_notes}`
+                        : `Permuta (${appointment.barter_category || "Geral"})`
+                    }
                     className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-300 bg-purple-500/20 border border-purple-500/40 rounded px-1.5 py-0.2 shrink-0"
                   >
                     <Handshake size={11} className="text-purple-400" />
-                    <span>Permuta</span>
+                    <span>{appointment.barter_category ? `Permuta · ${appointment.barter_category}` : "Permuta"}</span>
                   </span>
                 )}
               </div>

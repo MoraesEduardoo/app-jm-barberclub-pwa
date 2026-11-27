@@ -14,6 +14,7 @@ import {
   FileText,
   Loader2,
   ShieldAlert,
+  Tag,
 } from "lucide-react";
 import BottomSheet from "./BottomSheet";
 import {
@@ -23,6 +24,14 @@ import {
   revokeClientBarter,
 } from "@/lib/actions/barter";
 import { toast } from "@/lib/toast";
+
+const BARTER_CATEGORIES = [
+  "Academia",
+  "Lava jato",
+  "Iptv",
+  "Consertos para barbearia",
+  "Outro",
+];
 
 function formatPhoneDisplay(phone) {
   if (!phone) return "";
@@ -49,6 +58,8 @@ export default function BarterManagementSheet({ open, onClose }) {
   const [selectedClient, setSelectedClient] = useState(null);
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
+  const [barterCategory, setBarterCategory] = useState("Academia");
+  const [customCategory, setCustomCategory] = useState("");
   const [barterNotes, setBarterNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -76,6 +87,8 @@ export default function BarterManagementSheet({ open, onClose }) {
       setSelectedClient(null);
       setNewName("");
       setNewPhone("");
+      setBarterCategory("Academia");
+      setCustomCategory("");
       setBarterNotes("");
     }
   }, [open, loadPartners]);
@@ -107,6 +120,17 @@ export default function BarterManagementSheet({ open, onClose }) {
     setSelectedClient(client);
     setNewName(client.name || "");
     setNewPhone(client.phone || client.clean_phone || "");
+    const cat = client.barter_category || "";
+    if (BARTER_CATEGORIES.slice(0, 4).includes(cat)) {
+      setBarterCategory(cat);
+      setCustomCategory("");
+    } else if (cat) {
+      setBarterCategory("Outro");
+      setCustomCategory(cat);
+    } else {
+      setBarterCategory("Academia");
+      setCustomCategory("");
+    }
     setBarterNotes(client.barter_notes || "");
     setSearchTerm("");
     setSearchResults([]);
@@ -116,6 +140,8 @@ export default function BarterManagementSheet({ open, onClose }) {
     setSelectedClient(null);
     setNewName("");
     setNewPhone("");
+    setBarterCategory("Academia");
+    setCustomCategory("");
     setBarterNotes("");
   }
 
@@ -129,10 +155,11 @@ export default function BarterManagementSheet({ open, onClose }) {
       toast.error("Informe o telefone/WhatsApp do cliente.");
       return;
     }
-    if (!barterNotes.trim()) {
-      toast.error("Informe a descrição do acordo de permuta (ex: Mensalidade da academia).");
-      return;
-    }
+
+    const effectiveCategory =
+      barterCategory === "Outro"
+        ? (customCategory.trim() || "Outro")
+        : (barterCategory || "Academia");
 
     setSaving(true);
     try {
@@ -140,13 +167,14 @@ export default function BarterManagementSheet({ open, onClose }) {
         clientId: selectedClient?.id || null,
         name: newName.trim(),
         phone: newPhone.trim(),
+        barterCategory: effectiveCategory,
         barterNotes: barterNotes.trim(),
         isBarter: true,
       });
 
       toast.success(
         selectedClient
-          ? `Permuta ativada para ${selectedClient.name}!`
+          ? `Permuta atualizada para ${selectedClient.name}!`
           : `Novo parceiro de permuta cadastrado!`
       );
       handleClearSelection();
@@ -283,16 +311,56 @@ export default function BarterManagementSheet({ open, onClose }) {
               </div>
             </div>
 
-            <div>
-              <label className="block text-[11px] font-medium text-zinc-400 mb-1">
-                Descrição do Acordo de Troca (visível nos agendamentos)
+            {/* Categoria da Permuta (Pills Rápidas) */}
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-medium text-zinc-400">
+                Categoria da Troca
               </label>
+              <div className="flex flex-wrap gap-1.5">
+                {BARTER_CATEGORIES.map((cat) => {
+                  const isSelected = barterCategory === cat;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setBarterCategory(cat)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all touch-manipulation select-none active:scale-95 ${
+                        isSelected
+                          ? "bg-purple-600 text-white shadow-sm shadow-purple-900/50 border border-purple-500"
+                          : "bg-black border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700"
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Se "Outro", abre campo para digitar o nome da categoria personalizada */}
+              {barterCategory === "Outro" && (
+                <div className="pt-1 animate-in fade-in-50 duration-150">
+                  <input
+                    type="text"
+                    value={customCategory}
+                    onChange={(e) => setCustomCategory(e.target.value)}
+                    placeholder="Especifique a categoria (ex: Dentista, Contabilidade, etc.)"
+                    className="w-full h-9 px-3 rounded-xl bg-black border border-purple-500/50 text-xs text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-medium text-zinc-400">
+                  Observação do Acordo <span className="text-zinc-600 font-normal">(opcional)</span>
+                </label>
+              </div>
               <input
                 type="text"
-                required
                 value={barterNotes}
                 onChange={(e) => setBarterNotes(e.target.value)}
-                placeholder="Ex: Mensalidade da academia / Parceria de marketing / Suporte TI"
+                placeholder="Ex: Válido até dez/2026, 1 corte por mês, etc."
                 className="w-full h-9 px-3 rounded-xl bg-black border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-purple-500"
               />
             </div>
@@ -353,12 +421,12 @@ export default function BarterManagementSheet({ open, onClose }) {
                   className="bg-zinc-950 border border-purple-500/30 rounded-xl p-3 flex items-start justify-between gap-3 shadow-sm hover:border-purple-500/50 transition-colors"
                 >
                   <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="font-bold text-white text-xs truncate">
                         {partner.name}
                       </span>
                       <span className="text-[9.5px] bg-purple-500/20 text-purple-300 font-semibold border border-purple-500/40 rounded px-1.5 py-0.2">
-                        Permuta
+                        {partner.barter_category ? `Permuta · ${partner.barter_category}` : "Permuta"}
                       </span>
                     </div>
 
@@ -369,9 +437,9 @@ export default function BarterManagementSheet({ open, onClose }) {
                       </span>
                     </div>
 
-                    {partner.barber_notes && (
+                    {partner.barter_notes && (
                       <p className="text-[11px] text-purple-200/90 bg-purple-950/30 border border-purple-900/50 rounded-lg px-2 py-1 leading-tight">
-                        💬 {partner.barber_notes}
+                        💬 {partner.barter_notes}
                       </p>
                     )}
                   </div>

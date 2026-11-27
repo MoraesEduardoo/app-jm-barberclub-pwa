@@ -530,7 +530,7 @@ export default function AppointmentActionSheet({
                   <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 p-2.5 flex items-center justify-between text-xs text-purple-200">
                     <span className="inline-flex items-center gap-1.5 font-semibold">
                       <Handshake size={14} className="text-purple-400 shrink-0" />
-                      Troca de Serviço Ativa
+                      Troca de Serviço: {appointment.barter_category || 'Geral'}
                     </span>
                     <span className="font-bold text-purple-300">R$ 0,00</span>
                   </div>
@@ -558,7 +558,7 @@ export default function AppointmentActionSheet({
                 <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 px-3 py-2 flex items-center justify-between gap-2 text-xs text-purple-200">
                   <span className="inline-flex items-center gap-1.5 font-semibold">
                     <CheckCircle2 size={14} className="text-purple-400 shrink-0" />
-                    Permuta Concluída
+                    Permuta Concluída ({appointment.barter_category || 'Geral'})
                   </span>
                   <span className="text-[11px] text-purple-300 font-medium">Isento de Caixa</span>
                 </div>
