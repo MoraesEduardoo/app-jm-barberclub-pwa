@@ -31,6 +31,7 @@ import {
   setCache,
   invalidateCache,
 } from "@/lib/admin-cache";
+import dynamic from "next/dynamic";
 import DateStepper from "@/components/admin/DateStepper";
 import AppointmentCard, {
   getAppointmentStartTime,
@@ -39,14 +40,41 @@ import AppointmentCard, {
   timeStrToMinutes,
   minutesToTimeStr,
 } from "@/components/admin/AppointmentCard";
-import AppointmentActionSheet from "@/components/admin/AppointmentActionSheet";
-import PaymentSheet from "@/components/admin/PaymentSheet";
-import AddProductSheet from "@/components/admin/AddProductSheet";
-import EditServiceSheet from "@/components/admin/EditServiceSheet";
-import MoveAppointmentSheet from "@/components/admin/MoveAppointmentSheet";
-import WalkInSheet from "@/components/admin/WalkInSheet";
-import ClientCyclesSheet from "@/components/admin/ClientCyclesSheet";
-import PreScheduleSheet from "@/components/admin/PreScheduleSheet";
+
+// Code-splitting com next/dynamic (ssr: false) para reduzir o bundle inicial de JS da agenda
+const AppointmentActionSheet = dynamic(
+  () => import("@/components/admin/AppointmentActionSheet"),
+  { ssr: false }
+);
+const PaymentSheet = dynamic(
+  () => import("@/components/admin/PaymentSheet"),
+  { ssr: false }
+);
+const AddProductSheet = dynamic(
+  () => import("@/components/admin/AddProductSheet"),
+  { ssr: false }
+);
+const EditServiceSheet = dynamic(
+  () => import("@/components/admin/EditServiceSheet"),
+  { ssr: false }
+);
+const MoveAppointmentSheet = dynamic(
+  () => import("@/components/admin/MoveAppointmentSheet"),
+  { ssr: false }
+);
+const WalkInSheet = dynamic(
+  () => import("@/components/admin/WalkInSheet"),
+  { ssr: false }
+);
+const ClientCyclesSheet = dynamic(
+  () => import("@/components/admin/ClientCyclesSheet"),
+  { ssr: false }
+);
+const PreScheduleSheet = dynamic(
+  () => import("@/components/admin/PreScheduleSheet"),
+  { ssr: false }
+);
+
 import AgendaDashboardWidget from "@/components/admin/AgendaDashboardWidget";
 import CrowdedModeToggle from "@/components/admin/CrowdedModeToggle";
 import SystemBootstrapCard from "@/components/admin/SystemBootstrapCard";
@@ -981,6 +1009,14 @@ export default function AgendaPage() {
     [busyId, filterMode]
   );
 
+  const handleSelectAppointment = useCallback((appt) => {
+    setSelectedAppointmentId(appt?.id || null);
+  }, []);
+
+  const handleMoveAppointment = useCallback((appt) => {
+    setMoveTarget(appt);
+  }, []);
+
   useEffect(() => {
     if (!dragState?.appointment) return;
 
@@ -1520,8 +1556,8 @@ export default function AgendaPage() {
                     closingTime={shopClosingTime}
                     busy={busyId === item.appointment.id}
                     isDragging={dragState?.appointment?.id === item.appointment.id}
-                    onSelect={(appt) => setSelectedAppointmentId(appt.id)}
-                    onMove={(appt) => setMoveTarget(appt)}
+                    onSelect={handleSelectAppointment}
+                    onMove={handleMoveAppointment}
                     onDragHandlePointerDown={handleDragHandlePointerDown}
                   />
                 );

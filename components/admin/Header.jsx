@@ -3,6 +3,7 @@
 import { LogOut, ShieldCheck, Eye, X, Menu } from 'lucide-react';
 import { useBarber } from '@/lib/barber-context';
 import { PERMISSION_KEYS } from '@/lib/auth';
+import { getOptimizedStorageUrl } from '@/lib/image-url';
 import NotificationBell from './NotificationBell';
 
 const TITLES = {
@@ -89,7 +90,18 @@ export default function Header({ pathname, onOpenProfile, onOpenMenu }) {
             className="h-8 w-8 rounded-full bg-elevated border border-zinc-700 overflow-hidden flex items-center justify-center text-xs font-semibold text-white active:scale-95 active:opacity-80 transition-transform touch-manipulation"
           >
             {barber?.avatar_url ? (
-              <img src={barber.avatar_url} alt="" className="h-full w-full object-cover" />
+              <img
+                src={getOptimizedStorageUrl(barber.avatar_url, { width: 96, quality: 80 })}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                onError={(e) => {
+                  if (e.currentTarget.src !== barber.avatar_url) {
+                    e.currentTarget.src = barber.avatar_url;
+                  }
+                }}
+                className="h-full w-full object-cover"
+              />
             ) : (
               barber?.name?.charAt(0)?.toUpperCase() ?? '?'
             )}

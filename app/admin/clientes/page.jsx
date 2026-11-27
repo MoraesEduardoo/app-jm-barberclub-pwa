@@ -19,10 +19,23 @@ export default function ClientesPage() {
   const { barber, team, can } = useBarber();
   const canViewAll = can(PERMISSION_KEYS.VIEW_ALL_SCHEDULES);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filter, setFilter] = useState('todos'); // 'todos' | 'fiel' | 'atrasado' | 'novo'
   // Por defeito, exibe "Todos" os clientes da barbearia (null), desvinculado do filtro da Agenda
   const [barberFilter, setBarberFilter] = useState(null);
   const effectiveBarberFilter = canViewAll ? barberFilter : barber?.id || null;
+
+  // Debounce de ~300ms na digitação para evitar disparos concorrentes ao servidor e race conditions
+  useEffect(() => {
+    if (!search.trim()) {
+      setDebouncedSearch('');
+      return;
+    }
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   // Resolve os IDs dos profissionais Matheus e William a partir da equipa ativa (com fallback seguro)
   const professionalOptions = useMemo(() => {
@@ -52,7 +65,7 @@ export default function ClientesPage() {
     ];
   }, [team]);
 
-  const clientsKey = cacheKeys.clients(search, filter, effectiveBarberFilter);
+  const clientsKey = cacheKeys.clients(debouncedSearch, filter, effectiveBarberFilter);
   const cachedPayload = getCache(clientsKey);
 
   const [clients, setClients] = useState(() => cachedPayload?.clients || []);
@@ -81,7 +94,7 @@ export default function ClientesPage() {
       setLoading(true);
     }
 
-    listClients({ search, filter, scopeBarberId: effectiveBarberFilter })
+    listClients({ search: debouncedSearch, filter, scopeBarberId: effectiveBarberFilter })
       .then((res) => {
         if (!active) return;
         if (res.data) {
@@ -106,7 +119,7 @@ export default function ClientesPage() {
     return () => {
       active = false;
     };
-  }, [search, filter, effectiveBarberFilter, clientsKey]);
+  }, [debouncedSearch, filter, effectiveBarberFilter, clientsKey]);
 
   function handleWhatsApp(client, e) {
     if (e) e.stopPropagation();

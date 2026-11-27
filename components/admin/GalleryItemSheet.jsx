@@ -7,6 +7,7 @@ import { FormField, TextInput, PrimaryButton, GhostButton } from "./FormField";
 import { CategoryChips } from "./GalleryUploadSheet";
 import { deleteGalleryItem, updateGalleryItem } from "@/lib/actions/gallery";
 import { categoryLabel, MAX_TITLE_LENGTH } from "@/lib/constants/gallery";
+import { getOptimizedStorageUrl } from "@/lib/image-url";
 
 /** Detalhe da foto. Quem pode editar (dono ou chefe) também vê título, categoria, visibilidade e excluir. */
 export default function GalleryItemSheet({ item, onClose, onChanged, onRemoved }) {
@@ -63,11 +64,21 @@ export default function GalleryItemSheet({ item, onClose, onChanged, onRemoved }
 
   if (!item) return null;
 
+  const rawUrl = item.image_url || "";
+  const optimizedUrl = rawUrl ? getOptimizedStorageUrl(rawUrl, { width: 800, quality: 85 }) : "";
+
   return (
     <BottomSheet open={Boolean(item)} onClose={busy ? () => {} : onClose} title={item.can_edit ? "Editar foto" : item.title}>
       <img
-        src={item.image_url}
+        src={optimizedUrl || rawUrl}
         alt={item.title}
+        loading="lazy"
+        decoding="async"
+        onError={(e) => {
+          if (e.currentTarget.src !== rawUrl && rawUrl) {
+            e.currentTarget.src = rawUrl;
+          }
+        }}
         className="w-full max-h-[45vh] object-contain rounded-xl bg-black border border-zinc-800 mb-4"
       />
 

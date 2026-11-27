@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import {
   CheckCircle2,
   ShoppingBag,
@@ -108,7 +109,7 @@ function getIntermediateTicks(startTime, durationMin) {
   return ticks;
 }
 
-export default function AppointmentCard({
+function AppointmentCard({
   appointment,
   onSelect,
   onMove,
@@ -527,3 +528,5 @@ export default function AppointmentCard({
     </div>
   );
 }
+
+export default memo(AppointmentCard);

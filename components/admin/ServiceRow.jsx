@@ -2,12 +2,17 @@
 
 import { useState } from 'react';
 import { Clock, ChevronRight, PauseCircle, GripVertical, Scissors, Users, UserCheck } from 'lucide-react';
+import { getOptimizedStorageUrl } from '@/lib/image-url';
 
 export default function ServiceRow({ service, onClick, dragControls, isDragging = false }) {
   const [imgError, setImgError] = useState(false);
+  const rawImageUrl = service?.image_url || '';
+  const optimizedUrl = rawImageUrl ? getOptimizedStorageUrl(rawImageUrl, { width: 200, quality: 80 }) : '';
+  const [currentSrc, setCurrentSrc] = useState(optimizedUrl || rawImageUrl);
+
   const priceDisplay = Number(service.price || 0).toFixed(2).replace('.', ',');
   const duration = service.default_duration_minutes || service.duration_minutes || 30;
-  const hasValidImage = Boolean(service.image_url && !imgError);
+  const hasValidImage = Boolean(rawImageUrl && !imgError);
 
   const customBarberConfigs = Array.isArray(service.barber_configs)
     ? service.barber_configs.filter(
@@ -49,12 +54,19 @@ export default function ServiceRow({ service, onClick, dragControls, isDragging 
       >
         {hasValidImage ? (
           <img
-            src={service.image_url}
+            src={currentSrc}
             alt={service.name}
             referrerPolicy="no-referrer"
-            onError={() => setImgError(true)}
+            onError={() => {
+              if (currentSrc !== rawImageUrl && rawImageUrl) {
+                setCurrentSrc(rawImageUrl);
+              } else {
+                setImgError(true);
+              }
+            }}
             className="w-full h-full object-cover object-center rounded-xl group-hover:scale-105 transition-transform duration-200"
             loading="lazy"
+            decoding="async"
           />
         ) : (
           <div className="flex flex-col items-center justify-center text-zinc-600 gap-1 p-2 text-center">
