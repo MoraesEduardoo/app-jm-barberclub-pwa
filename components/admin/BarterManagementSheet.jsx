@@ -24,6 +24,7 @@ import {
   searchClientsForBarter,
   setClientBarterStatus,
   revokeClientBarter,
+  getWilliamBarberInfo,
 } from "@/lib/actions/barter";
 import { toast } from "@/lib/toast";
 
@@ -63,6 +64,7 @@ export default function BarterManagementSheet({ open, onClose }) {
   const [barterCategory, setBarterCategory] = useState("Academia");
   const [customCategory, setCustomCategory] = useState("");
   const [barterIncludesWilliam, setBarterIncludesWilliam] = useState(false);
+  const [williamAvatar, setWilliamAvatar] = useState("");
   const [barterNotes, setBarterNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -85,6 +87,11 @@ export default function BarterManagementSheet({ open, onClose }) {
   useEffect(() => {
     if (open) {
       loadPartners();
+      getWilliamBarberInfo()
+        .then((w) => {
+          if (w?.avatar_url) setWilliamAvatar(w.avatar_url);
+        })
+        .catch(() => {});
       setSearchTerm("");
       setSearchResults([]);
       setSelectedClient(null);
@@ -357,7 +364,7 @@ export default function BarterManagementSheet({ open, onClose }) {
               )}
             </div>
 
-            {/* Botão Criativo e Interativo: Vale pro William Também */}
+            {/* Botão Criativo e Interativo: Vale pro William Também com Foto Real */}
             <div className="pt-0.5">
               <button
                 type="button"
@@ -370,13 +377,29 @@ export default function BarterManagementSheet({ open, onClose }) {
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div
-                    className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                    className={`h-9 w-9 rounded-xl overflow-hidden flex items-center justify-center shrink-0 border transition-all ${
                       barterIncludesWilliam
-                        ? "bg-purple-600 text-white shadow-sm shadow-purple-500/40"
-                        : "bg-zinc-800 text-zinc-400"
+                        ? "border-purple-500 shadow-sm shadow-purple-500/40"
+                        : "border-zinc-700/80 bg-zinc-800"
                     }`}
                   >
-                    <Users2 size={16} />
+                    {williamAvatar ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={williamAvatar}
+                        alt="William"
+                        loading="lazy"
+                        decoding="async"
+                        referrerPolicy="no-referrer"
+                        crossOrigin="anonymous"
+                        className="w-full h-full object-cover object-center"
+                        onError={() => setWilliamAvatar("")}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-zinc-800 text-zinc-300 font-bold text-xs select-none">
+                        W
+                      </div>
+                    )}
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
