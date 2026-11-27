@@ -15,6 +15,8 @@ import {
   Loader2,
   ShieldAlert,
   Tag,
+  Users2,
+  User,
 } from "lucide-react";
 import BottomSheet from "./BottomSheet";
 import {
@@ -60,6 +62,7 @@ export default function BarterManagementSheet({ open, onClose }) {
   const [newPhone, setNewPhone] = useState("");
   const [barterCategory, setBarterCategory] = useState("Academia");
   const [customCategory, setCustomCategory] = useState("");
+  const [barterIncludesWilliam, setBarterIncludesWilliam] = useState(false);
   const [barterNotes, setBarterNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -89,6 +92,7 @@ export default function BarterManagementSheet({ open, onClose }) {
       setNewPhone("");
       setBarterCategory("Academia");
       setCustomCategory("");
+      setBarterIncludesWilliam(false);
       setBarterNotes("");
     }
   }, [open, loadPartners]);
@@ -131,6 +135,7 @@ export default function BarterManagementSheet({ open, onClose }) {
       setBarterCategory("Academia");
       setCustomCategory("");
     }
+    setBarterIncludesWilliam(Boolean(client.barter_includes_william));
     setBarterNotes(client.barter_notes || "");
     setSearchTerm("");
     setSearchResults([]);
@@ -142,6 +147,7 @@ export default function BarterManagementSheet({ open, onClose }) {
     setNewPhone("");
     setBarterCategory("Academia");
     setCustomCategory("");
+    setBarterIncludesWilliam(false);
     setBarterNotes("");
   }
 
@@ -169,6 +175,7 @@ export default function BarterManagementSheet({ open, onClose }) {
         phone: newPhone.trim(),
         barterCategory: effectiveCategory,
         barterNotes: barterNotes.trim(),
+        barterIncludesWilliam,
         isBarter: true,
       });
 
@@ -204,15 +211,15 @@ export default function BarterManagementSheet({ open, onClose }) {
   return (
     <BottomSheet open={open} onClose={() => onClose(null)} title="Troca de Serviço (Permuta)">
       <div className="space-y-4 pb-2">
-        {/* Aviso de Regra de Negócio: Exclusividade do Matheus */}
+        {/* Aviso de Regra de Negócio: Barbeiros Participantes */}
         <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 p-3 flex items-start gap-2.5">
           <Handshake size={18} className="text-purple-400 shrink-0 mt-0.5" />
           <div className="text-xs space-y-0.5 min-w-0">
             <p className="font-semibold text-purple-200">
-              Exclusivo para o Matheus (Chefe / Owner)
+              Troca de Serviço (Permuta)
             </p>
             <p className="text-zinc-400 text-[11px] leading-relaxed">
-              Agendamentos com o Matheus para parceiros ativos são marcados automaticamente como <strong className="text-purple-300">Permuta</strong>: bloqueiam o horário na agenda sem gerar cobrança ou entrada monetária no caixa. Atendimentos com o William continuam normais.
+              Agendamentos com parceiros ativos bloqueiam o horário na agenda sem gerar cobrança ou entrada monetária no caixa. Por padrão, a permuta cobre o <strong className="text-purple-300">Matheus</strong>, podendo ser estendida também ao <strong className="text-purple-300">William</strong> no botão abaixo.
             </p>
           </div>
         </div>
@@ -350,6 +357,66 @@ export default function BarterManagementSheet({ open, onClose }) {
               )}
             </div>
 
+            {/* Botão Criativo e Interativo: Vale pro William Também */}
+            <div className="pt-0.5">
+              <button
+                type="button"
+                onClick={() => setBarterIncludesWilliam((prev) => !prev)}
+                className={`w-full p-2.5 rounded-xl border text-left transition-all active:scale-[0.99] touch-manipulation flex items-center justify-between gap-3 ${
+                  barterIncludesWilliam
+                    ? "bg-purple-950/40 border-purple-500/60 shadow-md shadow-purple-950/50"
+                    : "bg-black/60 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900/40"
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div
+                    className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                      barterIncludesWilliam
+                        ? "bg-purple-600 text-white shadow-sm shadow-purple-500/40"
+                        : "bg-zinc-800 text-zinc-400"
+                    }`}
+                  >
+                    <Users2 size={16} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-bold text-white">
+                        🤝 Vale pro William também
+                      </span>
+                      <span
+                        className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded border ${
+                          barterIncludesWilliam
+                            ? "bg-purple-500/20 text-purple-300 border-purple-500/50"
+                            : "bg-zinc-800 text-zinc-400 border-zinc-700"
+                        }`}
+                      >
+                        {barterIncludesWilliam ? "Matheus + William" : "Só Matheus"}
+                      </span>
+                    </div>
+                    <p className="text-[10.5px] text-zinc-400 leading-tight truncate mt-0.5">
+                      {barterIncludesWilliam
+                        ? "William também atende nessa permuta sem gerar cobrança/caixa"
+                        : "Toque para autorizar o William a atender nesta permuta"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="shrink-0 flex items-center">
+                  <div
+                    className={`w-9 h-5 rounded-full transition-colors relative flex items-center px-0.5 ${
+                      barterIncludesWilliam ? "bg-purple-600" : "bg-zinc-800"
+                    }`}
+                  >
+                    <div
+                      className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                        barterIncludesWilliam ? "translate-x-4" : "translate-x-0"
+                      }`}
+                    />
+                  </div>
+                </div>
+              </button>
+            </div>
+
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-[11px] font-medium text-zinc-400">
@@ -427,6 +494,15 @@ export default function BarterManagementSheet({ open, onClose }) {
                       </span>
                       <span className="text-[9.5px] bg-purple-500/20 text-purple-300 font-semibold border border-purple-500/40 rounded px-1.5 py-0.2">
                         {partner.barter_category ? `Permuta · ${partner.barter_category}` : "Permuta"}
+                      </span>
+                      <span
+                        className={`text-[9px] font-semibold rounded px-1.5 py-0.2 border ${
+                          partner.barter_includes_william
+                            ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                            : "bg-zinc-800/80 text-zinc-400 border-zinc-700/80"
+                        }`}
+                      >
+                        {partner.barter_includes_william ? "Matheus + William" : "Só Matheus"}
                       </span>
                     </div>
 
